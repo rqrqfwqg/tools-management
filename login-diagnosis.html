@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录诊断工具</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+    .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    .success { color: green; }
+    .error { color: red; }
+    pre { background: #f5f5f5; padding: 10px; overflow: auto; max-height: 300px; }
+  </style>
+</head>
+<body>
+  <h1>🔍 登录问题诊断工具</h1>
+
+  <div class="section">
+    <h3>步骤 1: 测试后端 API 连接</h3>
+    <button onclick="testBackend()">测试后端连接</button>
+    <div id="backend-result"></div>
+  </div>
+
+  <div class="section">
+    <h3>步骤 2: 测试登录 API</h3>
+    <button onclick="testLogin()">测试登录 (admin/123456)</button>
+    <div id="login-result"></div>
+  </div>
+
+  <div class="section">
+    <h3>步骤 3: 检查 LocalStorage</h3>
+    <button onclick="checkStorage()">检查 Token</button>
+    <button onclick="clearStorage()">清除 Token</button>
+    <div id="storage-result"></div>
+  </div>
+
+  <div class="section">
+    <h3>步骤 4: 直接访问前端</h3>
+    <button onclick="window.open('http://localhost:3100/login', '_blank')">打开登录页面</button>
+    <p>打开后按 F12，尝试登录，查看 Console 输出</p>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:3000'
+
+    async function testBackend() {
+      const result = document.getElementById('backend-result')
+      result.innerHTML = '测试中...'
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: 'admin', password: '123456' })
+        })
+        const data = await res.json()
+        result.innerHTML = `<p class="success">✅ 后端连接成功！</p>
+          <p>状态码: ${res.status}</p>
+          <pre>${JSON.stringify(data, null, 2)}</pre>`
+      } catch (e) {
+        result.innerHTML = `<p class="error">❌ 后端连接失败: ${e.message}</p>
+          <p>请确保后端服务正在运行 (http://localhost:3000)</p>`
+      }
+    }
+
+    async function testLogin() {
+      const result = document.getElementById('login-result')
+      result.innerHTML = '测试中...'
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'username=admin&password=123456'
+        })
+        const data = await res.json()
+        if (data.access_token) {
+          localStorage.setItem('token', data.access_token)
+          result.innerHTML = `<p class="success">✅ 登录成功！Token 已保存</p>
+            <pre>${JSON.stringify(data, null, 2)}</pre>`
+        } else {
+          result.innerHTML = `<p class="error">❌ 登录失败</p><pre>${JSON.stringify(data, null, 2)}</pre>`
+        }
+      } catch (e) {
+        result.innerHTML = `<p class="error">❌ 请求失败: ${e.message}</p>`
+      }
+    }
+
+    function checkStorage() {
+      const result = document.getElementById('storage-result')
+      const token = localStorage.getItem('token')
+      if (token) {
+        result.innerHTML = `<p class="success">✅ Token 存在</p>
+          <pre>${token.substring(0, 50)}...</pre>`
+      } else {
+        result.innerHTML = `<p class="error">❌ Token 不存在</p>`
+      }
+    }
+
+    function clearStorage() {
+      localStorage.removeItem('token')
+      document.getElementById('storage-result').innerHTML = '<p>已清除 Token</p>'
+    }
+  </script>
+</body>
+</html>

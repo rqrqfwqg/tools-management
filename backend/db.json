@@ -1,0 +1,227 @@
+{
+  "users": [
+    {
+      "user_id": 1,
+      "username": "admin",
+      "password": "$2b$10$e7CBZsqj72jVW7yRe4r.suiuchKy4Mnw/Vfsz3wDjBP.XSTo.oaYi",
+      "real_name": "系统管理员",
+      "dept_id": 1,
+      "role": "admin",
+      "role_id": 1,
+      "role_name": "管理员",
+      "is_active": true,
+      "phone": "13800138000"
+    },
+    {
+      "user_id": 2,
+      "username": "user1",
+      "password": "$2b$10$93Jk7O4THc9mEVatB2W90uCiY/lxIUMH2mETlPzyUtPjH5tFHX5HG",
+      "real_name": "张三",
+      "dept_id": 2,
+      "role": "staff",
+      "role_id": 2,
+      "role_name": "普通员工",
+      "is_active": true,
+      "phone": "13800138001"
+    }
+  ],
+  "departments": [
+    {
+      "dept_id": 1,
+      "dept_name": "管理部",
+      "dept_code": "ADMIN",
+      "description": ""
+    },
+    {
+      "dept_id": 2,
+      "dept_name": "技术部",
+      "dept_code": "TECH",
+      "description": ""
+    }
+  ],
+  "roles": [
+    {
+      "role_id": 1,
+      "role_name": "管理员",
+      "role_code": "admin",
+      "description": "",
+      "is_system": true,
+      "permission_ids": []
+    },
+    {
+      "role_id": 2,
+      "role_name": "普通员工",
+      "role_code": "staff",
+      "description": "",
+      "is_system": true,
+      "permission_ids": []
+    }
+  ],
+  "warehouses": [
+    {
+      "warehouse_id": 1,
+      "warehouse_name": "主仓库",
+      "warehouse_code": "WH001",
+      "description": "主要工器具存放仓库",
+      "is_active": true
+    }
+  ],
+  "shelves": [
+    {
+      "shelf_id": 1,
+      "warehouse_id": 1,
+      "shelf_name": "A区",
+      "shelf_code": "A",
+      "description": "A区货架",
+      "is_active": true
+    },
+    {
+      "shelf_id": 2,
+      "warehouse_id": 1,
+      "shelf_name": "B区",
+      "shelf_code": "B",
+      "description": "B区货架",
+      "is_active": true
+    }
+  ],
+  "storage_locations": [
+    {
+      "location_id": 1,
+      "shelf_id": 1,
+      "warehouse_id": 1,
+      "location_name": "1排",
+      "location_code": "A-01",
+      "description": "A区1排货位",
+      "is_active": true
+    },
+    {
+      "location_id": 2,
+      "shelf_id": 2,
+      "warehouse_id": 1,
+      "location_name": "2排",
+      "location_code": "B-02",
+      "description": "B区2排货位",
+      "is_active": true
+    }
+  ],
+  "tools": [
+    {
+      "tool_id": 1,
+      "tool_code": "T001",
+      "tool_name": "电钻",
+      "category_id": 1,
+      "category_name": "电动工具",
+      "status": "available",
+      "warehouse_id": 1,
+      "warehouse": "主仓库",
+      "shelf_id": 1,
+      "storage_location_id": 1,
+      "storage_location": "A区1排",
+      "scene": "",
+      "borrow_count": 2,
+      "description": "优质电钻",
+      "image_url": "",
+      "purchase_date": "2024-01-01",
+      "scrap_date": null
+    },
+    {
+      "tool_id": 2,
+      "tool_code": "T002",
+      "tool_name": "扳手",
+      "category_id": 2,
+      "category_name": "手动工具",
+      "status": "available",
+      "warehouse_id": 1,
+      "warehouse": "主仓库",
+      "shelf_id": 2,
+      "storage_location_id": 2,
+      "storage_location": "B区2排",
+      "scene": "",
+      "borrow_count": 2,
+      "description": "标准扳手",
+      "image_url": "",
+      "purchase_date": "2024-02-01",
+      "scrap_date": null
+    }
+  ],
+  "categories": [
+    {
+      "category_id": 1,
+      "category_name": "电动工具",
+      "category_code": "ELECTRIC",
+      "description": "",
+      "require_approval": false
+    },
+    {
+      "category_id": 2,
+      "category_name": "手动工具",
+      "category_code": "MANUAL",
+      "description": "",
+      "require_approval": false
+    }
+  ],
+  "orders": [
+    {
+      "order_id": 1,
+      "order_no": "ORD1778412833118614",
+      "borrower_name": "系统管理员",
+      "borrower_id": 1,
+      "status": "returned",
+      "warehouse": "213",
+      "scene": "3131",
+      "borrow_time": "2026-05-10T11:33:53.118Z",
+      "expected_return": "2026-05-10T11:33:50.000Z",
+      "actual_return": "2026-05-10T11:34:22.187Z",
+      "purpose": "",
+      "require_approval": false,
+      "created_at": "2026-05-10T11:33:53.118Z",
+      "items": [
+        {
+          "item_id": 139437,
+          "tool_id": 1,
+          "tool_code": "T001",
+          "tool_name": "电钻",
+          "item_status": "returned"
+        },
+        {
+          "item_id": 67926,
+          "tool_id": 2,
+          "tool_code": "T002",
+          "tool_name": "扳手",
+          "item_status": "returned"
+        }
+      ]
+    },
+    {
+      "order_id": 2,
+      "order_no": "ORD1778413378738110",
+      "borrower_name": "系统管理员",
+      "borrower_id": 1,
+      "status": "returned",
+      "warehouse": "534213·12",
+      "scene": "414215",
+      "borrow_time": "2026-05-10T11:42:58.738Z",
+      "expected_return": null,
+      "actual_return": "2026-05-10T11:43:21.080Z",
+      "purpose": "",
+      "require_approval": false,
+      "created_at": "2026-05-10T11:42:58.738Z",
+      "items": [
+        {
+          "item_id": 469730,
+          "tool_id": 1,
+          "tool_code": "T001",
+          "tool_name": "电钻",
+          "item_status": "returned"
+        },
+        {
+          "item_id": 161531,
+          "tool_id": 2,
+          "tool_code": "T002",
+          "tool_name": "扳手",
+          "item_status": "returned"
+        }
+      ]
+    }
+  ]
+}
