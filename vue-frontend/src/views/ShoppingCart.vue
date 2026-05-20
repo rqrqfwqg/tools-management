@@ -51,7 +51,7 @@
     <el-dialog v-model="checkoutDialogVisible" title="确认领用信息" width="500px">
       <el-form :model="checkoutForm" label-width="100px">
         <el-form-item label="仓库">
-          <el-input v-model="checkoutForm.warehouse" placeholder="请输入仓库名称" />
+          <el-input v-model="checkoutForm.warehouse" placeholder="根据工具自动填写" readonly />
         </el-form-item>
         <el-form-item label="使用场景">
           <el-input v-model="checkoutForm.scene" placeholder="请输入使用场景" />
@@ -114,7 +114,7 @@ const checkoutForm = reactive({
 const getImageUrl = (path: string) => {
   if (!path) return ''
   if (path.startsWith('http')) return path
-  return `http://localhost:3000${path}`
+  return path
 }
 
 const handleRemove = (toolId: number) => {
@@ -127,7 +127,9 @@ const handleCheckout = () => {
     ElMessage.warning('购物车是空的')
     return
   }
-  checkoutForm.warehouse = ''
+  // 根据工具属性自动填写仓库
+  const warehouses = [...new Set(cartStore.items.map(item => item.warehouse).filter(Boolean))] as string[]
+  checkoutForm.warehouse = warehouses.length === 1 ? warehouses[0] : (warehouses.join('、') || '')
   checkoutForm.scene = ''
   checkoutForm.expected_return = null
   checkoutForm.purpose = ''

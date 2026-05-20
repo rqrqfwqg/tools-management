@@ -34,6 +34,20 @@ router.beforeEach((to, from, next) => {
   } else if (to.path === '/login' && token) {
     next('/dashboard')
   } else {
+    // 角色权限检查
+    const adminOnlyRoutes = ['/users', '/depts', '/categories', '/warehouses', '/shelves', '/locations', '/roles']
+    if (token && adminOnlyRoutes.some(r => to.path.startsWith(r))) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        if (payload.role !== 'admin') {
+          next('/dashboard')
+          return
+        }
+      } catch {
+        next('/login')
+        return
+      }
+    }
     next()
   }
 })

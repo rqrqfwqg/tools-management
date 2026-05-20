@@ -1,48 +1,12 @@
 <template>
   <div>
     <h2>领用管理</h2>
-    <el-table :data="list" style="margin-top:15px" default-expand-all>
-      <el-table-column type="expand" width="50">
-        <template #default="{row}">
-          <div style="padding:10px 50px">
-            <p style="margin:0 0 10px;font-weight:bold">
-              工具明细
-              <el-tag size="small" style="margin-left:10px">{{ row.items?.length || 0 }} 件</el-tag>
-            </p>
-            <div style="display:flex;gap:15px;flex-wrap:wrap">
-              <div
-                v-for="item in row.items"
-                :key="item.item_id"
-                style="display:flex;align-items:center;gap:10px;background:#f9f9f9;padding:8px 12px;border-radius:8px;min-width:250px"
-              >
-                <el-image
-                  v-if="toolImages[item.tool_id]"
-                  :src="toolImages[item.tool_id]"
-                  fit="cover"
-                  style="width:50px;height:50px;border-radius:6px;flex-shrink:0"
-                  :preview-src-list="[toolImages[item.tool_id]]"
-                  preview-teleported
-                />
-                <div v-else style="width:50px;height:50px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                  <el-icon style="font-size:24px;color:#ccc"><Picture /></el-icon>
-                </div>
-                <div>
-                  <div style="font-weight:500">{{ item.tool_name }}</div>
-                  <div style="color:#999;font-size:12px">编码：{{ item.tool_code }}</div>
-                  <el-tag size="small" :type="itemStatusType(item.item_status)">
-                    {{ itemStatusText(item.item_status) }}
-                  </el-tag>
-                </div>
-              </div>
-              <div v-if="!row.items?.length" style="color:#999">暂无工具明细</div>
-            </div>
-            <div style="margin-top:10px;font-size:12px;color:#666" v-if="row.purpose">
-              用途：{{ row.purpose }}
-            </div>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="order_id" label="ID" width="60" />
+    <el-table
+      :data="list"
+      style="margin-top:15px"
+      row-class-name="clickable-row"
+      @row-click="handleRowClick"
+    >
       <el-table-column prop="order_no" label="单号" width="160" />
       <el-table-column prop="borrower_name" label="领用人" width="100" />
       <el-table-column label="状态" width="100">
@@ -60,24 +24,89 @@
       </el-table-column>
       <el-table-column label="操作" width="380" fixed="right">
         <template #default="{row}">
-          <el-button size="small" type="info" @click="handlePrint(row)">
+          <el-button size="small" type="info" @click.stop="handlePrint(row)">
             <el-icon><Printer /></el-icon> 打印
           </el-button>
-          <el-button v-if="row.status==='pending'" size="small" type="success" @click="handleApprove(row.order_id)">批准</el-button>
-          <el-button v-if="row.status==='pending'" size="small" type="danger" @click="handleReject(row.order_id)">拒绝</el-button>
-          <el-button v-if="row.status==='borrowed'" size="small" type="warning" @click="handleReturn(row.order_id)">归还</el-button>
-          <el-button v-if="row.status==='pending'" size="small" @click="handleCancel(row.order_id)">取消</el-button>
-          <el-button size="small" type="danger" plain @click="handleDelete(row.order_id)">删除</el-button>
+          <el-button v-if="row.status==='pending'" size="small" type="success" @click.stop="handleApprove(row.order_id)">批准</el-button>
+          <el-button v-if="row.status==='pending'" size="small" type="danger" @click.stop="handleReject(row.order_id)">拒绝</el-button>
+          <el-button v-if="row.status==='borrowed'" size="small" type="warning" @click.stop="handleReturn(row.order_id)">归还</el-button>
+          <el-button v-if="row.status==='pending'" size="small" @click.stop="handleCancel(row.order_id)">取消</el-button>
+          <el-button size="small" type="danger" plain @click.stop="handleDelete(row.order_id)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 工单详情弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="'工单详情 - ' + (currentRow?.order_no || '')"
+      width="700px"
+      destroy-on-close
+    >
+      <!-- 基本信息 -->
+      <el-descriptions :column="2" border style="margin-bottom:20px">
+        <el-descriptions-item label="单号">{{ currentRow?.order_no }}</el-descriptions-item>
+        <el-descriptions-item label="领用人">{{ currentRow?.borrower_name }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="statusType(currentRow?.status)">{{ statusText(currentRow?.status) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="仓库">{{ currentRow?.warehouse }}</el-descriptions-item>
+        <el-descriptions-item label="场景">{{ currentRow?.scene }}</el-descriptions-item>
+        <el-descriptions-item label="借出时间">{{ currentRow ? formatTime(currentRow.borrow_time) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="实际归还时间">{{ currentRow?.actual_return ? formatTime(currentRow.actual_return) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="用途">{{ currentRow?.purpose || '-' }}</el-descriptions-item>
+      </el-descriptions>
+
+      <!-- 工具明细 -->
+      <h4 style="margin:0 0 10px">工具明细
+        <el-tag size="small" style="margin-left:10px">{{ currentRow?.items?.length || 0 }} 件</el-tag>
+      </h4>
+      <el-table :data="currentRow?.items || []" border size="small" style="margin-bottom:20px">
+        <el-table-column label="图片" width="70" align="center">
+          <template #default="{row: item}">
+            <el-image
+              v-if="toolImages[item.tool_id]"
+              :src="toolImages[item.tool_id]"
+              fit="cover"
+              style="width:50px;height:50px;border-radius:4px"
+              :preview-src-list="[toolImages[item.tool_id]]"
+              preview-teleported
+            />
+            <div v-else style="width:50px;height:50px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;margin:0 auto">
+              <el-icon style="font-size:20px;color:#ccc"><Picture /></el-icon>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="tool_code" label="工具编码" />
+        <el-table-column prop="tool_name" label="工具名称" />
+        <el-table-column label="状态" width="100" align="center">
+          <template #default="{row: item}">
+            <el-tag size="small" :type="itemStatusType(item.item_status)">
+              {{ itemStatusText(item.item_status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 操作按钮区 -->
+      <div style="text-align:right;border-top:1px solid #eee;padding-top:16px">
+        <el-button type="info" @click="handlePrint(currentRow)">
+          <el-icon><Printer /></el-icon> 打印
+        </el-button>
+        <el-button v-if="currentRow?.status==='pending'" type="success" @click="handleApprove(currentRow.order_id)">批准</el-button>
+        <el-button v-if="currentRow?.status==='pending'" type="danger" @click="handleReject(currentRow.order_id)">拒绝</el-button>
+        <el-button v-if="currentRow?.status==='borrowed'" type="warning" @click="handleReturn(currentRow.order_id)">归还</el-button>
+        <el-button v-if="currentRow?.status==='pending'" @click="handleCancel(currentRow.order_id)">取消</el-button>
+        <el-button type="danger" plain @click="handleDelete(currentRow.order_id)">删除</el-button>
+      </div>
+    </el-dialog>
 
     <!-- 打印区域（不显示，仅供打印使用） -->
     <div ref="printArea" class="print-container" style="display:none">
       <div class="print-content" style="font-family:'Microsoft YaHei','SimSun',serif;font-size:14px;padding:15mm 20mm;width:210mm;box-sizing:border-box;background:#fff;">
         <!-- 表头区域 -->
         <div style="text-align:center;margin-bottom:8mm;">
-          <div style="font-size:10px;color:#666;margin-bottom:5px;">编号：________________</div>
+          <div style="font-size:10px;color:#666;margin-bottom:5px;">编号：{{ printOrder?.order_no || '________________' }}</div>
           <h1 style="font-size:24px;font-weight:bold;margin:0 0 5px;letter-spacing:4px;">工器具领用单</h1>
           <div style="border-bottom:2px solid #000;margin-top:8px;"></div>
         </div>
@@ -110,7 +139,7 @@
 
         <!-- 工具明细表 -->
         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">工具明细</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:10mm;">
+        <table class="print-tool-table" style="width:100%;border-collapse:collapse;margin-bottom:10mm;">
           <thead>
             <tr>
               <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:10%;">序号</th>
@@ -140,7 +169,7 @@
         </table>
 
         <!-- 签字栏 -->
-        <div style="margin-top:8mm;">
+        <div class="sign-section" style="margin-top:8mm;">
           <div style="border-top:1px solid #333;padding-top:4px;margin-bottom:6mm;">
             <span style="font-size:10px;color:#666;">备注：{{ printOrder?.scene ? '场景：' + printOrder.scene : '本单据一式两份，领用方与仓库管理员各执一份' }}</span>
           </div>
@@ -187,7 +216,11 @@ const list = ref<any[]>([])
 const toolImages = ref<Record<number, string>>({})
 const printOrder = ref<any>(null)
 const printArea = ref<any>(null)
-const BACKEND_BASE = 'http://localhost:8000'
+const BACKEND_BASE = ''
+
+// 弹窗相关状态
+const dialogVisible = ref(false)
+const currentRow = ref<any>(null)
 
 const getImageUrl = (path: string) => {
   if (!path) return ''
@@ -210,8 +243,14 @@ const formatTime = (t: string) => t ? t.replace('T', ' ').slice(0, 19) : '-'
 
 const statusType = (s: string) => ({ pending: 'info', approved: 'success', rejected: 'danger', borrowed: 'warning', returned: 'success', cancelled: 'info' }[s] || 'info')
 const statusText = (s: string) => ({ pending: '待审核', approved: '已批准', rejected: '已拒绝', borrowed: '借出中', returned: '已归还', cancelled: '已取消' }[s] || s)
-const itemStatusType = (s: string) => ({ borrowed: 'warning', returned: 'success' }[s] || 'info')
-const itemStatusText = (s: string) => ({ borrowed: '借出中', returned: '已归还' }[s] || s)
+const itemStatusType = (s: string) => ({ reserved: 'info', borrowed: 'warning', returned: 'success' }[s] || 'info')
+const itemStatusText = (s: string) => ({ reserved: '预留中', borrowed: '借出中', returned: '已归还' }[s] || s)
+
+/** 点击表格行，打开详情弹窗 */
+const handleRowClick = (row: any) => {
+  currentRow.value = row
+  dialogVisible.value = true
+}
 
 const handlePrint = (row: any) => {
   printOrder.value = row
@@ -232,21 +271,25 @@ const handlePrint = (row: any) => {
 const handleApprove = async (id: number) => {
   await approveOrder(id)
   ElMessage.success('已批准')
+  dialogVisible.value = false
   load()
 }
 const handleReject = async (id: number) => {
   await rejectOrder(id)
   ElMessage.success('已拒绝')
+  dialogVisible.value = false
   load()
 }
 const handleReturn = async (id: number) => {
   await returnOrder(id)
   ElMessage.success('已归还')
+  dialogVisible.value = false
   load()
 }
 const handleCancel = async (id: number) => {
   await cancelOrder(id)
   ElMessage.success('已取消')
+  dialogVisible.value = false
   load()
 }
 const handleDelete = async (id: number) => {
@@ -254,6 +297,7 @@ const handleDelete = async (id: number) => {
   try {
     await deleteOrder(id)
     ElMessage.success('删除成功')
+    dialogVisible.value = false
     load()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '删除失败')
@@ -263,28 +307,47 @@ const handleDelete = async (id: number) => {
 onMounted(load)
 </script>
 
-<style>
+<style scoped>
+/* 可点击行样式：鼠标变手型 */
+:deep(.clickable-row) {
+  cursor: pointer;
+}
+
 @media print {
-  body * {
-    visibility: hidden;
+  body > * {
+    display: none !important;
   }
-  .print-container,
-  .print-container * {
-    visibility: visible;
+  body > .print-container,
+  body > .print-container * {
+    display: block !important;
+    visibility: visible !important;
   }
   .print-container {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    z-index: 99999 !important;
+    background: white !important;
   }
   .print-content {
     width: 190mm !important;
-    margin: 0 auto;
+    margin: 0 auto !important;
+    font-family: 'SimSun', 'Microsoft YaHei', 'FangSong', serif !important;
   }
-  /* 打印时隐藏按钮等非打印内容 */
-  .no-print {
-    display: none !important;
+  /* 分页控制：避免在行中间分页 */
+  .print-tool-table {
+    page-break-inside: auto;
+  }
+  .print-tool-table tr {
+    page-break-inside: avoid;
+  }
+  .print-tool-table thead {
+    display: table-header-group;
+  }
+  /* 签字栏另起一页（工具多时） */
+  .sign-section {
+    page-break-before: auto;
   }
 }
 </style>

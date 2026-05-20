@@ -92,6 +92,9 @@ export const updateWarehouse = (id: number, data: any) =>
 export const deleteWarehouse = (id: number) =>
   request.delete(`/warehouses/${id}`).then(r => r.data)
 
+export const getWarehouse = (id: number) =>
+  request.get(`/warehouses/${id}`).then(r => r.data)
+
 // Shelves
 export const getShelves = (params?: { warehouse_id?: number }) =>
   request.get('/shelves', { params }).then(r => r.data)
@@ -105,6 +108,9 @@ export const updateShelf = (id: number, data: any) =>
 export const deleteShelf = (id: number) =>
   request.delete(`/shelves/${id}`).then(r => r.data)
 
+export const getShelf = (id: number) =>
+  request.get(`/shelves/${id}`).then(r => r.data)
+
 // Storage Locations
 export const getStorageLocations = (params?: { shelf_id?: number; warehouse_id?: number }) =>
   request.get('/storage-locations', { params }).then(r => r.data)
@@ -117,6 +123,9 @@ export const updateStorageLocation = (id: number, data: any) =>
 
 export const deleteStorageLocation = (id: number) =>
   request.delete(`/storage-locations/${id}`).then(r => r.data)
+
+export const getStorageLocation = (id: number) =>
+  request.get(`/storage-locations/${id}`).then(r => r.data)
 
 // Tools
 export const getTools = () =>

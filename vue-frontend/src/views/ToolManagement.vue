@@ -156,7 +156,7 @@ const uploading = ref(false)
 const uploadRef = ref()
 const form = ref<any>({})
 
-const BACKEND_BASE = 'http://localhost:8000'
+const BACKEND_BASE = ''
 
 const getImageUrl = (path: string) => {
   if (!path) return ''

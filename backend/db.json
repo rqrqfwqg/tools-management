@@ -3,7 +3,7 @@
     {
       "user_id": 1,
       "username": "admin",
-      "password": "$2b$10$e7CBZsqj72jVW7yRe4r.suiuchKy4Mnw/Vfsz3wDjBP.XSTo.oaYi",
+      "password": "$2b$10$B.14qIRusBNnz/BNvFIb4.ea4F/HwBKhGfQHInFLk0wK2bLXcX/PC",
       "real_name": "系统管理员",
       "dept_id": 1,
       "role": "admin",
@@ -15,7 +15,7 @@
     {
       "user_id": 2,
       "username": "user1",
-      "password": "$2b$10$93Jk7O4THc9mEVatB2W90uCiY/lxIUMH2mETlPzyUtPjH5tFHX5HG",
+      "password": "$2b$10$ufwfhT5iAAppBoba0WbQru5Kij3vtlGEKQP/MngDz7tSSWqgNNnhq",
       "real_name": "张三",
       "dept_id": 2,
       "role": "staff",
@@ -23,19 +23,66 @@
       "role_name": "普通员工",
       "is_active": true,
       "phone": "13800138001"
+    },
+    {
+      "user_id": 5,
+      "username": "test_valid_1779178049649",
+      "password": "$2b$10$UobXSx.rmToXJMMxV3kequoLnOMt7B3YI5Q0/e4a5uniYLuTgfcpi",
+      "real_name": "测试用户",
+      "dept_id": 2,
+      "role": "staff",
+      "role_id": 2,
+      "role_name": "普通员工",
+      "is_active": true
+    },
+    {
+      "user_id": 6,
+      "username": "yanzijian",
+      "password": "$2b$10$./VWK.M3Eui6TJ/VktHgL.WlCqEI6QHhKX3UXjCrQ3QGTby6PUhKC",
+      "real_name": "严梓健",
+      "dept_id": 1,
+      "role": "admin",
+      "role_id": 1,
+      "role_name": "管理员",
+      "is_active": true,
+      "phone": "13570383740"
     }
   ],
   "departments": [
     {
-      "dept_id": 1,
-      "dept_name": "管理部",
-      "dept_code": "ADMIN",
+      "dept_id": 2,
+      "dept_name": "T3GTC",
+      "dept_code": "T3GTC",
       "description": ""
     },
     {
-      "dept_id": 2,
-      "dept_name": "技术部",
-      "dept_code": "TECH",
+      "dept_id": 3,
+      "description": "",
+      "dept_name": "东区",
+      "dept_code": "DQ"
+    },
+    {
+      "dept_id": 4,
+      "dept_name": "公共区",
+      "dept_code": "GGQ",
+      "description": ""
+    },
+    {
+      "dept_id": 5,
+      "dept_name": "西区",
+      "dept_code": "XQ",
+      "description": ""
+    },
+    {
+      "dept_id": 6,
+      "dept_name": "运控",
+      "description": "",
+      "dept_code": "YK"
+    },
+    {
+      "dept_id": 7,
+      "dept_name": "新大楼",
+      "dept_code": "XDL",
       "description": ""
     }
   ],
@@ -63,6 +110,13 @@
       "warehouse_name": "主仓库",
       "warehouse_code": "WH001",
       "description": "主要工器具存放仓库",
+      "is_active": true
+    },
+    {
+      "warehouse_id": 2,
+      "warehouse_name": "测试仓库",
+      "warehouse_code": "WH999",
+      "description": "",
       "is_active": true
     }
   ],
@@ -109,20 +163,20 @@
       "tool_id": 1,
       "tool_code": "T001",
       "tool_name": "电钻",
-      "category_id": 1,
-      "category_name": "电动工具",
-      "status": "available",
+      "category_id": 3,
+      "status": "reserved",
       "warehouse_id": 1,
       "warehouse": "主仓库",
       "shelf_id": 1,
       "storage_location_id": 1,
       "storage_location": "A区1排",
       "scene": "",
-      "borrow_count": 2,
+      "borrow_count": 3,
       "description": "优质电钻",
-      "image_url": "",
+      "image_url": "/uploads/tool_1_1779178816542.png",
       "purchase_date": "2024-01-01",
-      "scrap_date": null
+      "scrap_date": null,
+      "category_name": "电动工具"
     },
     {
       "tool_id": 2,
@@ -130,7 +184,7 @@
       "tool_name": "扳手",
       "category_id": 2,
       "category_name": "手动工具",
-      "status": "available",
+      "status": "reserved",
       "warehouse_id": 1,
       "warehouse": "主仓库",
       "shelf_id": 2,
@@ -146,80 +200,56 @@
   ],
   "categories": [
     {
-      "category_id": 1,
-      "category_name": "电动工具",
-      "category_code": "ELECTRIC",
+      "category_id": 2,
+      "category_name": "手动工具",
+      "category_code": "SDGJ",
       "description": "",
       "require_approval": false
     },
     {
-      "category_id": 2,
-      "category_name": "手动工具",
-      "category_code": "MANUAL",
+      "category_id": 3,
+      "category_name": "电动工具",
+      "category_code": "DDGJ",
+      "description": "",
+      "require_approval": false
+    },
+    {
+      "category_id": 4,
+      "category_name": "仪表",
+      "category_code": "YB",
       "description": "",
       "require_approval": false
     }
   ],
   "orders": [
     {
-      "order_id": 1,
-      "order_no": "ORD1778412833118614",
-      "borrower_name": "系统管理员",
-      "borrower_id": 1,
-      "status": "returned",
-      "warehouse": "213",
-      "scene": "3131",
-      "borrow_time": "2026-05-10T11:33:53.118Z",
-      "expected_return": "2026-05-10T11:33:50.000Z",
-      "actual_return": "2026-05-10T11:34:22.187Z",
-      "purpose": "",
-      "require_approval": false,
-      "created_at": "2026-05-10T11:33:53.118Z",
-      "items": [
-        {
-          "item_id": 139437,
-          "tool_id": 1,
-          "tool_code": "T001",
-          "tool_name": "电钻",
-          "item_status": "returned"
-        },
-        {
-          "item_id": 67926,
-          "tool_id": 2,
-          "tool_code": "T002",
-          "tool_name": "扳手",
-          "item_status": "returned"
-        }
-      ]
-    },
-    {
       "order_id": 2,
-      "order_no": "ORD1778413378738110",
-      "borrower_name": "系统管理员",
-      "borrower_id": 1,
-      "status": "returned",
-      "warehouse": "534213·12",
-      "scene": "414215",
-      "borrow_time": "2026-05-10T11:42:58.738Z",
-      "expected_return": null,
-      "actual_return": "2026-05-10T11:43:21.080Z",
+      "order_no": "ORD1779247621196722",
+      "borrower_name": "严梓健",
+      "borrower_id": 6,
+      "status": "pending",
+      "warehouse": "主仓库",
+      "scene": "3411114",
+      "borrow_time": "2026-05-20T03:27:01.196Z",
+      "expected_return": "2026-05-20T03:27:00.000Z",
+      "actual_return": null,
       "purpose": "",
       "require_approval": false,
-      "created_at": "2026-05-10T11:42:58.738Z",
+      "created_at": "2026-05-20T03:27:01.196Z",
       "items": [
         {
-          "item_id": 469730,
+          "item_id": 354135,
           "tool_id": 1,
           "tool_code": "T001",
           "tool_name": "电钻",
-          "item_status": "returned"
+          "item_status": "reserved"
         },
         {
-          "item_id": 161531,
+          "item_id": 852407,
           "tool_id": 2,
           "tool_code": "T002",
           "tool_name": "扳手",
-          "item_status": "returned"
+          "item_status": "reserved"
         }
       ]
     }

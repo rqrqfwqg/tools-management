@@ -6,7 +6,7 @@
       </template>
       <el-form :model="form" ref="formRef">
         <el-form-item>
-          <el-input v-model="form.username" placeholder="用户名" prefix-icon="User" />
+          <el-input v-model="form.phone" placeholder="手机号" prefix-icon="Iphone" maxlength="11" />
         </el-form-item>
         <el-form-item>
           <el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" show-password />
@@ -30,26 +30,26 @@ const loading = ref(false)
 const errorMsg = ref('')
 const formRef = ref()
 
-const form = reactive({ username: 'admin', password: '123456' })
+const form = reactive({ phone: '', password: '' })
 
 const handleLogin = async () => {
   console.log('=== 登录按钮被点击 ===')
   errorMsg.value = ''
 
-  if (!form.username || !form.password) {
-    errorMsg.value = '请输入用户名和密码'
+  if (!form.phone || !form.password) {
+    errorMsg.value = '请输入手机号和密码'
     return
   }
 
   loading.value = true
-  console.log('开始登录:', form.username)
+  console.log('开始登录:', form.phone)
 
   try {
     // 直接调用 API，不用 auth store
     const res = await fetch('/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `username=${encodeURIComponent(form.username)}&password=${encodeURIComponent(form.password)}`
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: form.phone, password: form.password })
     })
 
     console.log('登录响应状态:', res.status)

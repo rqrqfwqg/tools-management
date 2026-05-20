@@ -5,15 +5,39 @@ const jwt = require('jsonwebtoken');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
-const JWT_SECRET = 'your-secret-key-change-in-production';
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.warn('⚠️  JWT_SECRET 未设置，使用临时密钥。生产环境请配置 .env 文件！');
+  return require('crypto').randomBytes(32).toString('hex');
+})();
 
 // 中间件
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true
+}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// 静态文件服务 - 生产环境下提供前端构建文件
+const frontendDistPath = path.join(__dirname, '..', 'vue-frontend', 'dist');
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  console.log(`前端静态文件目录: ${frontendDistPath}`);
+}
+
+// 登录速率限制
+const rateLimit = require('express-rate-limit');
+const loginLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 分钟
+  max: 20, // 每个 IP 最多 20 次登录尝试
+  message: { message: '登录尝试次数过多，请 5 分钟后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // 数据库文件
 const DB_PATH = path.join(__dirname, 'db.json');
@@ -59,7 +83,7 @@ const initDB = () => {
       warehouses: [
         { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true }
       ],
-      shelve: [
+      shelves: [
         { shelf_id: 1, warehouse_id: 1, shelf_name: 'A区', shelf_code: 'A', description: 'A区货架', is_active: true },
         { shelf_id: 2, warehouse_id: 1, shelf_name: 'B区', shelf_code: 'B', description: 'B区货架', is_active: true }
       ],
@@ -119,13 +143,23 @@ const initDB = () => {
 
 // 读取数据库
 const readDB = () => {
-  const data = fs.readFileSync(DB_PATH, 'utf8');
-  return JSON.parse(data);
+  try {
+    const data = fs.readFileSync(DB_PATH, 'utf8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('读取数据库失败:', err.message);
+    throw new Error('数据库读取失败');
+  }
 };
 
 // 写入数据库
 const writeDB = (db) => {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  } catch (err) {
+    console.error('写入数据库失败:', err.message);
+    throw new Error('数据库写入失败');
+  }
 };
 
 // 认证中间件
@@ -154,13 +188,13 @@ const requireAdmin = (req, res, next) => {
 // ==================== 认证API ====================
 
 // 登录
-app.post('/api/auth/login', (req, res) => {
-  const { username, password } = req.body;
+app.post('/api/auth/login', loginLimiter, (req, res) => {
+  const { phone, password } = req.body;
   const db = readDB();
-  const user = db.users.find(u => u.username === username);
+  const user = db.users.find(u => u.phone === phone);
 
   if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ message: '用户名或密码错误' });
+    return res.status(401).json({ message: '手机号或密码错误' });
   }
 
   if (!user.is_active) {
@@ -256,9 +290,20 @@ app.get('/api/users', authenticate, requireAdmin, (req, res) => {
 app.post('/api/users', authenticate, requireAdmin, (req, res) => {
   const { username, password = '123456', real_name, dept_id, role, is_active, phone } = req.body;
 
+  // 必填字段校验
+  if (!username || typeof username !== 'string' || !username.trim()) {
+    return res.status(400).json({ message: '用户名不能为空' });
+  }
+  if (!real_name || typeof real_name !== 'string' || !real_name.trim()) {
+    return res.status(400).json({ message: '真实姓名不能为空' });
+  }
+  if (dept_id === undefined || dept_id === null) {
+    return res.status(400).json({ message: '部门不能为空' });
+  }
+
   const db = readDB();
 
-  if (db.users.find(u => u.username === username)) {
+  if (db.users.find(u => u.username === username.trim())) {
     return res.status(400).json({ message: '用户名已存在' });
   }
 
@@ -410,6 +455,12 @@ app.delete('/api/departments/:id', authenticate, requireAdmin, (req, res) => {
     return res.status(404).json({ message: '部门不存在' });
   }
 
+  // 检查是否有用户属于该部门
+  const usersInDept = db.users.filter(u => u.dept_id === deptId);
+  if (usersInDept.length > 0) {
+    return res.status(400).json({ message: `该部门下有 ${usersInDept.length} 个用户，无法删除` });
+  }
+
   db.departments.splice(deptIndex, 1);
   writeDB(db);
   res.json({ message: '删除成功' });
@@ -495,10 +546,28 @@ app.get('/api/warehouses', authenticate, (req, res) => {
   res.json(db.warehouses || []);
 });
 
+// 获取单个仓库
+app.get('/api/warehouses/:id', authenticate, (req, res) => {
+  const warehouseId = parseInt(req.params.id);
+  const db = readDB();
+  const warehouse = db.warehouses.find(w => w.warehouse_id === warehouseId);
+  if (!warehouse) {
+    return res.status(404).json({ message: '仓库不存在' });
+  }
+  res.json(warehouse);
+});
+
 // 创建仓库
 app.post('/api/warehouses', authenticate, requireAdmin, (req, res) => {
   const { warehouse_name, warehouse_code, description } = req.body;
   const db = readDB();
+
+  if (!warehouse_name || typeof warehouse_name !== 'string' || !warehouse_name.trim()) {
+    return res.status(400).json({ message: '仓库名称不能为空' });
+  }
+  if (!warehouse_code || typeof warehouse_code !== 'string' || !warehouse_code.trim()) {
+    return res.status(400).json({ message: '仓库编码不能为空' });
+  }
 
   if (db.warehouses.find(w => w.warehouse_code === warehouse_code)) {
     return res.status(400).json({ message: '仓库编码已存在' });
@@ -528,15 +597,37 @@ app.put('/api/warehouses/:id', authenticate, requireAdmin, (req, res) => {
     return res.status(404).json({ message: '仓库不存在' });
   }
 
+  if (warehouse_code && warehouse_code !== db.warehouses[index].warehouse_code) {
+    if (db.warehouses.find(w => w.warehouse_code === warehouse_code)) {
+      return res.status(400).json({ message: '仓库编码已存在' });
+    }
+  }
+
+  const oldWarehouseName = db.warehouses[index].warehouse_name;
+
   db.warehouses[index] = {
     ...db.warehouses[index],
-    warehouse_name: warehouse_name || db.warehouses[index].warehouse_name,
-    warehouse_code: warehouse_code || db.warehouses[index].warehouse_code,
+    warehouse_name: warehouse_name ?? db.warehouses[index].warehouse_name,
+    warehouse_code: warehouse_code ?? db.warehouses[index].warehouse_code,
     description: description !== undefined ? description : db.warehouses[index].description,
     is_active: is_active !== undefined ? is_active : db.warehouses[index].is_active
   };
 
   writeDB(db);
+
+  // 同步工具上的仓库名称
+  const newWarehouseName = db.warehouses[index].warehouse_name;
+  if (warehouse_name && warehouse_name.trim() && warehouse_name !== oldWarehouseName) {
+    let changed = false;
+    db.tools.forEach(t => {
+      if (t.warehouse_id === warehouseId) {
+        t.warehouse = newWarehouseName.trim();
+        changed = true;
+      }
+    });
+    if (changed) writeDB(db);
+  }
+
   res.json(db.warehouses[index]);
 });
 
@@ -554,6 +645,12 @@ app.delete('/api/warehouses/:id', authenticate, requireAdmin, (req, res) => {
   const hasShelves = db.shelves.some(s => s.warehouse_id === warehouseId);
   if (hasShelves) {
     return res.status(400).json({ message: '请先删除该仓库下的所有货架' });
+  }
+
+  // 检查是否有关联的货位（即使货架已删除，可能存在孤立货位）
+  const hasLocations = db.storage_locations.some(l => l.warehouse_id === warehouseId);
+  if (hasLocations) {
+    return res.status(400).json({ message: '请先删除该仓库下的所有货位' });
   }
 
   // 检查是否有关联的工具
@@ -582,10 +679,31 @@ app.get('/api/shelves', authenticate, (req, res) => {
   res.json(shelves);
 });
 
+// 获取单个货架
+app.get('/api/shelves/:id', authenticate, (req, res) => {
+  const shelfId = parseInt(req.params.id);
+  const db = readDB();
+  const shelf = db.shelves.find(s => s.shelf_id === shelfId);
+  if (!shelf) {
+    return res.status(404).json({ message: '货架不存在' });
+  }
+  res.json(shelf);
+});
+
 // 创建货架
 app.post('/api/shelves', authenticate, requireAdmin, (req, res) => {
   const { warehouse_id, shelf_name, shelf_code, description } = req.body;
   const db = readDB();
+
+  if (!shelf_name || typeof shelf_name !== 'string' || !shelf_name.trim()) {
+    return res.status(400).json({ message: '货架名称不能为空' });
+  }
+  if (!shelf_code || typeof shelf_code !== 'string' || !shelf_code.trim()) {
+    return res.status(400).json({ message: '货架编码不能为空' });
+  }
+  if (warehouse_id === undefined || warehouse_id === null) {
+    return res.status(400).json({ message: '所属仓库不能为空' });
+  }
 
   if (!db.warehouses.find(w => w.warehouse_id === warehouse_id)) {
     return res.status(400).json({ message: '所属仓库不存在' });
@@ -620,16 +738,46 @@ app.put('/api/shelves/:id', authenticate, requireAdmin, (req, res) => {
     return res.status(404).json({ message: '货架不存在' });
   }
 
+  if (shelf_code && shelf_code !== db.shelves[index].shelf_code) {
+    if (db.shelves.find(s => s.shelf_code === shelf_code)) {
+      return res.status(400).json({ message: '货架编码已存在' });
+    }
+  }
+
+  if (warehouse_id !== undefined && warehouse_id !== null) {
+    if (!db.warehouses.find(w => w.warehouse_id === warehouse_id)) {
+      return res.status(400).json({ message: '所属仓库不存在' });
+    }
+  }
+
+  const oldShelfName = db.shelves[index].shelf_name;
+
   db.shelves[index] = {
     ...db.shelves[index],
-    warehouse_id: warehouse_id || db.shelves[index].warehouse_id,
-    shelf_name: shelf_name || db.shelves[index].shelf_name,
-    shelf_code: shelf_code || db.shelves[index].shelf_code,
+    warehouse_id: warehouse_id ?? db.shelves[index].warehouse_id,
+    shelf_name: shelf_name ?? db.shelves[index].shelf_name,
+    shelf_code: shelf_code ?? db.shelves[index].shelf_code,
     description: description !== undefined ? description : db.shelves[index].description,
     is_active: is_active !== undefined ? is_active : db.shelves[index].is_active
   };
 
   writeDB(db);
+
+  // 同步工具上的货位名称（shelfName + locationName）
+  const newShelfName = db.shelves[index].shelf_name;
+  if (shelf_name && shelf_name.trim() && shelf_name !== oldShelfName) {
+    const shelfLocations = db.storage_locations.filter(l => l.shelf_id === shelfId);
+    let changed = false;
+    db.tools.forEach(t => {
+      const loc = shelfLocations.find(l => l.location_id === t.storage_location_id);
+      if (loc) {
+        t.storage_location = `${newShelfName.trim()}${loc.location_name}`;
+        changed = true;
+      }
+    });
+    if (changed) writeDB(db);
+  }
+
   res.json(db.shelves[index]);
 });
 
@@ -679,10 +827,34 @@ app.get('/api/storage-locations', authenticate, (req, res) => {
   res.json(locations);
 });
 
+// 获取单个货位
+app.get('/api/storage-locations/:id', authenticate, (req, res) => {
+  const locationId = parseInt(req.params.id);
+  const db = readDB();
+  const location = db.storage_locations.find(l => l.location_id === locationId);
+  if (!location) {
+    return res.status(404).json({ message: '货位不存在' });
+  }
+  res.json(location);
+});
+
 // 创建货位
 app.post('/api/storage-locations', authenticate, requireAdmin, (req, res) => {
   const { warehouse_id, shelf_id, location_name, location_code, description } = req.body;
   const db = readDB();
+
+  if (!location_name || typeof location_name !== 'string' || !location_name.trim()) {
+    return res.status(400).json({ message: '货位名称不能为空' });
+  }
+  if (!location_code || typeof location_code !== 'string' || !location_code.trim()) {
+    return res.status(400).json({ message: '货位编码不能为空' });
+  }
+  if (warehouse_id === undefined || warehouse_id === null) {
+    return res.status(400).json({ message: '所属仓库不能为空' });
+  }
+  if (shelf_id === undefined || shelf_id === null) {
+    return res.status(400).json({ message: '所属货架不能为空' });
+  }
 
   if (!db.warehouses.find(w => w.warehouse_id === warehouse_id)) {
     return res.status(400).json({ message: '所属仓库不存在' });
@@ -721,12 +893,35 @@ app.put('/api/storage-locations/:id', authenticate, requireAdmin, (req, res) => 
     return res.status(404).json({ message: '货位不存在' });
   }
 
+  if (location_code && location_code !== db.storage_locations[index].location_code) {
+    if (db.storage_locations.find(l => l.location_code === location_code)) {
+      return res.status(400).json({ message: '货位编码已存在' });
+    }
+  }
+
+  if (warehouse_id !== undefined && warehouse_id !== null) {
+    if (!db.warehouses.find(w => w.warehouse_id === warehouse_id)) {
+      return res.status(400).json({ message: '所属仓库不存在' });
+    }
+  }
+  if (shelf_id !== undefined && shelf_id !== null) {
+    const effectiveWarehouseId = warehouse_id !== undefined ? warehouse_id : db.storage_locations[index].warehouse_id;
+    if (!db.shelves.find(s => s.shelf_id === shelf_id && s.warehouse_id === effectiveWarehouseId)) {
+      return res.status(400).json({ message: '所属货架不存在或不属于该仓库' });
+    }
+  }
+  if (warehouse_id !== undefined && shelf_id !== undefined && warehouse_id !== null && shelf_id !== null) {
+    if (!db.shelves.find(s => s.shelf_id === shelf_id && s.warehouse_id === warehouse_id)) {
+      return res.status(400).json({ message: '货架不属于指定的仓库' });
+    }
+  }
+
   db.storage_locations[index] = {
     ...db.storage_locations[index],
-    warehouse_id: warehouse_id || db.storage_locations[index].warehouse_id,
-    shelf_id: shelf_id || db.storage_locations[index].shelf_id,
-    location_name: location_name || db.storage_locations[index].location_name,
-    location_code: location_code || db.storage_locations[index].location_code,
+    warehouse_id: warehouse_id ?? db.storage_locations[index].warehouse_id,
+    shelf_id: shelf_id ?? db.storage_locations[index].shelf_id,
+    location_name: location_name ?? db.storage_locations[index].location_name,
+    location_code: location_code ?? db.storage_locations[index].location_code,
     description: description !== undefined ? description : db.storage_locations[index].description,
     is_active: is_active !== undefined ? is_active : db.storage_locations[index].is_active
   };
@@ -777,6 +972,19 @@ app.post('/api/tools', authenticate, requireAdmin, (req, res) => {
   const shelf = db.shelves.find(s => s.shelf_id === shelf_id);
   const location = db.storage_locations.find(l => l.location_id === storage_location_id);
 
+  // 验证货架属于仓库
+  if (shelf_id && warehouse_id) {
+    if (shelf && shelf.warehouse_id !== warehouse_id) {
+      return res.status(400).json({ message: '货架不属于所选仓库' });
+    }
+  }
+  // 验证货位属于货架和仓库
+  if (storage_location_id && shelf_id && warehouse_id) {
+    if (location && (location.shelf_id !== shelf_id || location.warehouse_id !== warehouse_id)) {
+      return res.status(400).json({ message: '货位不属于所选货架或仓库' });
+    }
+  }
+
   const newTool = {
     tool_id: Math.max(...db.tools.map(t => t.tool_id), 0) + 1,
     tool_code,
@@ -817,6 +1025,24 @@ app.put('/api/tools/:id', authenticate, requireAdmin, (req, res) => {
   const shelf = shelf_id ? db.shelves.find(s => s.shelf_id === shelf_id) : null;
   const location = storage_location_id ? db.storage_locations.find(l => l.location_id === storage_location_id) : null;
 
+  // 验证货架属于仓库
+  const effectiveWarehouseId = warehouse_id !== undefined ? warehouse_id : db.tools[toolIndex].warehouse_id;
+  const effectiveShelfId = shelf_id !== undefined ? shelf_id : db.tools[toolIndex].shelf_id;
+  if (effectiveShelfId && effectiveWarehouseId) {
+    const effectiveShelf = db.shelves.find(s => s.shelf_id === effectiveShelfId);
+    if (effectiveShelf && effectiveShelf.warehouse_id !== effectiveWarehouseId) {
+      return res.status(400).json({ message: '货架不属于所选仓库' });
+    }
+  }
+  // 验证货位属于货架和仓库
+  const effectiveLocationId = storage_location_id !== undefined ? storage_location_id : db.tools[toolIndex].storage_location_id;
+  if (effectiveLocationId && effectiveShelfId && effectiveWarehouseId) {
+    const effectiveLocation = db.storage_locations.find(l => l.location_id === effectiveLocationId);
+    if (effectiveLocation && (effectiveLocation.shelf_id !== effectiveShelfId || effectiveLocation.warehouse_id !== effectiveWarehouseId)) {
+      return res.status(400).json({ message: '货位不属于所选货架或仓库' });
+    }
+  }
+
   db.tools[toolIndex] = {
     ...db.tools[toolIndex],
     tool_code: tool_code || db.tools[toolIndex].tool_code,
@@ -849,6 +1075,64 @@ app.delete('/api/tools/:id', authenticate, requireAdmin, (req, res) => {
   db.tools.splice(toolIndex, 1);
   writeDB(db);
   res.json({ message: '删除成功' });
+});
+
+// ==================== 图片上传API ====================
+
+const multer = require('multer');
+const uploadDir = path.join(__dirname, 'uploads');
+
+// 确保 uploads 目录存在
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// 静态文件服务
+app.use('/uploads', express.static(uploadDir));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
+      return cb(new Error('只支持 JPG/PNG/GIF 格式'));
+    }
+    cb(null, `tool_${req.params.id}_${Date.now()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
+      return cb(new Error('只支持 JPG/PNG/GIF 格式'));
+    }
+    cb(null, true);
+  }
+});
+
+app.post('/api/tools/:id/upload-image', authenticate, requireAdmin, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: '请选择要上传的图片' });
+  }
+
+  const toolId = parseInt(req.params.id);
+  const db = readDB();
+  const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
+
+  if (toolIndex === -1) {
+    // 删除已上传的文件
+    fs.unlinkSync(req.file.path);
+    return res.status(404).json({ message: '工具不存在' });
+  }
+
+  const imageUrl = `/uploads/${req.file.filename}`;
+  db.tools[toolIndex].image_url = imageUrl;
+  writeDB(db);
+
+  res.json({ message: '上传成功', image_url: imageUrl });
 });
 
 // ==================== 分类管理API ====================
@@ -914,6 +1198,12 @@ app.delete('/api/tool-categories/:id', authenticate, requireAdmin, (req, res) =>
     return res.status(404).json({ message: '分类不存在' });
   }
 
+  // 检查是否有工具属于该分类
+  const toolsInCategory = db.tools.filter(t => t.category_id === categoryId);
+  if (toolsInCategory.length > 0) {
+    return res.status(400).json({ message: `该分类下有 ${toolsInCategory.length} 个工具，无法删除` });
+  }
+
   db.categories.splice(categoryIndex, 1);
   writeDB(db);
   res.json({ message: '删除成功' });
@@ -976,7 +1266,7 @@ app.post('/api/orders', authenticate, (req, res) => {
       tool_id: toolId,
       tool_code: tool.tool_code,
       tool_name: tool.tool_name,
-      item_status: 'borrowed'
+      item_status: 'reserved'
     };
   });
 
@@ -997,12 +1287,11 @@ app.post('/api/orders', authenticate, (req, res) => {
     items: items
   };
 
-  // 更新工具状态为借出
+  // 更新工具状态为预留（待审核通过后才变为借出）
   for (const toolId of tool_ids) {
     const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
     if (toolIndex > -1) {
-      db.tools[toolIndex].status = 'borrowed';
-      db.tools[toolIndex].borrow_count = (db.tools[toolIndex].borrow_count || 0) + 1;
+      db.tools[toolIndex].status = 'reserved';
     }
   }
 
@@ -1027,6 +1316,18 @@ app.post('/api/orders/:id/approve', authenticate, requireAdmin, (req, res) => {
   }
 
   db.orders[orderIndex].status = 'borrowed';
+
+  // 审核通过：工具从 reserved → borrowed，更新 item_status 和借出计数
+  const order = db.orders[orderIndex];
+  for (const item of order.items) {
+    const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
+    if (toolIndex > -1) {
+      db.tools[toolIndex].status = 'borrowed';
+      db.tools[toolIndex].borrow_count = (db.tools[toolIndex].borrow_count || 0) + 1;
+    }
+    item.item_status = 'borrowed';
+  }
+
   writeDB(db);
 
   res.json({ message: '已批准' });
@@ -1087,6 +1388,7 @@ app.post('/api/orders/:id/return', authenticate, (req, res) => {
     if (toolIndex > -1) {
       db.tools[toolIndex].status = 'available';
     }
+    item.item_status = 'returned';
   }
 
   db.orders[orderIndex].status = 'returned';
@@ -1156,6 +1458,34 @@ app.delete('/api/orders/:id', authenticate, (req, res) => {
   writeDB(db);
 
   res.json({ message: '删除成功' });
+});
+
+// ==================== 全局错误处理 ====================
+app.use((err, req, res, next) => {
+  console.error('服务器错误:', err.message);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ message: '服务器内部错误', detail: process.env.NODE_ENV === 'development' ? err.message : undefined });
+});
+
+// 404 处理 / SPA fallback
+// app.use() 在所有路由之后执行，未匹配的请求会落入这里
+app.use((req, res, next) => {
+  // 如果是 API 路径，返回 JSON 404
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ message: '接口不存在' });
+  }
+  // 其他路径（SPA）：返回 index.html
+  const indexPath = path.join(__dirname, '..', 'vue-frontend', 'dist', 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ message: '前端资源未构建，请先运行 npm run build' });
+  }
+});
+
+// API 404 处理（仅对非 GET 请求生效，GET 请求已被上面的 SPA fallback 捕获）
+app.use((req, res) => {
+  res.status(404).json({ message: '接口不存在' });
 });
 
 // ==================== 启动服务器 ====================
