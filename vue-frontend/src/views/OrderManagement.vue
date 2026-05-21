@@ -1,8 +1,18 @@
 <template>
   <div>
     <h2>领用管理</h2>
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
+      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:140px">
+        <el-option label="待审核" value="pending" />
+        <el-option label="已批准" value="approved" />
+        <el-option label="借出中" value="borrowed" />
+        <el-option label="已归还" value="returned" />
+        <el-option label="已拒绝" value="rejected" />
+        <el-option label="已取消" value="cancelled" />
+      </el-select>
+    </div>
     <el-table
-      :data="list"
+      :data="filteredList"
       style="margin-top:15px"
       row-class-name="clickable-row"
       @row-click="handleRowClick"
@@ -29,7 +39,7 @@
           </el-button>
           <el-button v-if="row.status==='pending'" size="small" type="success" @click.stop="handleApprove(row.order_id)">批准</el-button>
           <el-button v-if="row.status==='pending'" size="small" type="danger" @click.stop="handleReject(row.order_id)">拒绝</el-button>
-          <el-button v-if="row.status==='borrowed'" size="small" type="warning" @click.stop="handleReturn(row.order_id)">归还</el-button>
+          <el-button v-if="row.status==='borrowed' || row.status==='approved'" size="small" type="warning" @click.stop="handleReturn(row.order_id)">归还</el-button>
           <el-button v-if="row.status==='pending'" size="small" @click.stop="handleCancel(row.order_id)">取消</el-button>
           <el-button size="small" type="danger" plain @click.stop="handleDelete(row.order_id)">删除</el-button>
         </template>
@@ -95,7 +105,7 @@
         </el-button>
         <el-button v-if="currentRow?.status==='pending'" type="success" @click="handleApprove(currentRow.order_id)">批准</el-button>
         <el-button v-if="currentRow?.status==='pending'" type="danger" @click="handleReject(currentRow.order_id)">拒绝</el-button>
-        <el-button v-if="currentRow?.status==='borrowed'" type="warning" @click="handleReturn(currentRow.order_id)">归还</el-button>
+        <el-button v-if="currentRow?.status==='borrowed' || currentRow?.status==='approved'" type="warning" @click="handleReturn(currentRow.order_id)">归还</el-button>
         <el-button v-if="currentRow?.status==='pending'" @click="handleCancel(currentRow.order_id)">取消</el-button>
         <el-button type="danger" plain @click="handleDelete(currentRow.order_id)">删除</el-button>
       </div>
@@ -207,16 +217,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { getOrders, approveOrder, rejectOrder, returnOrder, cancelOrder, deleteOrder, getTools } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Printer } from '@element-plus/icons-vue'
 
+const route = useRoute()
 const list = ref<any[]>([])
 const toolImages = ref<Record<number, string>>({})
 const printOrder = ref<any>(null)
 const printArea = ref<any>(null)
 const BACKEND_BASE = ''
+const statusFilter = ref('')
+
+// 筛选后的列表
+const filteredList = computed(() => {
+  if (!statusFilter.value) return list.value
+  return list.value.filter(o => o.status === statusFilter.value)
+})
 
 // 弹窗相关状态
 const dialogVisible = ref(false)
@@ -304,7 +323,11 @@ const handleDelete = async (id: number) => {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  // 从仪表盘跳转时自动筛选
+  if (route.query.status) statusFilter.value = route.query.status as string
+})
 </script>
 
 <style scoped>

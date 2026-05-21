@@ -1,8 +1,16 @@
 <template>
   <div>
     <h2>工器具管理</h2>
-    <el-button type="primary" @click="openDialog()">新增工器具</el-button>
-    <el-table :data="list" style="margin-top:15px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
+      <el-button type="primary" @click="openDialog()">新增工器具</el-button>
+      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:140px">
+        <el-option label="可用" value="available" />
+        <el-option label="借出" value="borrowed" />
+        <el-option label="维修" value="maintenance" />
+        <el-option label="报废" value="scrapped" />
+      </el-select>
+    </div>
+    <el-table :data="filteredList" style="margin-top:0">
       <el-table-column label="图片" width="80">
         <template #default="{row}">
           <el-image
@@ -135,6 +143,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { getTools, createTool, updateTool, deleteTool } from '@/api'
 import { getCategories } from '@/api'
 import { getWarehouses, getShelves, getStorageLocations } from '@/api'
@@ -143,6 +152,7 @@ import { Upload, Picture, UploadFilled, ShoppingCart } from '@element-plus/icons
 import axios from 'axios'
 import { useCartStore } from '@/store/cart'
 
+const route = useRoute()
 const list = ref<any[]>([])
 const categories = ref<any[]>([])
 const warehouses = ref<any[]>([])
@@ -152,6 +162,13 @@ const dialogVisible = ref(false)
 const uploadDialogVisible = ref(false)
 const currentTool = ref<any>(null)
 const selectedFile = ref<File | null>(null)
+const statusFilter = ref('')
+
+// 筛选后的列表
+const filteredList = computed(() => {
+  if (!statusFilter.value) return list.value
+  return list.value.filter(t => t.status === statusFilter.value)
+})
 const uploading = ref(false)
 const uploadRef = ref()
 const form = ref<any>({})
@@ -271,5 +288,9 @@ const handleAddToCart = (tool: any) => {
   ElMessage.success(`已添加"${tool.tool_name}"到购物车`)
 }
 
-onMounted(() => { load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations() })
+onMounted(() => {
+  load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations()
+  // 从仪表盘跳转时自动筛选
+  if (route.query.status) statusFilter.value = route.query.status as string
+})
 </script>

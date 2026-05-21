@@ -7,6 +7,13 @@
       <el-table-column prop="warehouse_code" label="编码" width="120" />
       <el-table-column prop="warehouse_name" label="名称" />
       <el-table-column prop="description" label="描述" />
+      <el-table-column label="隔离区" width="100">
+        <template #default="{row}">
+          <el-tag :type="row.is_restricted !== false ? 'danger' : 'success'" size="small">
+            {{ row.is_restricted !== false ? '隔离区内' : '隔离区外' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="80">
         <template #default="{row}">
           <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
@@ -28,6 +35,10 @@
         <el-form-item label="仓库编码"><el-input v-model="form.warehouse_code" /></el-form-item>
         <el-form-item label="仓库名称"><el-input v-model="form.warehouse_name" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="隔离区">
+          <el-switch v-model="form.is_restricted" active-text="隔离区内" inactive-text="隔离区外" />
+          <div style="color:#909399;font-size:12px;margin-top:4px">隔离区外的仓库领用工器具无需审批</div>
+        </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="form.is_active" active-text="启用" inactive-text="停用" />
         </el-form-item>
@@ -54,7 +65,7 @@ const load = async () => {
 }
 
 const openDialog = (row?: any) => {
-  form.value = row ? { ...row } : { is_active: true, description: '' }
+  form.value = row ? { ...row } : { is_active: true, description: '', is_restricted: true }
   dialogVisible.value = true
 }
 

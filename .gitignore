@@ -22,3 +22,12 @@ Thumbs.db
 
 # Env
 .env
+
+# Excel temp files
+~$*
+
+# Logs directory
+logs/
+
+# Uploads
+uploads/

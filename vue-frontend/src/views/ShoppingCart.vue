@@ -79,6 +79,22 @@
         <div v-for="item in cartStore.items" :key="item.tool_id" style="margin: 5px 0; color: #666;">
           • {{ item.tool_name }} ({{ item.tool_code }})
         </div>
+        <el-alert
+          v-if="!checkoutForm.needApproval"
+          type="success"
+          :closable="false"
+          style="margin-top:10px"
+        >
+          <template #title>该仓库为隔离区外，领用后无需审批，直接生效</template>
+        </el-alert>
+        <el-alert
+          v-if="checkoutForm.needApproval"
+          type="warning"
+          :closable="false"
+          style="margin-top:10px"
+        >
+          <template #title>该仓库为隔离区内，领用后需管理员审批方可生效</template>
+        </el-alert>
       </div>
 
       <template #footer>
@@ -95,7 +111,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '@/store/cart'
-import { createOrder } from '@/api'
+import { createOrder, getWarehouses } from '@/api'
 import { ElMessage } from 'element-plus'
 import { ShoppingCart, Picture } from '@element-plus/icons-vue'
 
@@ -108,7 +124,8 @@ const checkoutForm = reactive({
   warehouse: '',
   scene: '',
   expected_return: null as Date | null,
-  purpose: ''
+  purpose: '',
+  needApproval: true
 })
 
 const getImageUrl = (path: string) => {
@@ -122,7 +139,7 @@ const handleRemove = (toolId: number) => {
   ElMessage.success('已从购物车移除')
 }
 
-const handleCheckout = () => {
+const handleCheckout = async () => {
   if (cartStore.items.length === 0) {
     ElMessage.warning('购物车是空的')
     return
@@ -133,6 +150,20 @@ const handleCheckout = () => {
   checkoutForm.scene = ''
   checkoutForm.expected_return = null
   checkoutForm.purpose = ''
+
+  // 查询仓库是否需要审批
+  try {
+    const whList = await getWarehouses()
+    const whNames = warehouses as string[]
+    // 只要有任一仓库为隔离区内，就需要审批
+    const anyRestricted = whList.some((w: any) =>
+      whNames.includes(w.warehouse_name) && w.is_restricted !== false
+    )
+    checkoutForm.needApproval = anyRestricted
+  } catch {
+    checkoutForm.needApproval = true // 默认需要审批
+  }
+
   checkoutDialogVisible.value = true
 }
 
@@ -155,7 +186,11 @@ const handleSubmitOrder = async () => {
     }
 
     await createOrder(orderData)
-    ElMessage.success('领用申请已提交')
+    if (checkoutForm.needApproval) {
+      ElMessage.success('领用申请已提交，等待管理员审批')
+    } else {
+      ElMessage.success('领用成功，已直接生效')
+    }
     cartStore.clearCart()
     checkoutDialogVisible.value = false
     router.push('/orders')

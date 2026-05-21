@@ -40,7 +40,7 @@
       "username": "yanzijian",
       "password": "$2b$10$./VWK.M3Eui6TJ/VktHgL.WlCqEI6QHhKX3UXjCrQ3QGTby6PUhKC",
       "real_name": "严梓健",
-      "dept_id": 1,
+      "dept_id": 2,
       "role": "admin",
       "role_id": 1,
       "role_name": "管理员",
@@ -110,14 +110,16 @@
       "warehouse_name": "主仓库",
       "warehouse_code": "WH001",
       "description": "主要工器具存放仓库",
-      "is_active": true
+      "is_active": true,
+      "is_restricted": false
     },
     {
       "warehouse_id": 2,
-      "warehouse_name": "测试仓库",
+      "warehouse_name": "备用仓库",
       "warehouse_code": "WH999",
       "description": "",
-      "is_active": true
+      "is_active": true,
+      "is_restricted": true
     }
   ],
   "shelves": [
@@ -164,16 +166,16 @@
       "tool_code": "T001",
       "tool_name": "电钻",
       "category_id": 3,
-      "status": "reserved",
+      "status": "available",
       "warehouse_id": 1,
       "warehouse": "主仓库",
       "shelf_id": 1,
       "storage_location_id": 1,
       "storage_location": "A区1排",
       "scene": "",
-      "borrow_count": 3,
+      "borrow_count": 5,
       "description": "优质电钻",
-      "image_url": "/uploads/tool_1_1779178816542.png",
+      "image_url": "/uploads/tool_1_1779338367595.jpg",
       "purchase_date": "2024-01-01",
       "scrap_date": null,
       "category_name": "电动工具"
@@ -184,14 +186,14 @@
       "tool_name": "扳手",
       "category_id": 2,
       "category_name": "手动工具",
-      "status": "reserved",
+      "status": "available",
       "warehouse_id": 1,
       "warehouse": "主仓库",
       "shelf_id": 2,
       "storage_location_id": 2,
       "storage_location": "B区2排",
       "scene": "",
-      "borrow_count": 2,
+      "borrow_count": 4,
       "description": "标准扳手",
       "image_url": "",
       "purchase_date": "2024-02-01",
@@ -227,12 +229,12 @@
       "order_no": "ORD1779247621196722",
       "borrower_name": "严梓健",
       "borrower_id": 6,
-      "status": "pending",
+      "status": "returned",
       "warehouse": "主仓库",
       "scene": "3411114",
       "borrow_time": "2026-05-20T03:27:01.196Z",
       "expected_return": "2026-05-20T03:27:00.000Z",
-      "actual_return": null,
+      "actual_return": "2026-05-20T03:40:32.089Z",
       "purpose": "",
       "require_approval": false,
       "created_at": "2026-05-20T03:27:01.196Z",
@@ -242,14 +244,76 @@
           "tool_id": 1,
           "tool_code": "T001",
           "tool_name": "电钻",
-          "item_status": "reserved"
+          "item_status": "returned"
         },
         {
           "item_id": 852407,
           "tool_id": 2,
           "tool_code": "T002",
           "tool_name": "扳手",
-          "item_status": "reserved"
+          "item_status": "returned"
+        }
+      ]
+    },
+    {
+      "order_id": 3,
+      "order_no": "ORD1779338434004267",
+      "borrower_name": "张三",
+      "borrower_id": 2,
+      "status": "returned",
+      "warehouse": "主仓库",
+      "scene": "214",
+      "borrow_time": "2026-05-21T04:40:34.004Z",
+      "expected_return": "2026-05-21T04:40:31.000Z",
+      "actual_return": "2026-05-21T05:05:06.848Z",
+      "purpose": "",
+      "require_approval": false,
+      "created_at": "2026-05-21T04:40:34.004Z",
+      "items": [
+        {
+          "item_id": 104570,
+          "tool_id": 1,
+          "tool_code": "T001",
+          "tool_name": "电钻",
+          "item_status": "returned"
+        },
+        {
+          "item_id": 62256,
+          "tool_id": 2,
+          "tool_code": "T002",
+          "tool_name": "扳手",
+          "item_status": "returned"
+        }
+      ]
+    },
+    {
+      "order_id": 4,
+      "order_no": "ORD1779339923807613",
+      "borrower_name": "严梓健",
+      "borrower_id": 6,
+      "status": "returned",
+      "warehouse": "主仓库",
+      "scene": "12345",
+      "borrow_time": "2026-05-21T05:05:23.808Z",
+      "expected_return": "2026-05-21T05:05:19.000Z",
+      "actual_return": "2026-05-21T05:08:48.110Z",
+      "purpose": "",
+      "require_approval": false,
+      "created_at": "2026-05-21T05:05:23.808Z",
+      "items": [
+        {
+          "item_id": 40384,
+          "tool_id": 1,
+          "tool_code": "T001",
+          "tool_name": "电钻",
+          "item_status": "returned"
+        },
+        {
+          "item_id": 229143,
+          "tool_id": 2,
+          "tool_code": "T002",
+          "tool_name": "扳手",
+          "item_status": "returned"
         }
       ]
     }

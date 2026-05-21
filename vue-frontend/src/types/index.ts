@@ -83,11 +83,15 @@ export interface DashboardStats {
   tools_total: number
   tools_available: number
   tools_borrowed: number
+  tools_maintenance: number
   tools_scrapped: number
+  orders_total: number
   orders_pending: number
+  orders_approved: number
+  orders_returned: number
   orders_borrowed: number
   orders_overdue: number
-  orders_total: number
+  users_total: number
 }
 
 export interface ApiResponse<T> {

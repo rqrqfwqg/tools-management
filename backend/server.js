@@ -81,7 +81,7 @@ const initDB = () => {
         { role_id: 2, role_name: '普通员工', role_code: 'staff', description: '', is_system: true, permission_ids: [] }
       ],
       warehouses: [
-        { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true }
+        { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, is_restricted: true }
       ],
       shelves: [
         { shelf_id: 1, warehouse_id: 1, shelf_name: 'A区', shelf_code: 'A', description: 'A区货架', is_active: true },
@@ -578,7 +578,8 @@ app.post('/api/warehouses', authenticate, requireAdmin, (req, res) => {
     warehouse_name,
     warehouse_code,
     description: description || '',
-    is_active: true
+    is_active: true,
+    is_restricted: req.body.is_restricted !== undefined ? req.body.is_restricted : true
   };
 
   db.warehouses.push(newWarehouse);
@@ -610,7 +611,8 @@ app.put('/api/warehouses/:id', authenticate, requireAdmin, (req, res) => {
     warehouse_name: warehouse_name ?? db.warehouses[index].warehouse_name,
     warehouse_code: warehouse_code ?? db.warehouses[index].warehouse_code,
     description: description !== undefined ? description : db.warehouses[index].description,
-    is_active: is_active !== undefined ? is_active : db.warehouses[index].is_active
+    is_active: is_active !== undefined ? is_active : db.warehouses[index].is_active,
+    is_restricted: req.body.is_restricted !== undefined ? req.body.is_restricted : db.warehouses[index].is_restricted
   };
 
   writeDB(db);
@@ -1270,29 +1272,40 @@ app.post('/api/orders', authenticate, (req, res) => {
     };
   });
 
+  // 根据仓库是否为隔离区决定是否需要审批
+  const warehouseRecord = db.warehouses.find(w => w.warehouse_name === warehouse || w.warehouse_code === warehouse);
+  const isRestricted = warehouseRecord ? (warehouseRecord.is_restricted !== false) : true; // 默认需要审批
+  const initialStatus = isRestricted ? 'pending' : 'approved';
+
   const newOrder = {
     order_id: Math.max(...db.orders.map(o => o.order_id), 0) + 1,
     order_no: orderNo,
     borrower_name: user.real_name || user.username,
     borrower_id: user.user_id,
-    status: 'pending',
+    status: initialStatus,
     warehouse: warehouse || '',
     scene: scene || '',
     borrow_time: new Date().toISOString(),
     expected_return: expected_return || null,
     actual_return: null,
     purpose: purpose || '',
-    require_approval: false,
+    require_approval: isRestricted,
     created_at: new Date().toISOString(),
     items: items
   };
 
-  // 更新工具状态为预留（待审核通过后才变为借出）
+  // 隔离区外：直接approved，工具状态改为borrowed
+  // 隔离区内：pending，工具状态改为reserved（待审核通过后才变为borrowed）
   for (const toolId of tool_ids) {
     const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
     if (toolIndex > -1) {
-      db.tools[toolIndex].status = 'reserved';
+      db.tools[toolIndex].status = isRestricted ? 'reserved' : 'borrowed';
     }
+  }
+
+  // 隔离区外：item_status 直接设为 borrowed
+  if (!isRestricted) {
+    items.forEach(item => { item.item_status = 'borrowed'; });
   }
 
   db.orders.push(newOrder);
@@ -1373,8 +1386,8 @@ app.post('/api/orders/:id/return', authenticate, (req, res) => {
   }
 
   const order = db.orders[orderIndex];
-  if (order.status !== 'borrowed') {
-    return res.status(400).json({ message: '只能归还借出中的订单' });
+  if (order.status !== 'borrowed' && order.status !== 'approved') {
+    return res.status(400).json({ message: '只能归还借出中或已批准的订单' });
   }
 
   // 检查权限：只能归还自己的订单，或者管理员可以归还任何订单
