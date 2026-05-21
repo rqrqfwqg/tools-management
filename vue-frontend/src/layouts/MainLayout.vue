@@ -87,6 +87,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useCartStore } from '@/store/cart'
 import { onMounted } from 'vue'
+import { useAutoLogout } from '@/composables/useAutoLogout'
 import { DataLine, User, OfficeBuilding, Collection, House, Box, Document, Key, ArrowDown, Lock, SwitchButton, ShoppingCart } from '@element-plus/icons-vue'
 import type { ComponentSize } from 'element-plus'
 
@@ -94,6 +95,9 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const cartStore = useCartStore()
+
+// 10分钟无操作自动退出
+useAutoLogout(10)
 
 onMounted(() => {
   if (!authStore.user) {
