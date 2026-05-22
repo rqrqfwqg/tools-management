@@ -11,15 +11,15 @@ const router = createRouter({
       redirect: '/dashboard',
       children: [
         { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard.vue') },
-        { path: 'users', name: 'UserManagement', component: () => import('@/views/UserManagement.vue') },
-        { path: 'depts', name: 'DeptManagement', component: () => import('@/views/DeptManagement.vue') },
-        { path: 'categories', name: 'CategoryManagement', component: () => import('@/views/CategoryManagement.vue') },
-        { path: 'warehouses', name: 'WarehouseManagement', component: () => import('@/views/WarehouseManagement.vue') },
-        { path: 'shelves', name: 'ShelfManagement', component: () => import('@/views/ShelfManagement.vue') },
-        { path: 'locations', name: 'LocationManagement', component: () => import('@/views/LocationManagement.vue') },
+        { path: 'users', name: 'UserManagement', component: () => import('@/views/UserManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'depts', name: 'DeptManagement', component: () => import('@/views/DeptManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'categories', name: 'CategoryManagement', component: () => import('@/views/CategoryManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'warehouses', name: 'WarehouseManagement', component: () => import('@/views/WarehouseManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'shelves', name: 'ShelfManagement', component: () => import('@/views/ShelfManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'locations', name: 'LocationManagement', component: () => import('@/views/LocationManagement.vue'), meta: { requireAdmin: true } },
         { path: 'tools', name: 'ToolManagement', component: () => import('@/views/ToolManagement.vue') },
         { path: 'orders', name: 'OrderManagement', component: () => import('@/views/OrderManagement.vue') },
-        { path: 'roles', name: 'RoleManagement', component: () => import('@/views/RoleManagement.vue') },
+        { path: 'roles', name: 'RoleManagement', component: () => import('@/views/RoleManagement.vue'), meta: { requireAdmin: true } },
         { path: 'change-password', name: 'ChangePassword', component: () => import('@/views/ChangePassword.vue') },
         { path: 'cart', name: 'ShoppingCart', component: () => import('@/views/ShoppingCart.vue') },
       ]
@@ -27,29 +27,36 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('token')
+
+  // 未登录用户只能访问登录页
   if (to.path !== '/login' && !token) {
     next('/login')
-  } else if (to.path === '/login' && token) {
+    return
+  }
+
+  // 已登录用户访问登录页时重定向到首页
+  if (to.path === '/login' && token) {
     next('/dashboard')
-  } else {
-    // 角色权限检查
-    const adminOnlyRoutes = ['/users', '/depts', '/categories', '/warehouses', '/shelves', '/locations', '/roles']
-    if (token && adminOnlyRoutes.some(r => to.path.startsWith(r))) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        if (payload.role !== 'admin') {
-          next('/dashboard')
-          return
-        }
-      } catch {
-        next('/login')
+    return
+  }
+
+  // 管理员权限检查（从 JWT payload 中读取，避免额外请求）
+  if (to.meta?.requireAdmin && token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      if (payload.role !== 'admin') {
+        next('/dashboard')
         return
       }
+    } catch {
+      next('/login')
+      return
     }
-    next()
   }
+
+  next()
 })
 
 export default router

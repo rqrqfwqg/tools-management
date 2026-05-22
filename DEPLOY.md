@@ -169,9 +169,9 @@ pm2 restart tools-management
 
 | 项目 | 值 |
 |------|-----|
-| 手机号 | 13570383740 |
-| 密码 | 518623 |
-| 账号 | yanzijian |
+| 手机号 | 首次初始化时设置 |
+| 账号 | admin |
+| 密码 | 见 backend/.env 中的 DEFAULT_ADMIN_PASSWORD |
 
 > 首次部署后请尽快修改默认密码。
 
