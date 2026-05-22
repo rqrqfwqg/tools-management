@@ -1,8 +1,19 @@
 <template>
   <div>
     <h2>仓库管理</h2>
-    <el-button type="primary" @click="openDialog()">新增仓库</el-button>
-    <el-table :data="list" style="margin-top:15px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-button type="primary" @click="openDialog()">新增仓库</el-button>
+      <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
+      <el-select v-model="restrictedFilter" placeholder="全部区域" clearable style="width:120px">
+        <el-option label="隔离区内" value="yes" />
+        <el-option label="隔离区外" value="no" />
+      </el-select>
+      <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:120px">
+        <el-option label="启用" value="yes" />
+        <el-option label="停用" value="no" />
+      </el-select>
+    </div>
+    <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="warehouse_id" label="ID" width="60" />
       <el-table-column prop="warehouse_code" label="编码" width="120" />
       <el-table-column prop="warehouse_name" label="名称" />
@@ -52,13 +63,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getWarehouses, createWarehouse, updateWarehouse, deleteWarehouse } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const list = ref<any[]>([])
 const dialogVisible = ref(false)
 const form = ref<any>({})
+const keyword = ref('')
+const restrictedFilter = ref('')
+const activeFilter = ref('')
+
+const filteredList = computed(() => {
+  return list.value.filter(w => {
+    if (restrictedFilter.value === 'yes' && w.is_restricted === false) return false
+    if (restrictedFilter.value === 'no' && w.is_restricted !== false) return false
+    if (activeFilter.value === 'yes' && !w.is_active) return false
+    if (activeFilter.value === 'no' && w.is_active) return false
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      if (!w.warehouse_name?.toLowerCase().includes(kw) && !w.warehouse_code?.toLowerCase().includes(kw)) return false
+    }
+    return true
+  })
+})
 
 const load = async () => {
   list.value = await getWarehouses()

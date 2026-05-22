@@ -68,9 +68,9 @@ const handleLogin = async () => {
       localStorage.setItem('token', data.access_token)
       ElMessage.success('登录成功')
 
-      // 强制跳转
+      // 跳转到首页
       setTimeout(() => {
-        window.location.href = '/dashboard'
+        router.replace('/dashboard')
       }, 500)
     } else {
       errorMsg.value = data.message || '登录失败'

@@ -1,14 +1,18 @@
 <template>
   <div>
     <h2>领用管理</h2>
-    <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
-      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:140px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-input v-model="keyword" placeholder="搜索单号/领用人" clearable prefix-icon="Search" style="width:180px" />
+      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:120px">
         <el-option label="待审核" value="pending" />
         <el-option label="已批准" value="approved" />
         <el-option label="借出中" value="borrowed" />
         <el-option label="已归还" value="returned" />
         <el-option label="已拒绝" value="rejected" />
         <el-option label="已取消" value="cancelled" />
+      </el-select>
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px">
+        <el-option v-for="w in warehouseList" :key="w" :label="w" :value="w" />
       </el-select>
     </div>
     <el-table
@@ -230,11 +234,21 @@ const printOrder = ref<any>(null)
 const printArea = ref<any>(null)
 const BACKEND_BASE = ''
 const statusFilter = ref('')
+const warehouseFilter = ref('')
+const keyword = ref('')
+const warehouseList = ref<string[]>([])
 
 // 筛选后的列表
 const filteredList = computed(() => {
-  if (!statusFilter.value) return list.value
-  return list.value.filter(o => o.status === statusFilter.value)
+  return list.value.filter(o => {
+    if (statusFilter.value && o.status !== statusFilter.value) return false
+    if (warehouseFilter.value && o.warehouse !== warehouseFilter.value) return false
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      if (!o.order_no?.toLowerCase().includes(kw) && !o.borrower_name?.toLowerCase().includes(kw)) return false
+    }
+    return true
+  })
 })
 
 // 弹窗相关状态
@@ -249,6 +263,10 @@ const getImageUrl = (path: string) => {
 
 const load = async () => {
   list.value = await getOrders()
+  // 提取仓库列表（去重）
+  const whSet = new Set<string>()
+  list.value.forEach((o: any) => { if (o.warehouse) whSet.add(o.warehouse) })
+  warehouseList.value = Array.from(whSet)
   // 加载工具图片映射
   const tools = await getTools()
   tools.forEach((t: any) => {

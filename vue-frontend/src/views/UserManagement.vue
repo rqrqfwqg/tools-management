@@ -1,8 +1,22 @@
 <template>
   <div>
     <h2>用户管理</h2>
-    <el-button type="primary" @click="openDialog()">新增用户</el-button>
-    <el-table :data="users" style="margin-top:15px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-button type="primary" @click="openDialog()">新增用户</el-button>
+      <el-input v-model="keyword" placeholder="搜索姓名/用户名/手机" clearable prefix-icon="Search" style="width:200px" />
+      <el-select v-model="deptFilter" placeholder="全部部门" clearable style="width:120px">
+        <el-option v-for="d in depts" :key="d.dept_id" :label="d.dept_name" :value="d.dept_name" />
+      </el-select>
+      <el-select v-model="roleFilter" placeholder="全部角色" clearable style="width:120px">
+        <el-option label="管理员" value="admin" />
+        <el-option label="普通员工" value="staff" />
+      </el-select>
+      <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:100px">
+        <el-option label="启用" value="yes" />
+        <el-option label="停用" value="no" />
+      </el-select>
+    </div>
+    <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="user_id" label="ID" width="60" />
       <el-table-column prop="username" label="用户名" />
       <el-table-column prop="real_name" label="姓名" />
@@ -71,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getUsers, createUser, updateUser, deleteUser, resetPassword, getDepts, getRoles } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { User } from '@/types'
@@ -81,6 +95,24 @@ const allRoles = ref<any[]>([])
 const depts = ref<any[]>([])
 const dialogVisible = ref(false)
 const form = ref<any>({ is_active: true, role: 'staff' })
+const keyword = ref('')
+const deptFilter = ref('')
+const roleFilter = ref('')
+const activeFilter = ref('')
+
+const filteredList = computed(() => {
+  return users.value.filter(u => {
+    if (deptFilter.value && u.dept_name !== deptFilter.value) return false
+    if (roleFilter.value && u.role !== roleFilter.value) return false
+    if (activeFilter.value === 'yes' && !u.is_active) return false
+    if (activeFilter.value === 'no' && u.is_active) return false
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      if (!u.real_name?.toLowerCase().includes(kw) && !u.username?.toLowerCase().includes(kw) && !u.phone?.includes(kw)) return false
+    }
+    return true
+  })
+})
 
 const load = async () => { users.value = await getUsers() }
 const loadRoles = async () => { allRoles.value = await getRoles() }

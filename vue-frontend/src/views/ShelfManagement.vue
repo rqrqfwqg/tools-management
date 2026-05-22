@@ -1,8 +1,18 @@
 <template>
   <div>
     <h2>货架管理</h2>
-    <el-button type="primary" @click="openDialog()">新增货架</el-button>
-    <el-table :data="list" style="margin-top:15px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-button type="primary" @click="openDialog()">新增货架</el-button>
+      <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px">
+        <el-option v-for="w in warehouses" :key="w.warehouse_id" :label="w.warehouse_name" :value="w.warehouse_id" />
+      </el-select>
+      <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:100px">
+        <el-option label="启用" value="yes" />
+        <el-option label="停用" value="no" />
+      </el-select>
+    </div>
+    <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="shelf_id" label="ID" width="60" />
       <el-table-column prop="shelf_code" label="编码" width="100" />
       <el-table-column prop="shelf_name" label="名称" />
@@ -51,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getShelves, createShelf, updateShelf, deleteShelf, getWarehouses } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -59,6 +69,22 @@ const list = ref<any[]>([])
 const warehouses = ref<any[]>([])
 const dialogVisible = ref(false)
 const form = ref<any>({})
+const keyword = ref('')
+const warehouseFilter = ref('')
+const activeFilter = ref('')
+
+const filteredList = computed(() => {
+  return list.value.filter(s => {
+    if (warehouseFilter.value && s.warehouse_id !== warehouseFilter.value) return false
+    if (activeFilter.value === 'yes' && !s.is_active) return false
+    if (activeFilter.value === 'no' && s.is_active) return false
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      if (!s.shelf_name?.toLowerCase().includes(kw) && !s.shelf_code?.toLowerCase().includes(kw)) return false
+    }
+    return true
+  })
+})
 
 const load = async () => {
   list.value = await getShelves()

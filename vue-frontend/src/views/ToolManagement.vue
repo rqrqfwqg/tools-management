@@ -1,13 +1,20 @@
 <template>
   <div>
     <h2>工器具管理</h2>
-    <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
       <el-button type="primary" @click="openDialog()">新增工器具</el-button>
-      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:140px">
+      <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
+      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:120px">
         <el-option label="可用" value="available" />
         <el-option label="借出" value="borrowed" />
         <el-option label="维修" value="maintenance" />
         <el-option label="报废" value="scrapped" />
+      </el-select>
+      <el-select v-model="categoryFilter" placeholder="全部分类" clearable style="width:120px">
+        <el-option v-for="c in categories" :key="c.category_id" :label="c.category_name" :value="c.category_name" />
+      </el-select>
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px">
+        <el-option v-for="w in warehouses" :key="w.warehouse_id" :label="w.warehouse_name" :value="w.warehouse_name" />
       </el-select>
     </div>
     <el-table :data="filteredList" style="margin-top:0">
@@ -163,11 +170,22 @@ const uploadDialogVisible = ref(false)
 const currentTool = ref<any>(null)
 const selectedFile = ref<File | null>(null)
 const statusFilter = ref('')
+const categoryFilter = ref('')
+const warehouseFilter = ref('')
+const keyword = ref('')
 
 // 筛选后的列表
 const filteredList = computed(() => {
-  if (!statusFilter.value) return list.value
-  return list.value.filter(t => t.status === statusFilter.value)
+  return list.value.filter(t => {
+    if (statusFilter.value && t.status !== statusFilter.value) return false
+    if (categoryFilter.value && t.category_name !== categoryFilter.value) return false
+    if (warehouseFilter.value && t.warehouse !== warehouseFilter.value) return false
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
+    }
+    return true
+  })
 })
 const uploading = ref(false)
 const uploadRef = ref()

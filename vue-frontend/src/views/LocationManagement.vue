@@ -1,8 +1,21 @@
 <template>
   <div>
     <h2>货位管理</h2>
-    <el-button type="primary" @click="openDialog()">新增货位</el-button>
-    <el-table :data="list" style="margin-top:15px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-button type="primary" @click="openDialog()">新增货位</el-button>
+      <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px">
+        <el-option v-for="w in warehouses" :key="w.warehouse_id" :label="w.warehouse_name" :value="w.warehouse_id" />
+      </el-select>
+      <el-select v-model="shelfFilter" placeholder="全部货架" clearable style="width:120px">
+        <el-option v-for="s in filteredShelfOptions" :key="s.shelf_id" :label="s.shelf_name" :value="s.shelf_id" />
+      </el-select>
+      <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:100px">
+        <el-option label="启用" value="yes" />
+        <el-option label="停用" value="no" />
+      </el-select>
+    </div>
+    <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="location_id" label="ID" width="60" />
       <el-table-column prop="location_code" label="编码" width="100" />
       <el-table-column prop="location_name" label="名称" />
@@ -70,6 +83,31 @@ const warehouses = ref<any[]>([])
 const shelves = ref<any[]>([])
 const dialogVisible = ref(false)
 const form = ref<any>({})
+const keyword = ref('')
+const warehouseFilter = ref('')
+const shelfFilter = ref('')
+const activeFilter = ref('')
+
+// 筛选栏：货架选项跟随仓库联动
+const filteredShelfOptions = computed(() => {
+  if (!warehouseFilter.value) return shelves.value
+  return shelves.value.filter(s => s.warehouse_id === warehouseFilter.value)
+})
+
+// 筛选后的列表
+const filteredList = computed(() => {
+  return list.value.filter(l => {
+    if (warehouseFilter.value && l.warehouse_id !== warehouseFilter.value) return false
+    if (shelfFilter.value && l.shelf_id !== shelfFilter.value) return false
+    if (activeFilter.value === 'yes' && !l.is_active) return false
+    if (activeFilter.value === 'no' && l.is_active) return false
+    if (keyword.value) {
+      const kw = keyword.value.toLowerCase()
+      if (!l.location_name?.toLowerCase().includes(kw) && !l.location_code?.toLowerCase().includes(kw)) return false
+    }
+    return true
+  })
+})
 
 const load = async () => {
   list.value = await getStorageLocations()

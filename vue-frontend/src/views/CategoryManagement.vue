@@ -1,8 +1,11 @@
 <template>
   <div>
     <h2>工具分类管理</h2>
-    <el-button type="primary" @click="openDialog()">新增分类</el-button>
-    <el-table :data="list" style="margin-top:15px">
+    <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-button type="primary" @click="openDialog()">新增分类</el-button>
+      <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
+    </div>
+    <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="category_id" label="ID" width="60" />
       <el-table-column prop="category_name" label="分类名称" />
       <el-table-column prop="category_code" label="分类编码" width="120" />
@@ -28,12 +31,18 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 const list = ref<any[]>([])
 const dialogVisible = ref(false)
 const form = ref<any>({})
+const keyword = ref('')
+const filteredList = computed(() => {
+  if (!keyword.value) return list.value
+  const kw = keyword.value.toLowerCase()
+  return list.value.filter(c => c.category_name?.toLowerCase().includes(kw) || c.category_code?.toLowerCase().includes(kw))
+})
 const load = async () => { list.value = await getCategories() }
 const openDialog = (row?: any) => { form.value = row ? { ...row } : {}; dialogVisible.value = true }
 const handleSave = async () => {
