@@ -82,7 +82,7 @@ export const deleteLocation = (id: number) => api.delete(`/locations/${id}`).the
 export const getRoles = () => api.get('/roles').then(r => r.data)
 
 // Dashboard
-export const getDashboardStats = () => api.get('/dashboard/stats').then(r => r.data)
+export const getDashboardStats = () => api.get('/dashboard').then(r => r.data)
 
 // Upload
 export const uploadImage = (formData: FormData) =>
