@@ -26,10 +26,10 @@
         <van-icon name="cross" color="#ee0a24" size="20" @click="cartStore.removeItem(item.tool_id)" />
       </div>
 
-      <!-- 领用人信息 -->
+      <!-- 领用人信息（自动使用当前登录账号） -->
       <van-cell-group inset style="margin-top: 12px">
-        <van-field v-model="borrowerName" label="领用人" placeholder="请输入领用人姓名" />
-        <van-field v-model="borrowerPhone" label="手机号" placeholder="请输入手机号" type="tel" maxlength="11" />
+        <van-cell title="领用人" :value="authStore.user?.real_name || '-'" />
+        <van-cell title="手机号" :value="authStore.user?.phone || '-'" />
       </van-cell-group>
 
       <!-- 审批提示 -->
@@ -63,16 +63,10 @@ const router = useRouter()
 const cartStore = useCartStore()
 const authStore = useAuthStore()
 
-const borrowerName = ref(authStore.user?.real_name || '')
-const borrowerPhone = ref(authStore.user?.phone || '')
 const submitting = ref(false)
 const needApproval = ref(false)
 
 async function checkout() {
-  if (!borrowerName.value || !borrowerPhone.value) {
-    showToast('请填写领用人信息')
-    return
-  }
   if (cartStore.items.length === 0) {
     showToast('领用篮为空')
     return
@@ -92,18 +86,9 @@ async function checkout() {
 
   submitting.value = true
   try {
-    const items = cartStore.items.map(i => ({
-      tool_id: i.tool_id,
-      tool_name: i.tool_name,
-      tool_code: i.tool_code
-    }))
+    const tool_ids = cartStore.items.map(i => i.tool_id)
     const warehouse = cartStore.items[0].warehouse || ''
-    const res = await createOrder({
-      borrower_name: borrowerName.value,
-      borrower_phone: borrowerPhone.value,
-      warehouse,
-      items
-    })
+    const res = await createOrder({ tool_ids, warehouse })
     const msg = res.status === 'approved' ? '领用成功（无需审批）' : '申请已提交，等待审批'
     showSuccessToast(msg)
     cartStore.clearAll()
