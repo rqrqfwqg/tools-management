@@ -67,6 +67,7 @@ router.post('/orders', authenticate, [
     order_id: nextId(db.orders, 'order_id'),
     order_no: orderNo,
     borrower_name: user.real_name || user.username,
+    borrower_phone: user.phone || '',
     borrower_id: user.user_id,
     status: initialStatus,
     warehouse: warehouse || '', scene: scene || '',
