@@ -1,7 +1,7 @@
 // 仓库、货架、货位、部门、角色管理路由
 const express = require('express');
 const { readDB, writeDB, nextId } = require('./db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireMaterialManager } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -16,7 +16,7 @@ router.get('/warehouses/:id', authenticate, (req, res) => {
   res.json(w);
 });
 
-router.post('/warehouses', authenticate, requireAdmin, (req, res) => {
+router.post('/warehouses', authenticate, requireMaterialManager, (req, res) => {
   const { warehouse_name, warehouse_code, description } = req.body;
   if (!warehouse_name?.trim()) return res.status(400).json({ message: '仓库名称不能为空' });
   if (!warehouse_code?.trim()) return res.status(400).json({ message: '仓库编码不能为空' });
@@ -36,7 +36,7 @@ router.post('/warehouses', authenticate, requireAdmin, (req, res) => {
   res.json(newWarehouse);
 });
 
-router.put('/warehouses/:id', authenticate, requireAdmin, (req, res) => {
+router.put('/warehouses/:id', authenticate, requireMaterialManager, (req, res) => {
   const warehouseId = parseInt(req.params.id);
   const { warehouse_name, warehouse_code, description, is_active } = req.body;
   const db = readDB();
@@ -64,7 +64,7 @@ router.put('/warehouses/:id', authenticate, requireAdmin, (req, res) => {
   res.json(db.warehouses[idx]);
 });
 
-router.delete('/warehouses/:id', authenticate, requireAdmin, (req, res) => {
+router.delete('/warehouses/:id', authenticate, requireMaterialManager, (req, res) => {
   const warehouseId = parseInt(req.params.id);
   const db = readDB();
   const idx = db.warehouses.findIndex(w => w.warehouse_id === warehouseId);
@@ -84,7 +84,7 @@ router.get('/shelves', authenticate, (req, res) => {
   res.json(shelves);
 });
 
-router.post('/shelves', authenticate, requireAdmin, (req, res) => {
+router.post('/shelves', authenticate, requireMaterialManager, (req, res) => {
   const { warehouse_id, shelf_name, shelf_code, description } = req.body;
   if (!shelf_name?.trim()) return res.status(400).json({ message: '货架名称不能为空' });
   if (!shelf_code?.trim()) return res.status(400).json({ message: '货架编码不能为空' });
@@ -100,7 +100,7 @@ router.post('/shelves', authenticate, requireAdmin, (req, res) => {
   res.json(newShelf);
 });
 
-router.put('/shelves/:id', authenticate, requireAdmin, (req, res) => {
+router.put('/shelves/:id', authenticate, requireMaterialManager, (req, res) => {
   const shelfId = parseInt(req.params.id);
   const { warehouse_id, shelf_name, shelf_code, description, is_active } = req.body;
   const db = readDB();
@@ -113,7 +113,7 @@ router.put('/shelves/:id', authenticate, requireAdmin, (req, res) => {
   res.json(db.shelves[idx]);
 });
 
-router.delete('/shelves/:id', authenticate, requireAdmin, (req, res) => {
+router.delete('/shelves/:id', authenticate, requireMaterialManager, (req, res) => {
   const shelfId = parseInt(req.params.id);
   const db = readDB();
   const idx = db.shelves.findIndex(s => s.shelf_id === shelfId);
@@ -134,7 +134,7 @@ router.get('/storage-locations', authenticate, (req, res) => {
   res.json(locations);
 });
 
-router.post('/storage-locations', authenticate, requireAdmin, (req, res) => {
+router.post('/storage-locations', authenticate, requireMaterialManager, (req, res) => {
   const { warehouse_id, shelf_id, location_name, location_code, description } = req.body;
   if (!location_name?.trim() || !location_code?.trim() || !warehouse_id || !shelf_id) return res.status(400).json({ message: '必填字段不能为空' });
 
@@ -149,7 +149,7 @@ router.post('/storage-locations', authenticate, requireAdmin, (req, res) => {
   res.json(newLoc);
 });
 
-router.put('/storage-locations/:id', authenticate, requireAdmin, (req, res) => {
+router.put('/storage-locations/:id', authenticate, requireMaterialManager, (req, res) => {
   const locId = parseInt(req.params.id);
   const { warehouse_id, shelf_id, location_name, location_code, description, is_active } = req.body;
   const db = readDB();
@@ -161,7 +161,7 @@ router.put('/storage-locations/:id', authenticate, requireAdmin, (req, res) => {
   res.json(db.storage_locations[idx]);
 });
 
-router.delete('/storage-locations/:id', authenticate, requireAdmin, (req, res) => {
+router.delete('/storage-locations/:id', authenticate, requireMaterialManager, (req, res) => {
   const locId = parseInt(req.params.id);
   const db = readDB();
   const idx = db.storage_locations.findIndex(l => l.location_id === locId);

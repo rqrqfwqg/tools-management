@@ -34,8 +34,8 @@ router.post('/users', authenticate, requireAdmin, (req, res) => {
     password: bcrypt.hashSync(userPassword, 10),
     real_name, dept_id,
     role: role || 'staff',
-    role_id: role === 'admin' ? 1 : role === 'team_leader' ? 3 : 2,
-    role_name: role === 'admin' ? '管理员' : role === 'team_leader' ? '分队长' : '普通员工',
+    role_id: role === 'admin' ? 1 : role === 'team_leader' ? 3 : role === 'material_manager' ? 4 : 2,
+    role_name: role === 'admin' ? '管理员' : role === 'team_leader' ? '分队长' : role === 'material_manager' ? '物料管理员' : '普通员工',
     is_active: is_active !== false,
     phone: phone || ''
   };
@@ -60,7 +60,7 @@ router.put('/users/:id', authenticate, requireAdmin, (req, res) => {
     real_name: real_name || db.users[idx].real_name,
     dept_id: dept_id || db.users[idx].dept_id,
     role: role || db.users[idx].role,
-    role_name: role === 'admin' ? '管理员' : role === 'team_leader' ? '分队长' : role === 'staff' ? '普通员工' : db.users[idx].role_name,
+    role_name: role === 'admin' ? '管理员' : role === 'team_leader' ? '分队长' : role === 'material_manager' ? '物料管理员' : role === 'staff' ? '普通员工' : db.users[idx].role_name,
     is_active: is_active !== undefined ? is_active : db.users[idx].is_active,
     phone: phone || db.users[idx].phone
   };

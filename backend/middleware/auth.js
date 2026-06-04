@@ -34,4 +34,12 @@ const requireApprover = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireAdmin, requireApprover, JWT_SECRET };
+// 物料管理权限中间件（管理员 + 物料管理员）
+const requireMaterialManager = (req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'material_manager') {
+    return res.status(403).json({ message: '需要物料管理权限（管理员或物料管理员）' });
+  }
+  next();
+};
+
+module.exports = { authenticate, requireAdmin, requireApprover, requireMaterialManager, JWT_SECRET };

@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId } = require('./db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireMaterialManager } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -24,7 +24,7 @@ router.get('/tools', authenticate, (req, res) => {
 });
 
 // 创建工具
-router.post('/tools', authenticate, requireAdmin, [
+router.post('/tools', authenticate, requireMaterialManager, [
   body('tool_code').notEmpty().withMessage('工具编码不能为空'),
   body('tool_name').notEmpty().withMessage('工具名称不能为空'),
   validate
@@ -67,7 +67,7 @@ router.post('/tools', authenticate, requireAdmin, [
 });
 
 // 更新工具
-router.put('/tools/:id', authenticate, requireAdmin, (req, res) => {
+router.put('/tools/:id', authenticate, requireMaterialManager, (req, res) => {
   const toolId = parseInt(req.params.id);
   const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description } = req.body;
   const db = readDB();
@@ -99,7 +99,7 @@ router.put('/tools/:id', authenticate, requireAdmin, (req, res) => {
 });
 
 // 删除工具
-router.delete('/tools/:id', authenticate, requireAdmin, (req, res) => {
+router.delete('/tools/:id', authenticate, requireMaterialManager, (req, res) => {
   const toolId = parseInt(req.params.id);
   const db = readDB();
   const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
@@ -130,7 +130,7 @@ const upload = multer({
   }
 });
 
-router.post('/tools/:id/upload-image', authenticate, requireAdmin, upload.single('file'), (req, res) => {
+router.post('/tools/:id/upload-image', authenticate, requireMaterialManager, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: '请选择要上传的图片' });
 
   const toolId = parseInt(req.params.id);
@@ -153,7 +153,7 @@ router.get('/tool-categories', authenticate, (req, res) => {
   res.json(db.categories || []);
 });
 
-router.post('/tool-categories', authenticate, requireAdmin, (req, res) => {
+router.post('/tool-categories', authenticate, requireMaterialManager, (req, res) => {
   const { category_name, category_code, description, require_approval } = req.body;
   const db = readDB();
   if (db.categories.find(c => c.category_code === category_code)) {
@@ -165,7 +165,7 @@ router.post('/tool-categories', authenticate, requireAdmin, (req, res) => {
   res.json(newCategory);
 });
 
-router.put('/tool-categories/:id', authenticate, requireAdmin, (req, res) => {
+router.put('/tool-categories/:id', authenticate, requireMaterialManager, (req, res) => {
   const categoryId = parseInt(req.params.id);
   const { category_name, category_code, description, require_approval } = req.body;
   const db = readDB();
@@ -182,7 +182,7 @@ router.put('/tool-categories/:id', authenticate, requireAdmin, (req, res) => {
   res.json(db.categories[idx]);
 });
 
-router.delete('/tool-categories/:id', authenticate, requireAdmin, (req, res) => {
+router.delete('/tool-categories/:id', authenticate, requireMaterialManager, (req, res) => {
   const categoryId = parseInt(req.params.id);
   const db = readDB();
   const idx = db.categories.findIndex(c => c.category_id === categoryId);
