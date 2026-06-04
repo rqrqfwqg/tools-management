@@ -26,4 +26,12 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireAdmin, JWT_SECRET };
+// 审批权限中间件（管理员 + 分队长）
+const requireApprover = (req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'team_leader') {
+    return res.status(403).json({ message: '需要审批权限（管理员或分队长）' });
+  }
+  next();
+};
+
+module.exports = { authenticate, requireAdmin, requireApprover, JWT_SECRET };

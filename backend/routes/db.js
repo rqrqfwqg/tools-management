@@ -37,7 +37,8 @@ function initDB() {
       ],
       roles: [
         { role_id: 1, role_name: '管理员', role_code: 'admin', description: '', is_system: true, permission_ids: [] },
-        { role_id: 2, role_name: '普通员工', role_code: 'staff', description: '', is_system: true, permission_ids: [] }
+        { role_id: 2, role_name: '普通员工', role_code: 'staff', description: '', is_system: true, permission_ids: [] },
+        { role_id: 3, role_name: '分队长', role_code: 'team_leader', description: '可审批工单', is_system: true, permission_ids: [] }
       ],
       warehouses: [
         { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, is_restricted: true }

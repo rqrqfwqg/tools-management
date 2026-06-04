@@ -3,7 +3,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId } = require('./db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireApprover } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ const validate = (req, res, next) => {
 router.get('/orders', authenticate, (req, res) => {
   const db = readDB();
   const orders = db.orders || [];
-  if (req.user.role !== 'admin') {
+  if (req.user.role !== 'admin' && req.user.role !== 'team_leader') {
     const user = db.users.find(u => u.user_id === req.user.user_id);
     return res.json(orders.filter(o => o.borrower_name === (user?.real_name || user?.username)));
   }
@@ -90,7 +90,7 @@ router.post('/orders', authenticate, [
 });
 
 // 批准订单
-router.post('/orders/:id/approve', authenticate, requireAdmin, (req, res) => {
+router.post('/orders/:id/approve', authenticate, requireApprover, (req, res) => {
   const orderId = parseInt(req.params.id);
   const db = readDB();
   const orderIndex = db.orders.findIndex(o => o.order_id === orderId);
@@ -111,7 +111,7 @@ router.post('/orders/:id/approve', authenticate, requireAdmin, (req, res) => {
 });
 
 // 拒绝订单
-router.post('/orders/:id/reject', authenticate, requireAdmin, (req, res) => {
+router.post('/orders/:id/reject', authenticate, requireApprover, (req, res) => {
   const orderId = parseInt(req.params.id);
   const db = readDB();
   const orderIndex = db.orders.findIndex(o => o.order_id === orderId);
