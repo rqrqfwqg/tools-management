@@ -13,9 +13,22 @@ echo ""
 
 # -------- 第1步：安装依赖 --------
 echo "[1/6] 安装 nginx 和 PM2..."
-sudo apt update -qq
-sudo apt install -y nginx
-sudo npm install -g pm2
+
+# 找到 npm 完整路径（sudo 不继承用户 PATH）
+NPM=$(which npm)
+NODE=$(which node)
+
+# 确保 nginx 已安装
+if ! command -v nginx &>/dev/null; then
+    sudo apt update -qq
+    sudo apt install -y nginx
+fi
+
+# 用环境穿透方式安装 PM2
+if ! command -v pm2 &>/dev/null; then
+    sudo env "PATH=$PATH" "$NPM" install -g pm2
+fi
+
 echo "✅ nginx 和 PM2 安装完成"
 echo ""
 
@@ -111,9 +124,14 @@ echo "✅ Nginx 配置完成"
 
 # -------- 启动 PM2 --------
 cd /opt/tools-management
-pm2 start deploy/production/ecosystem.config.js
-pm2 save
-pm2 startup systemd -u ubuntu --hp /home/ubuntu
+
+# 确保找到 pm2（全局安装路径可能不在 sudo 的 PATH 里）
+PM2=$(which pm2 2>/dev/null || echo "$(dirname "$NPM")/pm2")
+echo "PM2 路径: $PM2"
+
+"$PM2" start deploy/production/ecosystem.config.js
+"$PM2" save
+"$PM2" startup systemd -u ubuntu --hp /home/ubuntu 2>/dev/null || true
 echo "✅ PM2 启动完成"
 echo ""
 
@@ -123,7 +141,7 @@ echo " 部署完成！状态检查："
 echo "=========================================="
 echo ""
 echo "PM2 进程："
-pm2 status
+"$PM2" status
 echo ""
 echo "Nginx："
 sudo systemctl status nginx --no-pager -l | head -5
