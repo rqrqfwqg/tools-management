@@ -164,6 +164,48 @@ router.post('/orders/:id/cancel', authenticate, (req, res) => {
   res.json({ message: '已取消' });
 });
 
+// 通用状态更新（手机端使用）
+router.put('/orders/:id/status', authenticate, (req, res) => {
+  const orderId = parseInt(req.params.id);
+  const { status } = req.body;
+  if (!['approved', 'rejected', 'cancelled'].includes(status)) {
+    return res.status(400).json({ message: '无效的状态值' });
+  }
+  const db = readDB();
+  const idx = db.orders.findIndex(o => o.order_id === orderId);
+  if (idx === -1) return res.status(404).json({ message: '订单不存在' });
+  const order = db.orders[idx];
+
+  if (status === 'approved') {
+    if (order.status !== 'pending') return res.status(400).json({ message: '只能批准待审核的订单' });
+    if (req.user.role !== 'admin' && req.user.role !== 'team_leader') return res.status(403).json({ message: '无审批权限' });
+    db.orders[idx].status = 'borrowed';
+    for (const item of db.orders[idx].items) {
+      const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (ti > -1) { db.tools[ti].status = 'borrowed'; db.tools[ti].borrow_count = (db.tools[ti].borrow_count || 0) + 1; }
+      item.item_status = 'borrowed';
+    }
+  } else if (status === 'rejected') {
+    if (order.status !== 'pending') return res.status(400).json({ message: '只能拒绝待审核的订单' });
+    if (req.user.role !== 'admin' && req.user.role !== 'team_leader') return res.status(403).json({ message: '无审批权限' });
+    for (const item of order.items) {
+      const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (ti > -1) db.tools[ti].status = 'available';
+    }
+    db.orders[idx].status = 'rejected';
+  } else if (status === 'cancelled') {
+    if (order.status !== 'pending') return res.status(400).json({ message: '只能取消待审核的订单' });
+    if (req.user.role !== 'admin' && order.borrower_id !== req.user.user_id) return res.status(403).json({ message: '只能取消自己的订单' });
+    for (const item of order.items) {
+      const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (ti > -1) db.tools[ti].status = 'available';
+    }
+    db.orders[idx].status = 'cancelled';
+  }
+  writeDB(db);
+  res.json({ message: `已${status === 'approved' ? '批准' : status === 'rejected' ? '拒绝' : '取消'}` });
+});
+
 // 删除订单
 router.delete('/orders/:id', authenticate, (req, res) => {
   const orderId = parseInt(req.params.id);
