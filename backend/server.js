@@ -9,6 +9,7 @@ require('dotenv').config();
 const { initDB } = require('./routes/db');
 
 const app = express();
+app.set('trust proxy', 1);  // nginx 反向代理，express-rate-limit 需要此配置
 const PORT = process.env.PORT || 3000;
 
 // ============ 中间件 ============
