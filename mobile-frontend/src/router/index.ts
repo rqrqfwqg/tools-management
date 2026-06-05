@@ -41,42 +41,6 @@ const routes: RouteRecordRaw[] = [
     name: 'Profile',
     component: () => import('@/views/Profile.vue'),
     meta: { title: '我的' }
-  },
-  {
-    path: '/warehouses',
-    name: 'Warehouses',
-    component: () => import('@/views/WarehouseManagement.vue'),
-    meta: { title: '仓库管理' }
-  },
-  {
-    path: '/users',
-    name: 'Users',
-    component: () => import('@/views/UserManagement.vue'),
-    meta: { title: '用户管理' }
-  },
-  {
-    path: '/categories',
-    name: 'Categories',
-    component: () => import('@/views/CategoryManagement.vue'),
-    meta: { title: '分类管理' }
-  },
-  {
-    path: '/depts',
-    name: 'Depts',
-    component: () => import('@/views/DeptManagement.vue'),
-    meta: { title: '部门管理' }
-  },
-  {
-    path: '/shelves',
-    name: 'Shelves',
-    component: () => import('@/views/ShelfManagement.vue'),
-    meta: { title: '货架管理' }
-  },
-  {
-    path: '/locations',
-    name: 'Locations',
-    component: () => import('@/views/LocationManagement.vue'),
-    meta: { title: '货位管理' }
   }
 ]
 

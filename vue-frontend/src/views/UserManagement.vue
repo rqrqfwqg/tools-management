@@ -8,8 +8,7 @@
         <el-option v-for="d in depts" :key="d.dept_id" :label="d.dept_name" :value="d.dept_name" />
       </el-select>
       <el-select v-model="roleFilter" placeholder="全部角色" clearable style="width:120px">
-        <el-option label="管理员" value="admin" />
-        <el-option label="普通员工" value="staff" />
+        <el-option v-for="r in allRoles" :key="r.role_id" :label="r.role_name" :value="r.role_code" />
       </el-select>
       <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:100px">
         <el-option label="启用" value="yes" />

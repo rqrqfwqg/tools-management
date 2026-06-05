@@ -36,11 +36,11 @@
           <!-- 操作按钮 -->
           <div v-if="showActions(order)" style="margin-top:8px;display:flex;gap:8px">
             <van-button
-              v-if="order.status === 'pending' && isAdmin"
+              v-if="order.status === 'pending' && isApprover"
               size="small" type="success" @click.stop="approve(order)"
             >批准</van-button>
             <van-button
-              v-if="order.status === 'pending' && isAdmin"
+              v-if="order.status === 'pending' && isApprover"
               size="small" type="danger" @click.stop="reject(order)"
             >拒绝</van-button>
             <van-button
@@ -101,7 +101,7 @@ import { showToast, showConfirmDialog } from 'vant'
 
 const route = useRoute()
 const authStore = useAuthStore()
-const isAdmin = computed(() => authStore.isAdmin)
+const isApprover = computed(() => authStore.isApprover)
 
 const list = ref<any[]>([])
 const keyword = ref('')

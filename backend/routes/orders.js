@@ -59,30 +59,25 @@ router.post('/orders', authenticate, [
     };
   });
 
-  const warehouseRecord = db.warehouses.find(w => w.warehouse_name === warehouse || w.warehouse_code === warehouse);
-  const isRestricted = warehouseRecord ? (warehouseRecord.is_restricted !== false) : true;
-  const initialStatus = isRestricted ? 'pending' : 'approved';
-
   const newOrder = {
     order_id: nextId(db.orders, 'order_id'),
     order_no: orderNo,
     borrower_name: user.real_name || user.username,
     borrower_id: user.user_id,
-    status: initialStatus,
+    status: 'pending',
     warehouse: warehouse || '', scene: scene || '',
     borrow_time: new Date().toISOString(),
     expected_return: expected_return || null,
     actual_return: null, purpose: purpose || '',
-    require_approval: isRestricted,
+    require_approval: true,
     created_at: new Date().toISOString(),
     items: items
   };
 
   for (const toolId of tool_ids) {
     const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
-    if (toolIndex > -1) db.tools[toolIndex].status = isRestricted ? 'reserved' : 'borrowed';
+    if (toolIndex > -1) db.tools[toolIndex].status = 'reserved';
   }
-  if (!isRestricted) items.forEach(item => { item.item_status = 'borrowed'; });
 
   db.orders.push(newOrder);
   writeDB(db);

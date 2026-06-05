@@ -36,10 +36,10 @@ function initDB() {
         { dept_id: 2, dept_name: '技术部', dept_code: 'TECH', description: '' }
       ],
       roles: [
-        { role_id: 1, role_name: '管理员', role_code: 'admin', description: '', is_system: true, permission_ids: [] },
-        { role_id: 2, role_name: '普通员工', role_code: 'staff', description: '', is_system: true, permission_ids: [] },
-        { role_id: 3, role_name: '分队长', role_code: 'team_leader', description: '可审批工单', is_system: true, permission_ids: [] },
-        { role_id: 4, role_name: '物料管理员', role_code: 'material_manager', description: '管理仓库、工具及工具类型', is_system: true, permission_ids: [] }
+        { role_id: 1, role_name: '管理员', role_code: 'admin', description: '系统管理员，拥有全部权限', is_system: true, permissions: { approve_orders: true, manage_tools: true, manage_warehouses: true, manage_users: true, manage_categories: true } },
+        { role_id: 2, role_name: '普通员工', role_code: 'staff', description: '普通员工，可领用和归还工具', is_system: true, permissions: { approve_orders: false, manage_tools: false, manage_warehouses: false, manage_users: false, manage_categories: false } },
+        { role_id: 3, role_name: '分队长', role_code: 'team_leader', description: '可审批工单', is_system: true, permissions: { approve_orders: true, manage_tools: false, manage_warehouses: false, manage_users: false, manage_categories: false } },
+        { role_id: 4, role_name: '物料管理员', role_code: 'material_manager', description: '管理仓库、工具及工具类型', is_system: true, permissions: { approve_orders: false, manage_tools: true, manage_warehouses: true, manage_users: false, manage_categories: true } }
       ],
       warehouses: [
         { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, is_restricted: true }

@@ -344,17 +344,33 @@
       "role_id": 1,
       "role_name": "管理员",
       "role_code": "admin",
-      "description": "",
+      "description": "系统管理员，拥有全部权限",
       "is_system": true,
-      "permission_ids": []
+      "permissions": { "approve_orders": true, "manage_tools": true, "manage_warehouses": true, "manage_users": true, "manage_categories": true }
     },
     {
       "role_id": 2,
       "role_name": "普通员工",
       "role_code": "staff",
-      "description": "",
+      "description": "普通员工，可领用和归还工具",
       "is_system": true,
-      "permission_ids": []
+      "permissions": { "approve_orders": false, "manage_tools": false, "manage_warehouses": false, "manage_users": false, "manage_categories": false }
+    },
+    {
+      "role_id": 3,
+      "role_name": "分队长",
+      "role_code": "team_leader",
+      "description": "分队长，可审批本队员工工单",
+      "is_system": true,
+      "permissions": { "approve_orders": true, "manage_tools": false, "manage_warehouses": false, "manage_users": false, "manage_categories": false }
+    },
+    {
+      "role_id": 4,
+      "role_name": "物料管理员",
+      "role_code": "material_manager",
+      "description": "物料管理员，可管理仓库和工具",
+      "is_system": true,
+      "permissions": { "approve_orders": false, "manage_tools": true, "manage_warehouses": true, "manage_users": false, "manage_categories": true }
     }
   ],
   "warehouses": [
