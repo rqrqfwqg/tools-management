@@ -36,11 +36,11 @@
           <!-- 操作按钮 -->
           <div v-if="showActions(order)" style="margin-top:8px;display:flex;gap:8px">
             <van-button
-              v-if="order.status === 'pending' && isAdmin"
+              v-if="order.status === 'pending' && isApprover"
               size="small" type="success" @click.stop="approve(order)"
             >批准</van-button>
             <van-button
-              v-if="order.status === 'pending' && isAdmin"
+              v-if="order.status === 'pending' && isApprover"
               size="small" type="danger" @click.stop="reject(order)"
             >拒绝</van-button>
             <van-button
@@ -72,13 +72,29 @@
           <p><strong>时间:</strong> {{ formatTime(currentOrder.created_at) }}</p>
         </div>
         <div v-if="currentOrder?.items?.length" style="margin-top:12px">
-          <h4 style="margin-bottom:8px">工具清单</h4>
-          <van-tag
-            v-for="item in currentOrder.items" :key="item.tool_id"
-            style="margin: 2px 4px 2px 0" type="primary" size="medium"
-          >
-            {{ item.tool_name }}
-          </van-tag>
+          <h4 style="margin-bottom:8px">工具清单 ({{ currentOrder.items.length }} 件)</h4>
+          <table class="tool-table">
+            <thead>
+              <tr>
+                <th>序号</th>
+                <th>编码</th>
+                <th>名称</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, idx) in currentOrder.items" :key="item.item_id || item.tool_id">
+                <td style="text-align:center">{{ idx + 1 }}</td>
+                <td>{{ item.tool_code }}</td>
+                <td>{{ item.tool_name }}</td>
+                <td>
+                  <van-tag :type="itemStatusType(item.item_status)" size="small">
+                    {{ itemStatusLabel(item.item_status) }}
+                  </van-tag>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </van-action-sheet>
@@ -101,7 +117,7 @@ import { showToast, showConfirmDialog } from 'vant'
 
 const route = useRoute()
 const authStore = useAuthStore()
-const isAdmin = computed(() => authStore.isAdmin)
+const isApprover = computed(() => authStore.isApprover)
 
 const list = ref<any[]>([])
 const keyword = ref('')
@@ -134,6 +150,15 @@ const statusTypes: Record<string, string> = {
 
 function orderStatusLabel(s: string) { return statusLabels[s] || s }
 function orderStatusType(s: string) { return (statusTypes[s] || '') as any }
+
+const itemStatusLabels: Record<string, string> = {
+  reserved: '预留中', borrowed: '借出中', returned: '已归还'
+}
+const itemStatusTypes: Record<string, string> = {
+  reserved: 'warning', borrowed: 'primary', returned: 'success'
+}
+function itemStatusLabel(s: string) { return itemStatusLabels[s] || s }
+function itemStatusType(s: string) { return (itemStatusTypes[s] || '') as any }
 
 const filteredList = computed(() => {
   return list.value.filter(o => {
@@ -222,3 +247,23 @@ onMounted(async () => {
   await loadOrders()
 })
 </script>
+
+<style scoped>
+.tool-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tool-table th {
+  background: #f5f5f5;
+  padding: 8px 6px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #e5e5e5;
+}
+.tool-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+</style>

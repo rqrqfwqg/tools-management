@@ -33,10 +33,10 @@
       </van-cell-group>
 
       <!-- 审批提示 -->
-      <div v-if="needApproval" style="padding:12px;margin-top:8px">
+      <div style="padding:12px;margin-top:8px">
         <van-notice-bar
           left-icon="warning-o"
-          text="此工具位于隔离区内，提交后将进入审批流程"
+          text="提交后将进入审批流程，由管理员或分队长审批"
           color="#f9a825"
           background="#fff9c4"
         />
@@ -56,7 +56,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '@/store/cart'
 import { useAuthStore } from '@/store/auth'
-import { getWarehouses, createOrder } from '@/api'
+import { createOrder } from '@/api'
 import { showToast, showSuccessToast } from 'vant'
 
 const router = useRouter()
@@ -64,24 +64,12 @@ const cartStore = useCartStore()
 const authStore = useAuthStore()
 
 const submitting = ref(false)
-const needApproval = ref(false)
+const needApproval = ref(true)
 
 async function checkout() {
   if (cartStore.items.length === 0) {
     showToast('领用篮为空')
     return
-  }
-
-  // 检查仓库类型
-  const firstItem = cartStore.items[0]
-  if (firstItem.warehouse) {
-    try {
-      const warehouses = await getWarehouses()
-      const wh = warehouses.find((w: any) => w.warehouse_name === firstItem.warehouse)
-      needApproval.value = wh ? (wh.is_restricted !== false) : true
-    } catch (e) {
-      needApproval.value = true
-    }
   }
 
   submitting.value = true

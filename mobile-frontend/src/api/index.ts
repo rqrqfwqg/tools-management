@@ -55,10 +55,10 @@ export const updateWarehouse = (id: number, data: any) => api.put(`/warehouses/$
 export const deleteWarehouse = (id: number) => api.delete(`/warehouses/${id}`).then(r => r.data)
 
 // Categories
-export const getCategories = () => api.get('/categories').then(r => r.data)
-export const createCategory = (data: any) => api.post('/categories', data).then(r => r.data)
-export const updateCategory = (id: number, data: any) => api.put(`/categories/${id}`, data).then(r => r.data)
-export const deleteCategory = (id: number) => api.delete(`/categories/${id}`).then(r => r.data)
+export const getCategories = () => api.get('/tool-categories').then(r => r.data)
+export const createCategory = (data: any) => api.post('/tool-categories', data).then(r => r.data)
+export const updateCategory = (id: number, data: any) => api.put(`/tool-categories/${id}`, data).then(r => r.data)
+export const deleteCategory = (id: number) => api.delete(`/tool-categories/${id}`).then(r => r.data)
 
 // Depts
 export const getDepts = () => api.get('/departments').then(r => r.data)
@@ -73,10 +73,10 @@ export const updateShelf = (id: number, data: any) => api.put(`/shelves/${id}`, 
 export const deleteShelf = (id: number) => api.delete(`/shelves/${id}`).then(r => r.data)
 
 // Locations
-export const getLocations = () => api.get('/locations').then(r => r.data)
-export const createLocation = (data: any) => api.post('/locations', data).then(r => r.data)
-export const updateLocation = (id: number, data: any) => api.put(`/locations/${id}`, data).then(r => r.data)
-export const deleteLocation = (id: number) => api.delete(`/locations/${id}`).then(r => r.data)
+export const getLocations = () => api.get('/storage-locations').then(r => r.data)
+export const createLocation = (data: any) => api.post('/storage-locations', data).then(r => r.data)
+export const updateLocation = (id: number, data: any) => api.put(`/storage-locations/${id}`, data).then(r => r.data)
+export const deleteLocation = (id: number) => api.delete(`/storage-locations/${id}`).then(r => r.data)
 
 // Roles
 export const getRoles = () => api.get('/roles').then(r => r.data)
