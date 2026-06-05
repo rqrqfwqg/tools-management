@@ -137,8 +137,8 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
 
   const order = db.orders[orderIndex];
   if (order.status !== 'borrowed' && order.status !== 'approved') return res.status(400).json({ message: '只能归还借出中或已批准的订单' });
-  if (order.borrower_id !== req.user.user_id && req.user.role !== 'admin' && req.user.role !== 'team_leader') {
-    return res.status(403).json({ message: '只有领用人、分队长或管理员才能归还' });
+  if (order.borrower_id !== req.user.user_id && req.user.role !== 'admin' && req.user.role !== 'team_leader' && req.user.role !== 'material_manager') {
+    return res.status(403).json({ message: '只有领用人、分队长、管理员或物料管理员才能归还' });
   }
 
   for (const item of order.items) {
