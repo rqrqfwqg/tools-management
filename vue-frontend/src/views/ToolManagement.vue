@@ -158,6 +158,7 @@
         :limit="1"
         :on-change="handleFileChange"
         :on-remove="handleFileRemove"
+        :before-upload="beforeUpload"
         accept="image/*"
         drag
         style="text-align:center"
@@ -165,7 +166,7 @@
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
         <div class="el-upload__text">拖拽图片到此处，或 <em>点击上传</em></div>
         <template #tip>
-          <div class="el-upload__tip">支持 JPG/PNG/GIF，最大 5MB</div>
+          <div class="el-upload__tip">支持 JPG/PNG/GIF/WebP，最大 10MB（自动压缩至 2MB 以内）</div>
         </template>
       </el-upload>
       <template #footer>
@@ -343,6 +344,15 @@ const openUploadDialog = (row: any) => {
   selectedFile.value = null
   uploadRef.value?.clearFiles()
   uploadDialogVisible.value = true
+}
+
+const beforeUpload = (file: File) => {
+  const maxSize = 10 * 1024 * 1024  // 10MB
+  if (file.size > maxSize) {
+    ElMessage.error(`文件过大（${(file.size / 1024 / 1024).toFixed(1)}MB），最大支持 10MB`)
+    return false
+  }
+  return true
 }
 
 const handleFileChange = (uploadFile: any) => {

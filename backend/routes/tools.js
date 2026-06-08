@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const sharp = require('sharp');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId } = require('./db');
 const { authenticate, requireMaterialManager } = require('../middleware/auth');
@@ -268,18 +269,14 @@ router.delete('/tools/:id', authenticate, requireMaterialManager, (req, res) => 
   res.json({ message: '删除成功' });
 });
 
-// 图片上传
+// ============ 图片上传（含自动压缩，目标 ≤ 2MB）============
 const uploadDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, `tool_${req.params.id}_${Date.now()}${path.extname(file.originalname).toLowerCase()}`)
-});
-
+// multer 用内存存储（文件先放内存，压缩后再写盘，避免残留临时文件）
 const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },  // 10MB，覆盖常见手机/相机照片
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },  // 接受 ≤ 10MB 原始文件
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
@@ -289,21 +286,125 @@ const upload = multer({
   }
 });
 
-router.post('/tools/:id/upload-image', authenticate, requireMaterialManager, upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: '请选择要上传的图片' });
+/**
+ * 压缩图片到目标大小以内（目标 ≤ 2MB）
+ * 策略：原图如果已经很小则保留原图不动；否则尝试 JPEG 压缩，
+ *       如果 JPEG 反而更大则退回原图（例如 PNG 截图通常 JPEG 更差）
+ * @param {Buffer} inputBuffer - 原始图片 buffer
+ * @param {string} ext - 原始扩展名（含点，如 '.jpg'）
+ * @returns {Promise<{buffer: Buffer, ext: string}>}
+ */
+async function compressImage(inputBuffer, ext) {
+  const MAX_SIZE = 2 * 1024 * 1024;  // 目标 ≤ 2MB
+  const MAX_DIM = 2048;              // 最长边 2048px
 
-  const toolId = parseInt(req.params.id);
-  const db = readDB();
-  const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
-  if (toolIndex === -1) {
-    fs.unlinkSync(req.file.path);
-    return res.status(404).json({ message: '工具不存在' });
+  const metadata = await sharp(inputBuffer).metadata();
+  const needsResize = metadata.width > MAX_DIM || metadata.height > MAX_DIM;
+
+  // 情况 A：原图已 ≤ 2MB 且无需缩放 → 直接保留原图
+  if (inputBuffer.length <= MAX_SIZE && !needsResize) {
+    return { buffer: inputBuffer, ext };
   }
 
-  const imageUrl = `/uploads/${req.file.filename}`;
-  db.tools[toolIndex].image_url = imageUrl;
-  writeDB(db);
-  res.json({ message: '上传成功', image_url: imageUrl });
+  // 情况 B：需要压缩 — 统一走 JPEG（照片压缩效果最好）
+  // 对透明 PNG 先垫白底再转 JPEG，避免透明区变黑
+  let quality = 82;
+  let result = await sharp(inputBuffer)
+    .resize(needsResize ? MAX_DIM : undefined, needsResize ? MAX_DIM : undefined, { fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: { r: 255, g: 255, b: 255 } })  // 透明 → 白底
+    .jpeg({ quality })
+    .toBuffer();
+
+  // 逐步降 quality
+  while (result.length > MAX_SIZE && quality > 20) {
+    quality -= 15;
+    result = await sharp(inputBuffer)
+      .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .jpeg({ quality })
+      .toBuffer();
+  }
+
+  // 极端情况：大幅缩小尺寸
+  if (result.length > MAX_SIZE) {
+    result = await sharp(inputBuffer)
+      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .jpeg({ quality: 50 })
+      .toBuffer();
+  }
+
+  // 情况 C：JPEG 压缩后反而比原图大（例如小 PNG 截图）
+  // → 保留原图（只要原图本身 ≤ 2MB），否则仍用压缩版
+  if (result.length > inputBuffer.length && inputBuffer.length <= MAX_SIZE) {
+    return { buffer: inputBuffer, ext };
+  }
+
+  // 最终兜底
+  if (result.length > MAX_SIZE) {
+    return { buffer: inputBuffer, ext: '.jpg' }; // 极端情况，仍返回压缩版（会被外层 413 拦截）
+  }
+
+  return { buffer: result, ext: '.jpg' };
+}
+
+router.post('/tools/:id/upload-image', authenticate, requireMaterialManager, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: '请选择要上传的图片' });
+
+    const toolId = parseInt(req.params.id);
+    const db = readDB();
+    const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
+    if (toolIndex === -1) {
+      return res.status(404).json({ message: '工具不存在' });
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    console.log(`[Upload] 工具#${toolId} 收到图片: ${(req.file.size / 1024 / 1024).toFixed(2)}MB, 格式=${ext}`);
+
+    // 压缩图片
+    const { buffer: compressed, ext: finalExt } = await compressImage(req.file.buffer, ext);
+    const reduction = req.file.size > 0
+      ? ((1 - compressed.length / req.file.size) * 100).toFixed(0)
+      : 0;
+
+    console.log(`[Upload] 压缩完成: ${(compressed.length / 1024 / 1024).toFixed(2)}MB (缩减 ${reduction}%)`);
+
+    // 最终兜底：如果压缩后仍 > 2MB，拒绝
+    if (compressed.length > 2 * 1024 * 1024) {
+      return res.status(413).json({
+        message: `图片压缩后仍超过 2MB（当前 ${(compressed.length / 1024 / 1024).toFixed(1)}MB），请使用更小的图片`
+      });
+    }
+
+    // 写入磁盘
+    const filename = `tool_${toolId}_${Date.now()}${finalExt}`;
+    const filepath = path.join(uploadDir, filename);
+    fs.writeFileSync(filepath, compressed);
+
+    // 删除旧图片（如果存在）
+    const oldUrl = db.tools[toolIndex].image_url;
+    if (oldUrl) {
+      const oldPath = path.join(__dirname, '..', oldUrl);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    // 更新数据库
+    const imageUrl = `/uploads/${filename}`;
+    db.tools[toolIndex].image_url = imageUrl;
+    writeDB(db);
+
+    res.json({
+      message: '上传成功（已自动压缩）',
+      image_url: imageUrl,
+      original_size: req.file.size,
+      compressed_size: compressed.length,
+      reduction: `${reduction}%`
+    });
+  } catch (err) {
+    console.error('[Upload] 压缩失败:', err.message);
+    res.status(500).json({ message: '图片处理失败: ' + err.message });
+  }
 });
 
 // 分类管理
