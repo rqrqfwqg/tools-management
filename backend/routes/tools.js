@@ -279,11 +279,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },  // 10MB，覆盖常见手机/相机照片
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (!['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
-      return cb(new Error('只支持 JPG/PNG/GIF 格式'));
+    if (!['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+      return cb(new Error('只支持 JPG/PNG/GIF/WebP 格式'));
     }
     cb(null, true);
   }

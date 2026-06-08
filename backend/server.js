@@ -33,10 +33,11 @@ app.use(cors({
   credentials: true
 }));
 
-// Body 解析
-const bodyLimit = process.env.BODY_LIMIT || '10mb';
-app.use(bodyParser.json({ limit: bodyLimit }));
-app.use(bodyParser.urlencoded({ extended: true, limit: bodyLimit }));
+// Body 解析 — 仅处理 JSON 和 URL-encoded，不拦截 multipart（留给 multer）
+// Express 5 + body-parser v2 需显式限定 type，否则可能拦截 multipart/form-data
+const bodyLimit = process.env.BODY_LIMIT || '50mb';
+app.use(bodyParser.json({ limit: bodyLimit, type: 'application/json' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: bodyLimit, type: 'application/x-www-form-urlencoded' }));
 
 // 静态文件 - 上传文件
 const uploadDir = path.join(__dirname, 'uploads');
@@ -87,6 +88,20 @@ app.use('/api', require('./routes/users'));
 app.use('/api', require('./routes/tools'));
 app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/admin'));
+
+// ============ Multer 错误处理（必须在全局错误处理之前） ============
+app.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ message: '文件过大，最大支持 10MB' });
+  }
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ message: '上传字段名不正确，请使用 file 字段' });
+  }
+  if (err.message && err.message.includes('只支持')) {
+    return res.status(400).json({ message: err.message });
+  }
+  next(err);
+});
 
 // ============ 全局错误处理 ============
 app.use((err, req, res, next) => {
