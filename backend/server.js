@@ -33,11 +33,24 @@ app.use(cors({
   credentials: true
 }));
 
-// Body 解析 — 仅处理 JSON 和 URL-encoded，不拦截 multipart（留给 multer）
-// Express 5 + body-parser v2 需显式限定 type，否则可能拦截 multipart/form-data
+// Body 解析
+// 通过 wrapper 确保 body-parser 不拦截 multipart 请求（留给 multer 处理）
+// 不使用 body-parser 的 type 选项（body-parser v2.2.2 兼容性问题）
 const bodyLimit = process.env.BODY_LIMIT || '50mb';
-app.use(bodyParser.json({ limit: bodyLimit, type: 'application/json' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: bodyLimit, type: 'application/x-www-form-urlencoded' }));
+const jsonParser = bodyParser.json({ limit: bodyLimit });
+const urlencodedParser = bodyParser.urlencoded({ extended: true, limit: bodyLimit });
+
+app.use((req, res, next) => {
+  const ct = req.headers['content-type'] || '';
+  if (ct.startsWith('multipart/form-data')) return next();
+  // 尝试 JSON 解析；解析失败不中断（留给 urlencoded 或下游处理）
+  jsonParser(req, res, (err) => {
+    if (err && err.status !== 400) return next(err);
+    if (!err) return next();
+    // JSON 解析失败 → 尝试 urlencoded
+    urlencodedParser(req, res, next);
+  });
+});
 
 // 静态文件 - 上传文件
 const uploadDir = path.join(__dirname, 'uploads');
@@ -91,6 +104,7 @@ app.use('/api', require('./routes/admin'));
 
 // ============ Multer 错误处理（必须在全局错误处理之前） ============
 app.use((err, req, res, next) => {
+  console.error('[MulterError] code=%s message=%s', err.code || '(none)', err.message || '(none)');
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ message: '文件过大，最大支持 10MB' });
   }
@@ -105,7 +119,8 @@ app.use((err, req, res, next) => {
 
 // ============ 全局错误处理 ============
 app.use((err, req, res, next) => {
-  console.error('服务器错误:', err.message);
+  console.error('[ServerError] %s %s — %s', req.method, req.path, err.message);
+  console.error('[ServerError] stack:', err.stack);
   if (res.headersSent) return next(err);
   res.status(500).json({
     message: '服务器内部错误',
