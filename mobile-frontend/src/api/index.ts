@@ -73,7 +73,7 @@ export const updateShelf = (id: number, data: any) => api.put(`/shelves/${id}`, 
 export const deleteShelf = (id: number) => api.delete(`/shelves/${id}`).then(r => r.data)
 
 // Locations
-export const getLocations = () => api.get('/locations').then(r => r.data)
+export const getLocations = () => api.get('/storage-locations').then(r => r.data)
 export const createLocation = (data: any) => api.post('/locations', data).then(r => r.data)
 export const updateLocation = (id: number, data: any) => api.put(`/locations/${id}`, data).then(r => r.data)
 export const deleteLocation = (id: number) => api.delete(`/locations/${id}`).then(r => r.data)

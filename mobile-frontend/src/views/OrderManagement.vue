@@ -73,12 +73,27 @@
         </div>
         <div v-if="currentOrder?.items?.length" style="margin-top:12px">
           <h4 style="margin-bottom:8px">工具清单</h4>
-          <van-tag
+          <div
             v-for="item in currentOrder.items" :key="item.tool_id"
-            style="margin: 2px 4px 2px 0" type="primary" size="medium"
+            style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f5"
           >
-            {{ item.tool_name }}
-          </van-tag>
+            <img
+              v-if="item.image_url"
+              :src="item.image_url"
+              style="width:48px;height:48px;border-radius:6px;object-fit:cover;background:#f5f5f5"
+              @error="$event.target.style.display='none'"
+            />
+            <div v-else style="width:48px;height:48px;border-radius:6px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:20px;flex-shrink:0">
+              📦
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ item.tool_name }}</div>
+              <div style="font-size:12px;color:#999">{{ item.tool_code }}</div>
+            </div>
+            <van-tag size="medium" :type="item.item_status === 'borrowed' ? 'primary' : item.item_status === 'returned' ? 'success' : 'warning'">
+              {{ item.item_status === 'reserved' ? '已预约' : item.item_status === 'borrowed' ? '借出中' : '已归还' }}
+            </van-tag>
+          </div>
         </div>
       </div>
     </van-action-sheet>
@@ -115,8 +130,8 @@ const currentOrder = ref<any>(null)
 const statusOptions = [
   { text: '全部状态', value: '' },
   { text: '待审核', value: 'pending' },
-  { text: '已批准', value: 'approved' },
   { text: '借出中', value: 'borrowed' },
+  { text: '已批准', value: 'approved' },
   { text: '已归还', value: 'returned' },
   { text: '已拒绝', value: 'rejected' },
   { text: '已取消', value: 'cancelled' }
@@ -136,13 +151,20 @@ function orderStatusLabel(s: string) { return statusLabels[s] || s }
 function orderStatusType(s: string) { return (statusTypes[s] || '') as any }
 
 const filteredList = computed(() => {
-  return list.value.filter(o => {
+  const filtered = list.value.filter(o => {
     if (statusFilter.value && o.status !== statusFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!o.order_no?.toLowerCase().includes(kw) && !o.borrower_name?.toLowerCase().includes(kw)) return false
     }
     return true
+  })
+  // 未归还(borrowed)和待审批(pending)置顶
+  const priOrder: Record<string, number> = { pending: 0, borrowed: 1 }
+  return [...filtered].sort((a, b) => {
+    const pa = priOrder[a.status] ?? 2
+    const pb = priOrder[b.status] ?? 2
+    return pa - pb
   })
 })
 

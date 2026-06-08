@@ -19,11 +19,19 @@ const validate = (req, res, next) => {
 router.get('/orders', authenticate, (req, res) => {
   const db = readDB();
   const orders = db.orders || [];
+  // 为每个 item 补充 image_url
+  const enriched = orders.map(o => ({
+    ...o,
+    items: (o.items || []).map(item => {
+      const tool = db.tools.find(t => t.tool_id === item.tool_id);
+      return { ...item, image_url: tool?.image_url || '' };
+    })
+  }));
   if (req.user.role !== 'admin' && req.user.role !== 'team_leader') {
     const user = db.users.find(u => u.user_id === req.user.user_id);
-    return res.json(orders.filter(o => o.borrower_name === (user?.real_name || user?.username)));
+    return res.json(enriched.filter(o => o.borrower_name === (user?.real_name || user?.username)));
   }
-  res.json(orders);
+  res.json(enriched);
 });
 
 // 创建订单

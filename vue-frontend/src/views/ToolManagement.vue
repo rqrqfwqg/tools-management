@@ -13,8 +13,14 @@
       <el-select v-model="categoryFilter" placeholder="全部分类" clearable style="width:120px">
         <el-option v-for="c in categories" :key="c.category_id" :label="c.category_name" :value="c.category_name" />
       </el-select>
-      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px">
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px" @change="onWarehouseFilterChange">
         <el-option v-for="w in warehouses" :key="w.warehouse_id" :label="w.warehouse_name" :value="w.warehouse_name" />
+      </el-select>
+      <el-select v-model="shelfFilter" placeholder="全部货架" clearable style="width:120px" @change="onShelfFilterChange">
+        <el-option v-for="s in shelfFilterOptions" :key="s.shelf_id" :label="s.shelf_name" :value="s.shelf_name" />
+      </el-select>
+      <el-select v-model="locationFilter" placeholder="全部货位" clearable style="width:140px">
+        <el-option v-for="l in locationFilterOptions" :key="l.location_id" :label="l.location_name || l.location_code" :value="l.location_name || l.location_code" />
       </el-select>
     </div>
     <el-table :data="filteredList" style="margin-top:0">
@@ -172,6 +178,8 @@ const selectedFile = ref<File | null>(null)
 const statusFilter = ref('')
 const categoryFilter = ref('')
 const warehouseFilter = ref('')
+const shelfFilter = ref('')
+const locationFilter = ref('')
 const keyword = ref('')
 
 // 筛选后的列表
@@ -180,6 +188,14 @@ const filteredList = computed(() => {
     if (statusFilter.value && t.status !== statusFilter.value) return false
     if (categoryFilter.value && t.category_name !== categoryFilter.value) return false
     if (warehouseFilter.value && t.warehouse !== warehouseFilter.value) return false
+    if (shelfFilter.value) {
+      const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value)
+      if (s && t.shelf_id !== s.shelf_id) return false
+    }
+    if (locationFilter.value) {
+      const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
+      if (l && t.storage_location_id !== l.location_id) return false
+    }
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -208,6 +224,31 @@ const filteredLocations = computed(() => {
   if (!form.value.shelf_id) return []
   return locations.value.filter(l => l.shelf_id === form.value.shelf_id)
 })
+
+// 筛选下拉：货架按仓库过滤
+const shelfFilterOptions = computed(() => {
+  if (!warehouseFilter.value) return shelves.value
+  const w = warehouses.value.find(ww => ww.warehouse_name === warehouseFilter.value)
+  if (!w) return shelves.value
+  return shelves.value.filter(s => s.warehouse_id === w.warehouse_id)
+})
+
+// 筛选下拉：货位按货架过滤
+const locationFilterOptions = computed(() => {
+  if (!shelfFilter.value) return locations.value
+  const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value)
+  if (!s) return locations.value
+  return locations.value.filter(l => l.shelf_id === s.shelf_id)
+})
+
+const onWarehouseFilterChange = () => {
+  shelfFilter.value = ''
+  locationFilter.value = ''
+}
+
+const onShelfFilterChange = () => {
+  locationFilter.value = ''
+}
 
 const onWarehouseChange = () => {
   form.value.shelf_id = undefined

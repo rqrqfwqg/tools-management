@@ -7,6 +7,9 @@
       <van-search v-model="keyword" placeholder="搜索名称/编码" shape="round" />
       <van-dropdown-menu>
         <van-dropdown-item v-model="statusFilter" :options="statusOptions" @change="onFilterChange" />
+        <van-dropdown-item v-model="warehouseFilter" :options="warehouseOptions" title="仓库" @change="onWarehouseFilterChange" />
+        <van-dropdown-item v-model="shelfFilter" :options="shelfOptions" title="货架" @change="onShelfFilterChange" />
+        <van-dropdown-item v-model="locationFilter" :options="locationOptions" title="货位" />
       </van-dropdown-menu>
     </div>
 
@@ -74,7 +77,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCartStore } from '@/store/cart'
-import { getTools } from '@/api'
+import { getTools, getWarehouses, getShelves, getLocations } from '@/api'
 import { showToast } from 'vant'
 
 const route = useRoute()
@@ -83,9 +86,17 @@ const cartStore = useCartStore()
 const list = ref<any[]>([])
 const keyword = ref('')
 const statusFilter = ref('')
+const warehouseFilter = ref('')
+const shelfFilter = ref('')
+const locationFilter = ref('')
 const refreshing = ref(false)
 const listLoading = ref(false)
 const active = ref(1)
+
+// 下拉数据源
+const warehouses = ref<any[]>([])
+const shelves = ref<any[]>([])
+const locations = ref<any[]>([])
 
 const statusOptions = [
   { text: '全部状态', value: '' },
@@ -94,6 +105,33 @@ const statusOptions = [
   { text: '维修', value: 'maintenance' },
   { text: '报废', value: 'scrapped' }
 ]
+
+const warehouseOptions = computed(() => [
+  { text: '全部仓库', value: '' },
+  ...warehouses.value.map(w => ({ text: w.warehouse_name, value: w.warehouse_name }))
+])
+
+const shelfOptions = computed(() => {
+  const base = [{ text: '全部货架', value: '' }]
+  const filtered = warehouseFilter.value
+    ? shelves.value.filter(s => {
+        const w = warehouses.value.find(ww => ww.warehouse_name === warehouseFilter.value)
+        return w ? s.warehouse_id === w.warehouse_id : false
+      })
+    : shelves.value
+  return [...base, ...filtered.map(s => ({ text: s.shelf_name, value: s.shelf_name }))]
+})
+
+const locationOptions = computed(() => {
+  const base = [{ text: '全部货位', value: '' }]
+  const filtered = shelfFilter.value
+    ? locations.value.filter(l => {
+        const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value)
+        return s ? l.shelf_id === s.shelf_id : false
+      })
+    : locations.value
+  return [...base, ...filtered.map(l => ({ text: l.location_name || l.location_code, value: l.location_name || l.location_code }))]
+})
 
 const statusLabel = (s: string) => {
   const map: Record<string, string> = { available: '可用', borrowed: '借出', maintenance: '维修', scrapped: '报废' }
@@ -110,6 +148,15 @@ const cartCount = computed(() => cartStore.count)
 const filteredList = computed(() => {
   return list.value.filter(t => {
     if (statusFilter.value && t.status !== statusFilter.value) return false
+    if (warehouseFilter.value && t.warehouse !== warehouseFilter.value) return false
+    if (shelfFilter.value) {
+      const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value)
+      if (s && t.shelf_id !== s.shelf_id) return false
+    }
+    if (locationFilter.value) {
+      const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
+      if (l && t.storage_location_id !== l.location_id) return false
+    }
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -131,9 +178,26 @@ function addToCart(tool: any) {
 
 function onFilterChange() {}
 
+function onWarehouseFilterChange() {
+  // 仓库切换时重置货架和货位
+  shelfFilter.value = ''
+  locationFilter.value = ''
+}
+
+function onShelfFilterChange() {
+  // 货架切换时重置货位
+  locationFilter.value = ''
+}
+
 async function onRefresh() {
   try {
-    list.value = await getTools()
+    const [tools, whs, shs, locs] = await Promise.all([
+      getTools(), getWarehouses(), getShelves(), getLocations()
+    ])
+    list.value = tools
+    warehouses.value = whs
+    shelves.value = shs
+    locations.value = locs
   } finally {
     refreshing.value = false
   }
@@ -144,7 +208,13 @@ onMounted(async () => {
     statusFilter.value = route.query.status as string
   }
   try {
-    list.value = await getTools()
+    const [tools, whs, shs, locs] = await Promise.all([
+      getTools(), getWarehouses(), getShelves(), getLocations()
+    ])
+    list.value = tools
+    warehouses.value = whs
+    shelves.value = shs
+    locations.value = locs
   } catch (e) {
     console.error('加载工具列表失败', e)
   }
