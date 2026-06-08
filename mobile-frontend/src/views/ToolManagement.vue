@@ -2,16 +2,110 @@
   <div class="page-container">
     <div class="page-title">工器具管理</div>
 
-    <!-- 搜索筛选 -->
+    <!-- 搜索 + 筛选按钮 -->
     <div class="filter-bar">
       <van-search v-model="keyword" placeholder="搜索名称/编码" shape="round" />
-      <van-dropdown-menu>
-        <van-dropdown-item v-model="statusFilter" :options="statusOptions" @change="onFilterChange" />
-        <van-dropdown-item v-model="warehouseFilter" :options="warehouseOptions" title="仓库" @change="onWarehouseFilterChange" />
-        <van-dropdown-item v-model="shelfFilter" :options="shelfOptions" title="货架" @change="onShelfFilterChange" />
-        <van-dropdown-item v-model="locationFilter" :options="locationOptions" title="货位" />
-      </van-dropdown-menu>
+      <div class="filter-row">
+        <button class="filter-btn" @click="showFilter = true">
+          筛选 <span v-if="activeFilterCount" class="filter-badge">{{ activeFilterCount }}</span>
+        </button>
+        <div class="filter-tags">
+          <van-tag
+            v-if="statusFilter"
+            closeable
+            size="medium"
+            type="primary"
+            @close="statusFilter = ''"
+          >{{ statusLabel(statusFilter) }}</van-tag>
+          <van-tag
+            v-if="warehouseFilter"
+            closeable
+            size="medium"
+            type="success"
+            @close="onClearWarehouse"
+          >{{ warehouseFilter }}</van-tag>
+          <van-tag
+            v-if="shelfFilter"
+            closeable
+            size="medium"
+            type="warning"
+            @close="onClearShelf"
+          >{{ shelfFilter }}</van-tag>
+          <van-tag
+            v-if="locationFilter"
+            closeable
+            size="medium"
+            @close="onClearLocation"
+          >{{ locationFilter }}</van-tag>
+        </div>
+      </div>
     </div>
+
+    <!-- 筛选弹出面板 -->
+    <van-action-sheet
+      v-model:show="showFilter"
+      title="筛选条件"
+      :close-on-click-action="false"
+    >
+      <div class="filter-panel">
+        <!-- 状态 -->
+        <div class="filter-section">
+          <div class="filter-label">状态</div>
+          <div class="filter-options">
+            <van-tag
+              v-for="opt in statusOptions"
+              :key="opt.value"
+              :type="statusFilter === opt.value ? 'primary' : 'default'"
+              size="large"
+              @click="statusFilter = opt.value"
+            >{{ opt.text }}</van-tag>
+          </div>
+        </div>
+        <!-- 仓库 -->
+        <div class="filter-section">
+          <div class="filter-label">仓库</div>
+          <div class="filter-options">
+            <van-tag
+              v-for="opt in warehouseOptions"
+              :key="opt.value"
+              :type="warehouseFilter === opt.value ? 'primary' : 'default'"
+              size="large"
+              @click="selectWarehouse(opt.value)"
+            >{{ opt.text }}</van-tag>
+          </div>
+        </div>
+        <!-- 货架 -->
+        <div class="filter-section">
+          <div class="filter-label">货架</div>
+          <div class="filter-options">
+            <van-tag
+              v-for="opt in shelfOptions"
+              :key="opt.value"
+              :type="shelfFilter === opt.value ? 'primary' : 'default'"
+              size="large"
+              @click="selectShelf(opt.value)"
+            >{{ opt.text }}</van-tag>
+          </div>
+        </div>
+        <!-- 货位 -->
+        <div class="filter-section">
+          <div class="filter-label">货位</div>
+          <div class="filter-options">
+            <van-tag
+              v-for="opt in locationOptions"
+              :key="opt.value"
+              :type="locationFilter === opt.value ? 'primary' : 'default'"
+              size="large"
+              @click="locationFilter = opt.value"
+            >{{ opt.text }}</van-tag>
+          </div>
+        </div>
+        <!-- 底部操作 -->
+        <div class="filter-actions">
+          <van-button plain type="default" @click="clearAllFilters" block>重置</van-button>
+        </div>
+      </div>
+    </van-action-sheet>
 
     <!-- 工具列表 -->
     <div v-if="filteredList.length === 0" class="empty-state">
@@ -92,6 +186,7 @@ const locationFilter = ref('')
 const refreshing = ref(false)
 const listLoading = ref(false)
 const active = ref(1)
+const showFilter = ref(false)
 
 // 下拉数据源
 const warehouses = ref<any[]>([])
@@ -145,6 +240,15 @@ const statusTagType = (s: string) => {
 
 const cartCount = computed(() => cartStore.count)
 
+const activeFilterCount = computed(() => {
+  let n = 0
+  if (statusFilter.value) n++
+  if (warehouseFilter.value) n++
+  if (shelfFilter.value) n++
+  if (locationFilter.value) n++
+  return n
+})
+
 const filteredList = computed(() => {
   return list.value.filter(t => {
     if (statusFilter.value && t.status !== statusFilter.value) return false
@@ -176,16 +280,33 @@ function addToCart(tool: any) {
   showToast('已添加到领用篮')
 }
 
-function onFilterChange() {}
-
-function onWarehouseFilterChange() {
-  // 仓库切换时重置货架和货位
+function selectWarehouse(val: string) {
+  warehouseFilter.value = val
   shelfFilter.value = ''
   locationFilter.value = ''
 }
 
-function onShelfFilterChange() {
-  // 货架切换时重置货位
+function selectShelf(val: string) {
+  shelfFilter.value = val
+  locationFilter.value = ''
+}
+
+function onClearWarehouse() {
+  selectWarehouse('')
+}
+
+function onClearShelf() {
+  selectShelf('')
+}
+
+function onClearLocation() {
+  locationFilter.value = ''
+}
+
+function clearAllFilters() {
+  statusFilter.value = ''
+  warehouseFilter.value = ''
+  shelfFilter.value = ''
   locationFilter.value = ''
 }
 
@@ -236,5 +357,89 @@ onMounted(async () => {
   color: #fff;
   box-shadow: 0 4px 12px rgba(25,137,250,0.4);
   z-index: 100;
+}
+
+/* 筛选行 */
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+
+.filter-btn {
+  flex-shrink: 0;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #323233;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-btn:active {
+  background: #f5f5f5;
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ee0a24;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.filter-tags {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  align-items: center;
+}
+
+/* 筛选面板 */
+.filter-panel {
+  padding: 0 16px 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.filter-section {
+  margin-top: 16px;
+}
+
+.filter-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #323233;
+  margin-bottom: 8px;
+}
+
+.filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-options .van-tag {
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-actions {
+  margin-top: 20px;
 }
 </style>
