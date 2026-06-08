@@ -23,7 +23,7 @@
         <el-option v-for="l in locationFilterOptions" :key="l.location_id" :label="l.location_name || l.location_code" :value="l.location_name || l.location_code" />
       </el-select>
       <el-select v-model="toolkitFilter" placeholder="全部工具包" clearable style="width:140px">
-        <el-option v-for="k in toolkits" :key="k" :label="k" :value="k" />
+        <el-option v-for="k in toolkits" :key="k.toolkit_id" :label="k.toolkit_name" :value="k.toolkit_name" />
       </el-select>
       <el-dropdown v-if="toolkitFilter" style="margin-left:4px">
         <el-button size="small" type="success">借一箱</el-button>
@@ -61,9 +61,9 @@
       </el-table-column>
       <el-table-column prop="warehouse" label="仓库" width="100" />
       <el-table-column prop="storage_location" label="货位" width="100" />
-      <el-table-column prop="toolkit" label="工具包" width="120">
+      <el-table-column label="工具包" width="120">
         <template #default="{row}">
-          <el-tag v-if="row.toolkit" type="success" size="small">{{ row.toolkit }}</el-tag>
+          <el-tag v-if="row.toolkit_name" type="success" size="small">{{ row.toolkit_name }}</el-tag>
           <span v-else style="color:#ccc">-</span>
         </template>
       </el-table-column>
@@ -122,8 +122,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="工具包">
-          <el-select v-model="form.toolkit" placeholder="选择工具包（可选）" style="width:100%" clearable allow-create filterable>
-            <el-option v-for="k in toolkits" :key="k" :label="k" :value="k" />
+          <el-select v-model="form.toolkit_name" placeholder="选择工具包（可选）" style="width:100%" clearable>
+            <el-option v-for="k in toolkits" :key="k.toolkit_id" :label="k.toolkit_name" :value="k.toolkit_name" />
           </el-select>
         </el-form-item>
         <el-form-item label="说明">
@@ -203,7 +203,7 @@ const warehouseFilter = ref('')
 const shelfFilter = ref('')
 const locationFilter = ref('')
 const toolkitFilter = ref('')
-const toolkits = ref<string[]>([])
+const toolkits = ref<any[]>([])
 const keyword = ref('')
 
 // 筛选后的列表
@@ -220,7 +220,7 @@ const filteredList = computed(() => {
       const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
       if (l && t.storage_location_id !== l.location_id) return false
     }
-    if (toolkitFilter.value && t.toolkit !== toolkitFilter.value) return false
+    if (toolkitFilter.value && t.toolkit_name !== toolkitFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -293,7 +293,7 @@ const loadToolkits = async () => { toolkits.value = await getToolkits() }
 
 // 借一箱：将工具包下所有可用工具加入购物车
 const handleBorrowKit = (kitName: string) => {
-  const kitTools = list.value.filter(t => t.toolkit === kitName && t.status === 'available')
+  const kitTools = list.value.filter(t => t.toolkit_name === kitName && t.status === 'available')
   if (kitTools.length === 0) {
     ElMessage.warning(`工具包"${kitName}"中没有可用工具`)
     return

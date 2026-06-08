@@ -48,7 +48,16 @@ router.post('/orders', authenticate, [
   // 支持工具包批量领用：自动收集该包下所有可用工具
   let resolvedIds = tool_ids || [];
   if (toolkit) {
-    const kitTools = db.tools.filter(t => t.toolkit === toolkit && t.status === 'available');
+    const kitId = parseInt(toolkit);
+    let kitTools;
+    if (!isNaN(kitId) && (db.toolkits || []).find(k => k.toolkit_id === kitId)) {
+      // 新方式：通过 toolkit_id + toolkit_items 查找
+      const itemToolIds = (db.toolkit_items || []).filter(i => i.toolkit_id === kitId).map(i => i.tool_id);
+      kitTools = db.tools.filter(t => itemToolIds.includes(t.tool_id) && t.status === 'available');
+    } else {
+      // 兼容旧方式：通过 toolkit_name 查找
+      kitTools = db.tools.filter(t => t.toolkit_name === toolkit && t.status === 'available');
+    }
     if (kitTools.length === 0) return res.status(400).json({ message: `工具包"${toolkit}"中没有可用工具` });
     const kitIds = kitTools.map(t => t.tool_id);
     resolvedIds = [...new Set([...resolvedIds, ...kitIds])];

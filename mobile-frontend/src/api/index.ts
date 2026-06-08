@@ -38,9 +38,7 @@ export const resetPassword = (id: number, password: string) =>
 // Tools
 export const getTools = () => api.get('/tools').then(r => r.data)
 export const getToolkits = () => api.get('/toolkits').then(r => r.data)
-export const getToolkitDetail = (name: string) => api.get(`/toolkits/${encodeURIComponent(name)}`).then(r => r.data)
-export const bindToolkit = (toolId: number, toolkit: string) => api.post(`/tools/${toolId}/bind-toolkit`, { toolkit }).then(r => r.data)
-export const unbindToolkit = (toolId: number) => api.delete(`/tools/${toolId}/unbind-toolkit`).then(r => r.data)
+export const getToolkitDetail = (id: number) => api.get(`/toolkits/${id}`).then(r => r.data)
 export const createTool = (data: any) => api.post('/tools', data).then(r => r.data)
 export const updateTool = (id: number, data: any) => api.put(`/tools/${id}`, data).then(r => r.data)
 export const deleteTool = (id: number) => api.delete(`/tools/${id}`).then(r => r.data)

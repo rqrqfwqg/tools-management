@@ -15,11 +15,11 @@
       </div>
       <van-cell
         v-for="kit in toolkits"
-        :key="kit"
-        :title="kit"
-        :label="`${getKitToolCount(kit)} 件工具`"
+        :key="kit.toolkit_id"
+        :title="kit.toolkit_name"
+        :label="`${kit.tool_count || 0} 件工具`"
         is-link
-        @click="openKitDetail(kit)"
+        @click="openKitDetail(kit.toolkit_name)"
       />
     </div>
 
@@ -183,8 +183,8 @@
             <van-tag v-if="tool.shelf" plain type="primary" size="medium" style="margin-left: 4px">
               {{ tool.shelf }}
             </van-tag>
-            <van-tag v-if="tool.toolkit" plain type="success" size="medium" style="margin-left: 4px">
-              {{ tool.toolkit }}
+            <van-tag v-if="tool.toolkit_name" plain type="success" size="medium" style="margin-left: 4px">
+              {{ tool.toolkit_name }}
             </van-tag>
           </template>
           <template #footer>
@@ -276,7 +276,7 @@ const warehouseFilter = ref('')
 const shelfFilter = ref('')
 const locationFilter = ref('')
 const toolkitFilter = ref('')
-const toolkits = ref<string[]>([])
+const toolkits = ref<any[]>([])
 const refreshing = ref(false)
 const listLoading = ref(false)
 const active = ref(1)
@@ -349,11 +349,11 @@ const activeFilterCount = computed(() => {
 
 const toolkitOptions = computed(() => [
   { text: '全部工具包', value: '' },
-  ...toolkits.value.map(k => ({ text: k, value: k }))
+  ...toolkits.value.map(k => ({ text: k.toolkit_name, value: k.toolkit_name }))
 ])
 
 const kitDetailTools = computed(() =>
-  list.value.filter(t => t.toolkit === selectedKit.value)
+  list.value.filter(t => t.toolkit_name === selectedKit.value)
 )
 
 const filteredList = computed(() => {
@@ -368,7 +368,7 @@ const filteredList = computed(() => {
       const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
       if (l && t.storage_location_id !== l.location_id) return false
     }
-    if (toolkitFilter.value && t.toolkit !== toolkitFilter.value) return false
+    if (toolkitFilter.value && t.toolkit_name !== toolkitFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -420,7 +420,7 @@ function clearAllFilters() {
 }
 
 function handleBorrowKit() {
-  const kitTools = list.value.filter(t => t.toolkit === toolkitFilter.value && t.status === 'available')
+  const kitTools = list.value.filter(t => t.toolkit_name === toolkitFilter.value && t.status === 'available')
   if (kitTools.length === 0) {
     showToast(`工具包"${toolkitFilter.value}"中没有可用工具`)
     return
@@ -438,7 +438,7 @@ function handleBorrowKit() {
 }
 
 function getKitToolCount(kitName: string) {
-  return list.value.filter(t => t.toolkit === kitName).length
+  return list.value.filter(t => t.toolkit_name === kitName).length
 }
 
 function openKitDetail(kitName: string) {

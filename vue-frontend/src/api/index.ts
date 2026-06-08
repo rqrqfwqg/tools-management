@@ -132,16 +132,25 @@ export const getTools = () =>
   request.get<Tool[]>('/tools').then(r => r.data)
 
 export const getToolkits = () =>
-  request.get<string[]>('/toolkits').then(r => r.data)
+  request.get<any[]>('/toolkits').then(r => r.data)
 
-export const getToolkitDetail = (name: string) =>
-  request.get<any>(`/toolkits/${encodeURIComponent(name)}`).then(r => r.data)
+export const getToolkitDetail = (id: number) =>
+  request.get<any>(`/toolkits/${id}`).then(r => r.data)
 
-export const bindToolkit = (toolId: number, toolkit: string) =>
-  request.post(`/tools/${toolId}/bind-toolkit`, { toolkit }).then(r => r.data)
+export const createToolkit = (data: { toolkit_name: string; description?: string }) =>
+  request.post('/toolkits', data).then(r => r.data)
 
-export const unbindToolkit = (toolId: number) =>
-  request.delete(`/tools/${toolId}/unbind-toolkit`).then(r => r.data)
+export const updateToolkit = (id: number, data: any) =>
+  request.put(`/toolkits/${id}`, data).then(r => r.data)
+
+export const deleteToolkit = (id: number) =>
+  request.delete(`/toolkits/${id}`).then(r => r.data)
+
+export const addToolsToKit = (toolkitId: number, toolIds: number[]) =>
+  request.post(`/toolkits/${toolkitId}/add-tools`, { tool_ids: toolIds }).then(r => r.data)
+
+export const removeToolFromKit = (toolkitId: number, toolId: number) =>
+  request.delete(`/toolkits/${toolkitId}/remove-tool/${toolId}`).then(r => r.data)
 
 export const createTool = (data: any) =>
   request.post('/tools', data).then(r => r.data)

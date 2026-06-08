@@ -429,6 +429,8 @@
       "is_active": true
     }
   ],
+  "toolkits": [],
+  "toolkit_items": [],
   "tools": [
     {
       "tool_id": 1,
