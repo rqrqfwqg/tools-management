@@ -17,10 +17,19 @@ const validate = (req, res, next) => {
   next();
 };
 
-// 获取工具列表
+// 获取工具列表（按借出次数降序→常用工具排前）
 router.get('/tools', authenticate, (req, res) => {
   const db = readDB();
-  res.json(db.tools || []);
+  const tools = db.tools || [];
+  tools.sort((a, b) => (b.borrow_count || 0) - (a.borrow_count || 0));
+  res.json(tools);
+});
+
+// 获取工具包列表
+router.get('/toolkits', authenticate, (req, res) => {
+  const db = readDB();
+  const toolkits = [...new Set((db.tools || []).map(t => t.toolkit).filter(Boolean))].sort();
+  res.json(toolkits);
 });
 
 // 创建工具
@@ -29,7 +38,7 @@ router.post('/tools', authenticate, requireMaterialManager, [
   body('tool_name').notEmpty().withMessage('工具名称不能为空'),
   validate
 ], (req, res) => {
-  const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description } = req.body;
+  const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description, toolkit } = req.body;
   const db = readDB();
 
   if (db.tools.find(t => t.tool_code === tool_code)) {
@@ -58,7 +67,7 @@ router.post('/tools', authenticate, requireMaterialManager, [
     storage_location_id: storage_location_id || null,
     storage_location: location ? `${shelf?.shelf_name || ''}${location.location_name}` : '',
     scene: '', borrow_count: 0, description: description || '', image_url: '',
-    purchase_date: null, scrap_date: null
+    toolkit: toolkit || '', purchase_date: null, scrap_date: null
   };
 
   db.tools.push(newTool);
@@ -69,7 +78,7 @@ router.post('/tools', authenticate, requireMaterialManager, [
 // 更新工具
 router.put('/tools/:id', authenticate, requireMaterialManager, (req, res) => {
   const toolId = parseInt(req.params.id);
-  const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description } = req.body;
+  const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description, toolkit } = req.body;
   const db = readDB();
 
   const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
@@ -91,7 +100,8 @@ router.put('/tools/:id', authenticate, requireMaterialManager, (req, res) => {
     storage_location_id: storage_location_id !== undefined ? storage_location_id : db.tools[toolIndex].storage_location_id,
     storage_location: location ? `${shelf?.shelf_name || ''}${location.location_name}` : (storage_location_id === null ? '' : db.tools[toolIndex].storage_location),
     status: status || db.tools[toolIndex].status,
-    description: description !== undefined ? description : db.tools[toolIndex].description
+    description: description !== undefined ? description : db.tools[toolIndex].description,
+    toolkit: toolkit !== undefined ? toolkit : db.tools[toolIndex].toolkit
   };
 
   writeDB(db);

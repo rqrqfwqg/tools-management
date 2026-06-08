@@ -131,6 +131,9 @@ export const getStorageLocation = (id: number) =>
 export const getTools = () =>
   request.get<Tool[]>('/tools').then(r => r.data)
 
+export const getToolkits = () =>
+  request.get<string[]>('/toolkits').then(r => r.data)
+
 export const createTool = (data: any) =>
   request.post('/tools', data).then(r => r.data)
 

@@ -22,6 +22,17 @@
       <el-select v-model="locationFilter" placeholder="全部货位" clearable style="width:140px">
         <el-option v-for="l in locationFilterOptions" :key="l.location_id" :label="l.location_name || l.location_code" :value="l.location_name || l.location_code" />
       </el-select>
+      <el-select v-model="toolkitFilter" placeholder="全部工具包" clearable style="width:140px">
+        <el-option v-for="k in toolkits" :key="k" :label="k" :value="k" />
+      </el-select>
+      <el-dropdown v-if="toolkitFilter" style="margin-left:4px">
+        <el-button size="small" type="success">借一箱</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="handleBorrowKit(toolkitFilter)">领用"{{ toolkitFilter }}"全部可用工具</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
     <el-table :data="filteredList" style="margin-top:0">
       <el-table-column label="图片" width="80">
@@ -50,6 +61,12 @@
       </el-table-column>
       <el-table-column prop="warehouse" label="仓库" width="100" />
       <el-table-column prop="storage_location" label="货位" width="100" />
+      <el-table-column prop="toolkit" label="工具包" width="120">
+        <template #default="{row}">
+          <el-tag v-if="row.toolkit" type="success" size="small">{{ row.toolkit }}</el-tag>
+          <span v-else style="color:#ccc">-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="borrow_count" label="借次" width="70" />
       <el-table-column label="操作" width="300">
         <template #default="{row}">
@@ -102,6 +119,11 @@
             <el-option label="借出" value="borrowed" />
             <el-option label="维修" value="maintenance" />
             <el-option label="报废" value="scrapped" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="工具包">
+          <el-select v-model="form.toolkit" placeholder="选择工具包（可选）" style="width:100%" clearable allow-create filterable>
+            <el-option v-for="k in toolkits" :key="k" :label="k" :value="k" />
           </el-select>
         </el-form-item>
         <el-form-item label="说明">
@@ -157,7 +179,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getTools, createTool, updateTool, deleteTool } from '@/api'
+import { getTools, createTool, updateTool, deleteTool, getToolkits } from '@/api'
 import { getCategories } from '@/api'
 import { getWarehouses, getShelves, getStorageLocations } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -180,6 +202,8 @@ const categoryFilter = ref('')
 const warehouseFilter = ref('')
 const shelfFilter = ref('')
 const locationFilter = ref('')
+const toolkitFilter = ref('')
+const toolkits = ref<string[]>([])
 const keyword = ref('')
 
 // 筛选后的列表
@@ -196,6 +220,7 @@ const filteredList = computed(() => {
       const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
       if (l && t.storage_location_id !== l.location_id) return false
     }
+    if (toolkitFilter.value && t.toolkit !== toolkitFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -264,6 +289,18 @@ const loadCategories = async () => { categories.value = await getCategories() }
 const loadWarehouses = async () => { warehouses.value = await getWarehouses() }
 const loadShelves = async () => { shelves.value = await getShelves() }
 const loadLocations = async () => { locations.value = await getStorageLocations() }
+const loadToolkits = async () => { toolkits.value = await getToolkits() }
+
+// 借一箱：将工具包下所有可用工具加入购物车
+const handleBorrowKit = (kitName: string) => {
+  const kitTools = list.value.filter(t => t.toolkit === kitName && t.status === 'available')
+  if (kitTools.length === 0) {
+    ElMessage.warning(`工具包"${kitName}"中没有可用工具`)
+    return
+  }
+  kitTools.forEach(t => cartStore.addToCart(t))
+  ElMessage.success(`已将"${kitName}"中的 ${kitTools.length} 件工具加入购物车`)
+}
 
 const openDialog = (row?: any) => {
   if (row) {
@@ -348,7 +385,7 @@ const handleAddToCart = (tool: any) => {
 }
 
 onMounted(() => {
-  load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations()
+  load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations(); loadToolkits()
   // 从仪表盘跳转时自动筛选
   if (route.query.status) statusFilter.value = route.query.status as string
 })

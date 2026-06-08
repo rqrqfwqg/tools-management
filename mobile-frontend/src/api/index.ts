@@ -37,6 +37,7 @@ export const resetPassword = (id: number, password: string) =>
 
 // Tools
 export const getTools = () => api.get('/tools').then(r => r.data)
+export const getToolkits = () => api.get('/toolkits').then(r => r.data)
 export const createTool = (data: any) => api.post('/tools', data).then(r => r.data)
 export const updateTool = (id: number, data: any) => api.put(`/tools/${id}`, data).then(r => r.data)
 export const deleteTool = (id: number) => api.delete(`/tools/${id}`).then(r => r.data)

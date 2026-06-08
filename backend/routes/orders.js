@@ -36,17 +36,29 @@ router.get('/orders', authenticate, (req, res) => {
 
 // 创建订单
 router.post('/orders', authenticate, [
-  body('tool_ids').isArray({ min: 1 }).withMessage('请选择至少要领用的工具'),
+  body('tool_ids').optional().isArray(),
+  body('toolkit').optional().isString(),
   validate
 ], (req, res) => {
-  const { tool_ids, warehouse, scene, expected_return, purpose } = req.body;
+  const { tool_ids, toolkit, warehouse, scene, expected_return, purpose } = req.body;
   const db = readDB();
   const user = db.users.find(u => u.user_id === req.user.user_id);
   if (!user) return res.status(404).json({ message: '用户不存在' });
 
+  // 支持工具包批量领用：自动收集该包下所有可用工具
+  let resolvedIds = tool_ids || [];
+  if (toolkit) {
+    const kitTools = db.tools.filter(t => t.toolkit === toolkit && t.status === 'available');
+    if (kitTools.length === 0) return res.status(400).json({ message: `工具包"${toolkit}"中没有可用工具` });
+    const kitIds = kitTools.map(t => t.tool_id);
+    resolvedIds = [...new Set([...resolvedIds, ...kitIds])];
+  }
+
+  if (resolvedIds.length === 0) return res.status(400).json({ message: '请选择至少要领用的工具' });
+
   // 检查工具可用性
   const unavailableTools = [];
-  for (const toolId of tool_ids) {
+  for (const toolId of resolvedIds) {
     const tool = db.tools.find(t => t.tool_id === toolId);
     if (!tool) unavailableTools.push(`工具ID ${toolId} 不存在`);
     else if (tool.status !== 'available') unavailableTools.push(`${tool.tool_name} 当前状态为${tool.status}，不可领用`);
@@ -57,7 +69,7 @@ router.post('/orders', authenticate, [
 
   const orderNo = `ORD${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
   let itemCounter = Date.now();
-  const items = tool_ids.map(toolId => {
+  const items = resolvedIds.map(toolId => {
     const tool = db.tools.find(t => t.tool_id === toolId);
     const randomPart = crypto.randomBytes(3).readUIntBE(0, 3);
     return {
@@ -82,7 +94,7 @@ router.post('/orders', authenticate, [
     items: items
   };
 
-  for (const toolId of tool_ids) {
+  for (const toolId of resolvedIds) {
     const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
     if (toolIndex > -1) db.tools[toolIndex].status = 'reserved';
   }

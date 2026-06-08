@@ -37,6 +37,13 @@
             size="medium"
             @close="onClearLocation"
           >{{ locationFilter }}</van-tag>
+          <van-tag
+            v-if="toolkitFilter"
+            closeable
+            size="medium"
+            type="success"
+            @close="toolkitFilter = ''"
+          >{{ toolkitFilter }}</van-tag>
         </div>
       </div>
     </div>
@@ -100,6 +107,23 @@
             >{{ opt.text }}</van-tag>
           </div>
         </div>
+        <!-- 工具包 -->
+        <div class="filter-section">
+          <div class="filter-label">工具包</div>
+          <div class="filter-options">
+            <van-tag
+              v-for="k in toolkitOptions"
+              :key="k.value"
+              :type="toolkitFilter === k.value ? 'primary' : 'default'"
+              size="large"
+              @click="toolkitFilter = k.value"
+            >{{ k.text }}</van-tag>
+          </div>
+        </div>
+        <!-- 工具包快捷操作 -->
+        <div v-if="toolkitFilter" class="filter-section">
+          <van-button type="success" block round @click="handleBorrowKit">借一箱：{{ toolkitFilter }}</van-button>
+        </div>
         <!-- 底部操作 -->
         <div class="filter-actions">
           <van-button plain type="default" @click="clearAllFilters" block>重置</van-button>
@@ -134,6 +158,9 @@
             </van-tag>
             <van-tag v-if="tool.shelf" plain type="primary" size="medium" style="margin-left: 4px">
               {{ tool.shelf }}
+            </van-tag>
+            <van-tag v-if="tool.toolkit" plain type="success" size="medium" style="margin-left: 4px">
+              {{ tool.toolkit }}
             </van-tag>
           </template>
           <template #footer>
@@ -171,7 +198,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCartStore } from '@/store/cart'
-import { getTools, getWarehouses, getShelves, getLocations } from '@/api'
+import { getTools, getWarehouses, getShelves, getLocations, getToolkits } from '@/api'
 import { showToast } from 'vant'
 
 const route = useRoute()
@@ -183,6 +210,8 @@ const statusFilter = ref('')
 const warehouseFilter = ref('')
 const shelfFilter = ref('')
 const locationFilter = ref('')
+const toolkitFilter = ref('')
+const toolkits = ref<string[]>([])
 const refreshing = ref(false)
 const listLoading = ref(false)
 const active = ref(1)
@@ -246,8 +275,14 @@ const activeFilterCount = computed(() => {
   if (warehouseFilter.value) n++
   if (shelfFilter.value) n++
   if (locationFilter.value) n++
+  if (toolkitFilter.value) n++
   return n
 })
+
+const toolkitOptions = computed(() => [
+  { text: '全部工具包', value: '' },
+  ...toolkits.value.map(k => ({ text: k, value: k }))
+])
 
 const filteredList = computed(() => {
   return list.value.filter(t => {
@@ -261,6 +296,7 @@ const filteredList = computed(() => {
       const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
       if (l && t.storage_location_id !== l.location_id) return false
     }
+    if (toolkitFilter.value && t.toolkit !== toolkitFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -308,17 +344,37 @@ function clearAllFilters() {
   warehouseFilter.value = ''
   shelfFilter.value = ''
   locationFilter.value = ''
+  toolkitFilter.value = ''
+}
+
+function handleBorrowKit() {
+  const kitTools = list.value.filter(t => t.toolkit === toolkitFilter.value && t.status === 'available')
+  if (kitTools.length === 0) {
+    showToast(`工具包"${toolkitFilter.value}"中没有可用工具`)
+    return
+  }
+  kitTools.forEach(t => {
+    cartStore.addItem({
+      tool_id: t.tool_id,
+      tool_name: t.tool_name,
+      tool_code: t.tool_code,
+      warehouse: t.warehouse || '',
+      image_url: t.image_url || ''
+    })
+  })
+  showToast(`已将"${toolkitFilter.value}"中 ${kitTools.length} 件工具加入领用篮`)
 }
 
 async function onRefresh() {
   try {
-    const [tools, whs, shs, locs] = await Promise.all([
-      getTools(), getWarehouses(), getShelves(), getLocations()
+    const [tools, whs, shs, locs, kits] = await Promise.all([
+      getTools(), getWarehouses(), getShelves(), getLocations(), getToolkits()
     ])
     list.value = tools
     warehouses.value = whs
     shelves.value = shs
     locations.value = locs
+    toolkits.value = kits
   } finally {
     refreshing.value = false
   }
@@ -329,13 +385,14 @@ onMounted(async () => {
     statusFilter.value = route.query.status as string
   }
   try {
-    const [tools, whs, shs, locs] = await Promise.all([
-      getTools(), getWarehouses(), getShelves(), getLocations()
+    const [tools, whs, shs, locs, kits] = await Promise.all([
+      getTools(), getWarehouses(), getShelves(), getLocations(), getToolkits()
     ])
     list.value = tools
     warehouses.value = whs
     shelves.value = shs
     locations.value = locs
+    toolkits.value = kits
   } catch (e) {
     console.error('加载工具列表失败', e)
   }
