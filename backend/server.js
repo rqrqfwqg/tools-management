@@ -21,14 +21,27 @@ app.use(helmet({
 }));
 
 // CORS
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(s => s.trim());
+const corsOriginEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const allowedOrigins = corsOriginEnv.split(',').map(s => s.trim()).filter(Boolean);
+// 生产环境兜底：确保服务器自身 IP 始终在允许列表中
+if (process.env.NODE_ENV === 'production') {
+  // 常见生产地址（按需扩展）
+  ['http://82.156.62.59'].forEach(o => {
+    if (o && !allowedOrigins.includes(o)) allowedOrigins.push(o);
+  });
+}
+console.log('[CORS] allowed origins:', allowedOrigins);
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // origin 为 undefined 表示同源请求（如 curl localhost），直接放行
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // 开发环境兜底放行
+    if (process.env.NODE_ENV === 'development') return callback(null, true);
+    // 拒绝前打印调试信息
+    console.error(`[CORS] REJECTED origin="${origin}" | allowed=${JSON.stringify(allowedOrigins)}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true
 }));
