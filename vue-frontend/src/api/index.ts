@@ -134,6 +134,15 @@ export const getTools = () =>
 export const getToolkits = () =>
   request.get<string[]>('/toolkits').then(r => r.data)
 
+export const getToolkitDetail = (name: string) =>
+  request.get<any>(`/toolkits/${encodeURIComponent(name)}`).then(r => r.data)
+
+export const bindToolkit = (toolId: number, toolkit: string) =>
+  request.post(`/tools/${toolId}/bind-toolkit`, { toolkit }).then(r => r.data)
+
+export const unbindToolkit = (toolId: number) =>
+  request.delete(`/tools/${toolId}/unbind-toolkit`).then(r => r.data)
+
 export const createTool = (data: any) =>
   request.post('/tools', data).then(r => r.data)
 

@@ -2,6 +2,30 @@
   <div class="page-container">
     <div class="page-title">工器具管理</div>
 
+    <!-- 工具 / 工具箱 切换 -->
+    <van-tabs v-model:active="viewMode" class="mode-tabs">
+      <van-tab title="工具" name="tools" />
+      <van-tab title="工具箱" name="kits" />
+    </van-tabs>
+
+    <!-- 工具箱视图 -->
+    <div v-if="viewMode === 'kits'" class="kit-view">
+      <div v-if="toolkits.length === 0" style="text-align:center;padding:40px;color:#999">
+        暂无工具包，请在PC端工具箱管理中创建
+      </div>
+      <van-cell
+        v-for="kit in toolkits"
+        :key="kit"
+        :title="kit"
+        :label="`${getKitToolCount(kit)} 件工具`"
+        is-link
+        @click="openKitDetail(kit)"
+      />
+    </div>
+
+    <!-- 工具视图 -->
+    <template v-if="viewMode === 'tools'">
+
     <!-- 搜索 + 筛选按钮 -->
     <div class="filter-bar">
       <van-search v-model="keyword" placeholder="搜索名称/编码" shape="round" />
@@ -177,6 +201,47 @@
         </van-card>
       </van-list>
     </van-pull-refresh>
+    </template>
+
+    <!-- 工具箱详情弹出层 -->
+    <van-action-sheet v-model:show="showKitDetail" :title="selectedKit">
+      <div class="kit-detail-panel">
+        <div v-if="kitDetailTools.length === 0" style="text-align:center;padding:30px;color:#999">
+          该工具包为空
+        </div>
+        <van-card
+          v-for="tool in kitDetailTools"
+          :key="tool.tool_id"
+          :price="tool.tool_code"
+          :desc="tool.warehouse || '未分配仓库'"
+          :title="tool.tool_name"
+          :thumb="tool.image_url || ''"
+          style="margin-bottom: 4px"
+        >
+          <template #tags>
+            <van-tag :type="statusTagType(tool.status)" size="medium">
+              {{ statusLabel(tool.status) }}
+            </van-tag>
+          </template>
+          <template #footer>
+            <van-button
+              v-if="tool.status === 'available'"
+              size="small"
+              type="primary"
+              @click="addToCart(tool); showKitDetail = false"
+              :disabled="cartStore.hasItem(tool.tool_id)"
+            >
+              {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
+            </van-button>
+          </template>
+        </van-card>
+        <div class="kit-detail-actions">
+          <van-button type="success" block round @click="borrowKitAll">
+            借一箱（{{ kitDetailTools.filter(t => t.status === 'available').length }} 件可用）
+          </van-button>
+        </div>
+      </div>
+    </van-action-sheet>
 
     <!-- 浮动购物车按钮 -->
     <div v-if="cartCount > 0" class="cart-float" @click="$router.push('/cart')">
@@ -216,6 +281,9 @@ const refreshing = ref(false)
 const listLoading = ref(false)
 const active = ref(1)
 const showFilter = ref(false)
+const viewMode = ref('tools')
+const showKitDetail = ref(false)
+const selectedKit = ref('')
 
 // 下拉数据源
 const warehouses = ref<any[]>([])
@@ -283,6 +351,10 @@ const toolkitOptions = computed(() => [
   { text: '全部工具包', value: '' },
   ...toolkits.value.map(k => ({ text: k, value: k }))
 ])
+
+const kitDetailTools = computed(() =>
+  list.value.filter(t => t.toolkit === selectedKit.value)
+)
 
 const filteredList = computed(() => {
   return list.value.filter(t => {
@@ -365,6 +437,34 @@ function handleBorrowKit() {
   showToast(`已将"${toolkitFilter.value}"中 ${kitTools.length} 件工具加入领用篮`)
 }
 
+function getKitToolCount(kitName: string) {
+  return list.value.filter(t => t.toolkit === kitName).length
+}
+
+function openKitDetail(kitName: string) {
+  selectedKit.value = kitName
+  showKitDetail.value = true
+}
+
+function borrowKitAll() {
+  const avail = kitDetailTools.value.filter(t => t.status === 'available')
+  if (avail.length === 0) {
+    showToast('该工具包中没有可用工具')
+    return
+  }
+  avail.forEach(t => {
+    cartStore.addItem({
+      tool_id: t.tool_id,
+      tool_name: t.tool_name,
+      tool_code: t.tool_code,
+      warehouse: t.warehouse || '',
+      image_url: t.image_url || ''
+    })
+  })
+  showToast(`已将"${selectedKit.value}"中 ${avail.length} 件工具加入领用篮`)
+  showKitDetail.value = false
+}
+
 async function onRefresh() {
   try {
     const [tools, whs, shs, locs, kits] = await Promise.all([
@@ -400,6 +500,26 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 模式切换 */
+.mode-tabs {
+  margin-bottom: 4px;
+}
+
+.kit-view {
+  padding: 0 12px;
+  min-height: 60vh;
+}
+
+.kit-detail-panel {
+  padding: 0 16px 24px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.kit-detail-actions {
+  padding: 16px 0;
+}
+
 .cart-float {
   position: fixed;
   right: 16px;

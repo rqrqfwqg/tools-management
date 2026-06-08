@@ -8,14 +8,10 @@ export const useCartStore = defineStore('cart', () => {
   const totalItems = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 
   const addToCart = (tool: Tool) => {
-    const existing = items.value.find(item => item.tool_id === tool.tool_id)
-    if (existing) {
-      if (existing.quantity < 1) {
-        existing.quantity += 1
-      }
-    } else {
-      items.value.push({ ...tool, quantity: 1 })
-    }
+    const tid = Number(tool.tool_id)
+    const existing = items.value.find(item => Number(item.tool_id) === tid)
+    if (existing) return // 已存在则跳过，每个工具唯一
+    items.value.push({ ...tool, quantity: 1, tool_id: tid })
   }
 
   const removeFromCart = (toolId: number) => {

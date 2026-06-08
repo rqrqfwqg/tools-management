@@ -17,6 +17,7 @@ const router = createRouter({
         { path: 'warehouses', name: 'WarehouseManagement', component: () => import('@/views/WarehouseManagement.vue'), meta: { requireAdmin: true } },
         { path: 'shelves', name: 'ShelfManagement', component: () => import('@/views/ShelfManagement.vue'), meta: { requireAdmin: true } },
         { path: 'locations', name: 'LocationManagement', component: () => import('@/views/LocationManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'toolkits', name: 'ToolkitManagement', component: () => import('@/views/ToolkitManagement.vue'), meta: { requireAdmin: true } },
         { path: 'tools', name: 'ToolManagement', component: () => import('@/views/ToolManagement.vue') },
         { path: 'orders', name: 'OrderManagement', component: () => import('@/views/OrderManagement.vue') },
         { path: 'roles', name: 'RoleManagement', component: () => import('@/views/RoleManagement.vue'), meta: { requireAdmin: true } },

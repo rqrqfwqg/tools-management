@@ -32,6 +32,38 @@ router.get('/toolkits', authenticate, (req, res) => {
   res.json(toolkits);
 });
 
+// 获取工具包详情（含工具列表）
+router.get('/toolkits/:name', authenticate, (req, res) => {
+  const { name } = req.params;
+  const db = readDB();
+  const tools = (db.tools || []).filter(t => t.toolkit === name);
+  res.json({ name, tools, count: tools.length });
+});
+
+// 工具绑定到工具包
+router.post('/tools/:id/bind-toolkit', authenticate, requireMaterialManager, (req, res) => {
+  const toolId = parseInt(req.params.id);
+  const { toolkit } = req.body;
+  if (!toolkit) return res.status(400).json({ message: '请指定工具包名称' });
+  const db = readDB();
+  const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
+  if (toolIndex === -1) return res.status(404).json({ message: '工具不存在' });
+  db.tools[toolIndex].toolkit = toolkit;
+  writeDB(db);
+  res.json({ message: `已绑定到工具包"${toolkit}"` });
+});
+
+// 工具从工具包解绑
+router.delete('/tools/:id/unbind-toolkit', authenticate, requireMaterialManager, (req, res) => {
+  const toolId = parseInt(req.params.id);
+  const db = readDB();
+  const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
+  if (toolIndex === -1) return res.status(404).json({ message: '工具不存在' });
+  db.tools[toolIndex].toolkit = '';
+  writeDB(db);
+  res.json({ message: '已从工具包解绑' });
+});
+
 // 创建工具
 router.post('/tools', authenticate, requireMaterialManager, [
   body('tool_code').notEmpty().withMessage('工具编码不能为空'),
