@@ -6,10 +6,10 @@
       </template>
       <el-form :model="form" ref="formRef">
         <el-form-item>
-          <el-input v-model="form.phone" placeholder="手机号" prefix-icon="Iphone" maxlength="11" />
+          <el-input v-model="form.phone" placeholder="手机号" prefix-icon="Iphone" maxlength="11" autocomplete="tel" />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" show-password />
+          <el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" show-password autocomplete="current-password" />
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="rememberMe">记住密码</el-checkbox>

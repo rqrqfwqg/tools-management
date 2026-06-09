@@ -15,6 +15,7 @@
           placeholder="请输入手机号"
           :rules="[{ required: true, message: '请输入手机号' }]"
           left-icon="phone-o"
+          autocomplete="tel"
         />
         <van-field
           v-model="password"
@@ -22,6 +23,7 @@
           placeholder="请输入密码"
           :rules="[{ required: true, message: '请输入密码' }]"
           left-icon="lock"
+          autocomplete="current-password"
         />
       </van-cell-group>
       <div style="margin: 8px 16px 0">
