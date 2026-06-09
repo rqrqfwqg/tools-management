@@ -52,7 +52,7 @@
               <el-table-column label="仓库" min-width="80">
                 <template #default="{ row: t }">{{ t.warehouse }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="80">
+              <el-table-column label="操作" min-width="80">
                 <template #default="{ row: t }">
                   <el-button size="small" type="danger" @click="handleRemoveTool(row.toolkit_id, t.tool_id)">移出</el-button>
                 </template>
@@ -73,7 +73,7 @@
       <el-table-column label="创建时间" min-width="160">
         <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" min-width="240" fixed="right">
+      <el-table-column label="操作" min-width="360" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
           <el-button size="small" @click="openAddTools(row)">添加工具</el-button>
