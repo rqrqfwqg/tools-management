@@ -5,7 +5,7 @@
       <el-button type="primary" @click="openDialog()">新增角色</el-button>
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
     </div>
-    <el-table :data="filteredList" style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0">
       <el-table-column prop="role_id" label="ID" width="60" />
       <el-table-column prop="role_name" label="角色名称" min-width="100" show-overflow-tooltip />
       <el-table-column prop="role_code" label="编码" min-width="100" show-overflow-tooltip />

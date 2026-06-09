@@ -34,7 +34,7 @@
         </template>
       </el-dropdown>
     </div>
-    <el-table :data="filteredList" style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0">
       <el-table-column label="图片" width="80">
         <template #default="{row}">
           <el-image

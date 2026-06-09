@@ -11,6 +11,7 @@
     <!-- 工具箱主表格（可展开） -->
     <el-table
       :data="filteredKits"
+      border
       row-key="toolkit_id"
       @expand-change="onExpandChange"
       :expand-row-keys="expandedRows"
@@ -31,7 +32,7 @@
               />
               <el-button size="small" type="primary" @click="openAddTools(row)">添加工具</el-button>
             </div>
-            <el-table :data="getFilteredKitTools(row)" size="small" max-height="300">
+            <el-table :data="getFilteredKitTools(row)" border size="small" max-height="300">
               <el-table-column label="编号" width="70">
                 <template #default="{ row: t }">{{ t.toolkit_seq }}</template>
               </el-table-column>

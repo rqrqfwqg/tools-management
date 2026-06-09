@@ -17,6 +17,7 @@
     </div>
     <el-table
       :data="filteredList"
+      border
       style="margin-top:15px"
       row-class-name="clickable-row"
       @row-click="handleRowClick"

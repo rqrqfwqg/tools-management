@@ -12,7 +12,7 @@
         <el-option label="停用" value="no" />
       </el-select>
     </div>
-    <el-table :data="filteredList" style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0">
       <el-table-column prop="shelf_id" label="ID" width="60" />
       <el-table-column prop="shelf_code" label="编码" min-width="80" show-overflow-tooltip />
       <el-table-column prop="shelf_name" label="名称" show-overflow-tooltip />

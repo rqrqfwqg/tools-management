@@ -10,7 +10,7 @@
     </div>
 
     <div v-else>
-      <el-table :data="cartStore.items" style="margin-top: 15px;">
+      <el-table :data="cartStore.items" border style="margin-top: 15px;">
         <el-table-column label="工具图片" width="100">
           <template #default="{row}">
             <el-image
