@@ -169,7 +169,6 @@
         <van-card
           v-for="tool in filteredList"
           :key="tool.tool_id"
-          :num="tool.status === 'available' ? 2 : 1"
           :price="tool.tool_code"
           :desc="tool.category_name + ' | ' + (tool.warehouse || '未分配仓库')"
           :title="tool.tool_name"
