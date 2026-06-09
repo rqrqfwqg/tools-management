@@ -191,7 +191,7 @@
               type="primary"
               @click="addToCart(tool)"
               :disabled="cartStore.hasItem(tool.tool_id)"
-              style="margin-left:8px"
+              style="margin-left:auto"
             >
               {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
             </van-button>
@@ -226,7 +226,7 @@
               type="primary"
               @click="addToCart(tool); showKitDetail = false"
               :disabled="cartStore.hasItem(tool.tool_id)"
-              style="margin-left:8px"
+              style="margin-left:auto"
             >
               {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
             </van-button>
