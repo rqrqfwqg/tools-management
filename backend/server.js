@@ -156,8 +156,8 @@ app.use((req, res) => {
 
 // ============ 启动 ============
 initDB();
-app.listen(PORT, () => {
-  console.log(`✅ 工器具管理系统后端运行在 http://localhost:${PORT}`);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`✅ 工器具管理系统后端运行在 http://127.0.0.1:${PORT}`);
   console.log(`   环境: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   API 文档: http://localhost:${PORT}/api/health`);
 });

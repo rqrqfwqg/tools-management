@@ -113,6 +113,33 @@ router.post('/orders', authenticate, [
   res.json(newOrder);
 });
 
+// 超时待审工单提醒（超过30分钟未审核）
+router.get('/orders/pending-alerts', authenticate, (req, res) => {
+  const db = readDB();
+  const now = new Date();
+  const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
+
+  const overdueOrders = (db.orders || []).filter(o => {
+    if (o.status !== 'pending') return false;
+    const created = new Date(o.created_at);
+    return created <= thirtyMinAgo;
+  }).map(o => ({
+    order_id: o.order_id,
+    order_no: o.order_no,
+    borrower_name: o.borrower_name,
+    created_at: o.created_at,
+    minutes_waiting: Math.floor((now - new Date(o.created_at)) / (60 * 1000)),
+    items_count: (o.items || []).length,
+    scene: o.scene || '',
+    warehouse: o.warehouse || ''
+  }));
+
+  res.json({
+    total: overdueOrders.length,
+    orders: overdueOrders
+  });
+});
+
 // 批准订单
 router.post('/orders/:id/approve', authenticate, requireApprover, (req, res) => {
   const orderId = parseInt(req.params.id);
