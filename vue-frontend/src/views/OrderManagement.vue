@@ -21,22 +21,22 @@
       row-class-name="clickable-row"
       @row-click="handleRowClick"
     >
-      <el-table-column prop="order_no" label="单号" width="160" />
-      <el-table-column prop="borrower_name" label="领用人" width="100" />
+      <el-table-column prop="order_no" label="单号" min-width="140" show-overflow-tooltip />
+      <el-table-column prop="borrower_name" label="领用人" min-width="80" show-overflow-tooltip />
       <el-table-column label="状态" width="100">
         <template #default="{row}">
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="warehouse" label="仓库" width="100" />
-      <el-table-column prop="scene" label="场景" width="100" />
-      <el-table-column prop="borrow_time" label="借出时间" width="160">
+      <el-table-column prop="warehouse" label="仓库" min-width="80" show-overflow-tooltip />
+      <el-table-column prop="scene" label="场景" min-width="80" show-overflow-tooltip />
+      <el-table-column prop="borrow_time" label="借出时间" min-width="140">
         <template #default="{row}">{{ formatTime(row.borrow_time) }}</template>
       </el-table-column>
-      <el-table-column prop="actual_return" label="实际归还" width="160">
+      <el-table-column prop="actual_return" label="实际归还" min-width="140">
         <template #default="{row}">{{ row.actual_return ? formatTime(row.actual_return) : '-' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="380" fixed="right">
+      <el-table-column label="操作" min-width="340" fixed="right">
         <template #default="{row}">
           <el-button size="small" type="info" @click.stop="handlePrint(row)">
             <el-icon><Printer /></el-icon> 打印
@@ -91,8 +91,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="tool_code" label="工具编码" />
-        <el-table-column prop="tool_name" label="工具名称" />
+        <el-table-column prop="tool_code" label="工具编码" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="tool_name" label="工具名称" min-width="120" show-overflow-tooltip />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{row: item}">
             <el-tag size="small" :type="itemStatusType(item.item_status)">

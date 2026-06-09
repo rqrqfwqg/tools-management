@@ -51,24 +51,24 @@
         </template>
       </el-table-column>
       <el-table-column prop="tool_id" label="ID" width="60" />
-      <el-table-column prop="tool_code" label="编码" width="120" />
-      <el-table-column prop="tool_name" label="名称" />
-      <el-table-column prop="category_name" label="分类" width="100" />
+      <el-table-column prop="tool_code" label="编码" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="tool_name" label="名称" min-width="120" show-overflow-tooltip />
+      <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />
       <el-table-column label="状态" width="90">
         <template #default="{row}">
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="warehouse" label="仓库" width="100" />
-      <el-table-column prop="storage_location" label="货位" width="100" />
-      <el-table-column label="工具包" width="120">
+      <el-table-column prop="warehouse" label="仓库" min-width="80" show-overflow-tooltip />
+      <el-table-column prop="storage_location" label="货位" min-width="80" show-overflow-tooltip />
+      <el-table-column label="工具包" min-width="100">
         <template #default="{row}">
           <el-tag v-if="row.toolkit_name" type="success" size="small">{{ row.toolkit_name }}</el-tag>
           <span v-else style="color:#ccc">-</span>
         </template>
       </el-table-column>
       <el-table-column prop="borrow_count" label="借次" width="70" />
-      <el-table-column label="操作" width="300">
+      <el-table-column label="操作" min-width="280" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" @click="openUploadDialog(row)" title="上传图片">

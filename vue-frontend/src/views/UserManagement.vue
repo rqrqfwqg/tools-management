@@ -17,17 +17,17 @@
     </div>
     <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="user_id" label="ID" width="60" />
-      <el-table-column prop="username" label="用户名" />
-      <el-table-column prop="real_name" label="姓名" />
-      <el-table-column prop="dept_name" label="部门" />
-      <el-table-column prop="role_name" label="角色" />
-      <el-table-column prop="phone" label="手机" width="130" />
+      <el-table-column prop="username" label="用户名" show-overflow-tooltip />
+      <el-table-column prop="real_name" label="姓名" show-overflow-tooltip />
+      <el-table-column prop="dept_name" label="部门" show-overflow-tooltip />
+      <el-table-column prop="role_name" label="角色" show-overflow-tooltip />
+      <el-table-column prop="phone" label="手机" min-width="110" />
       <el-table-column prop="is_active" label="状态" width="80">
         <template #default="{row}">
           <el-tag :type="row.is_active ? 'success' : 'danger'">{{ row.is_active ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280">
+      <el-table-column label="操作" min-width="260" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="warning" @click="handleResetPassword(row)">重置密码</el-button>

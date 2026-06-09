@@ -15,9 +15,9 @@
     </div>
     <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="warehouse_id" label="ID" width="60" />
-      <el-table-column prop="warehouse_code" label="编码" width="120" />
-      <el-table-column prop="warehouse_name" label="名称" />
-      <el-table-column prop="description" label="描述" />
+      <el-table-column prop="warehouse_code" label="编码" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="warehouse_name" label="名称" show-overflow-tooltip />
+      <el-table-column prop="description" label="描述" show-overflow-tooltip />
       <el-table-column label="隔离区" width="100">
         <template #default="{row}">
           <el-tag :type="row.is_restricted !== false ? 'danger' : 'success'" size="small">
@@ -32,7 +32,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" min-width="160">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="danger" @click="handleDelete(row.warehouse_id)">删除</el-button>

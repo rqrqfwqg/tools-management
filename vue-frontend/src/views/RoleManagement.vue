@@ -7,8 +7,8 @@
     </div>
     <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="role_id" label="ID" width="60" />
-      <el-table-column prop="role_name" label="角色名称" width="120" />
-      <el-table-column prop="role_code" label="编码" width="140" />
+      <el-table-column prop="role_name" label="角色名称" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="role_code" label="编码" min-width="100" show-overflow-tooltip />
       <el-table-column label="审批工单" width="90" align="center">
         <template #default="{row}">
           <el-tag :type="row.permissions?.approve_orders ? 'success' : 'info'" size="small">{{ row.permissions?.approve_orders ? '是' : '否' }}</el-tag>
@@ -35,7 +35,7 @@
         </template>
       </el-table-column>
       <el-table-column prop="user_count" label="用户数" width="70" />
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" min-width="140" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="danger" @click="handleDelete(row.role_id)" :disabled="row.is_system || row.user_count > 0">删除</el-button>

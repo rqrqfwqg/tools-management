@@ -35,13 +35,13 @@
               <el-table-column label="编号" width="70">
                 <template #default="{ row: t }">{{ t.toolkit_seq }}</template>
               </el-table-column>
-              <el-table-column label="编码" width="120">
+              <el-table-column label="编码" min-width="100">
                 <template #default="{ row: t }">{{ t.tool_code }}</template>
               </el-table-column>
-              <el-table-column label="名称">
+              <el-table-column label="名称" show-overflow-tooltip>
                 <template #default="{ row: t }">{{ t.tool_name }}</template>
               </el-table-column>
-              <el-table-column label="分类" width="100">
+              <el-table-column label="分类" min-width="80">
                 <template #default="{ row: t }">{{ t.category_name }}</template>
               </el-table-column>
               <el-table-column label="状态" width="80">
@@ -49,7 +49,7 @@
                   <el-tag :type="statusType(t.status)" size="small">{{ statusText(t.status) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="仓库" width="100">
+              <el-table-column label="仓库" min-width="80">
                 <template #default="{ row: t }">{{ t.warehouse }}</template>
               </el-table-column>
               <el-table-column label="操作" width="80">
@@ -63,17 +63,17 @@
       </el-table-column>
 
       <el-table-column prop="toolkit_id" label="ID" width="60" />
-      <el-table-column prop="toolkit_name" label="工具箱名称" />
-      <el-table-column prop="description" label="描述" />
+      <el-table-column prop="toolkit_name" label="工具箱名称" show-overflow-tooltip />
+      <el-table-column prop="description" label="描述" show-overflow-tooltip />
       <el-table-column label="工具数量" width="100">
         <template #default="{ row }">
           <el-tag type="success" size="small">{{ row.tool_count }} 件</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="创建时间" width="180">
+      <el-table-column label="创建时间" min-width="160">
         <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" min-width="240" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
           <el-button size="small" @click="openAddTools(row)">添加工具</el-button>

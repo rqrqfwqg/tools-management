@@ -14,14 +14,14 @@
     </div>
     <el-table :data="filteredList" style="margin-top:0">
       <el-table-column prop="shelf_id" label="ID" width="60" />
-      <el-table-column prop="shelf_code" label="编码" width="100" />
-      <el-table-column prop="shelf_name" label="名称" />
-      <el-table-column label="所属仓库" width="150">
+      <el-table-column prop="shelf_code" label="编码" min-width="80" show-overflow-tooltip />
+      <el-table-column prop="shelf_name" label="名称" show-overflow-tooltip />
+      <el-table-column label="所属仓库" min-width="120" show-overflow-tooltip>
         <template #default="{row}">
           {{ getWarehouseName(row.warehouse_id) }}
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="描述" />
+      <el-table-column prop="description" label="描述" show-overflow-tooltip />
       <el-table-column label="状态" width="80">
         <template #default="{row}">
           <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
@@ -29,7 +29,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" min-width="160">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="danger" @click="handleDelete(row.shelf_id)">删除</el-button>
