@@ -36,6 +36,9 @@ app.use(cors({
   origin: (origin, callback) => {
     // origin 为 undefined 表示同源请求（如 curl localhost），直接放行
     if (!origin) return callback(null, true);
+    // 通配符 * 表示允许所有来源
+    if (allowedOrigins.includes('*')) return callback(null, true);
+    // 精确匹配
     if (allowedOrigins.includes(origin)) return callback(null, true);
     // 开发环境兜底放行
     if (process.env.NODE_ENV === 'development') return callback(null, true);
