@@ -3,7 +3,7 @@ import type { User, Dept, Category, Tool, Order, Role, DashboardStats } from '@/
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 10000
+  timeout: 30000
 })
 
 request.interceptors.request.use(config => {
@@ -18,9 +18,14 @@ request.interceptors.request.use(config => {
 request.interceptors.response.use(
   res => res,
   err => {
+    // 忽略请求取消（如页面跳转导致的 abort），避免日志噪音
+    if (axios.isCancel(err)) {
+      return Promise.reject(err)
+    }
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      // 用 replace 避免 history 堆积，且不会触发并行请求的级联取消
+      location.replace('/login')
     }
     return Promise.reject(err)
   }

@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import { ElMessage } from 'element-plus'
+import axios from 'axios'
 import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
@@ -12,6 +13,8 @@ const pinia = createPinia()
 
 // 全局 Vue 错误处理
 app.config.errorHandler = (err: unknown, _instance, _info) => {
+  // 忽略 axios 请求取消（页面跳转/超时导致的 abort）
+  if (axios.isCancel(err)) return
   console.error('[全局错误]', err)
   ElMessage.error(err instanceof Error ? err.message : '发生未知错误，请刷新重试')
 }

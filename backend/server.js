@@ -63,8 +63,14 @@ app.use((req, res, next) => {
   jsonParser(req, res, (err) => {
     if (err && err.status !== 400) return next(err);
     if (!err) return next();
-    // JSON 解析失败 → 尝试 urlencoded
-    urlencodedParser(req, res, next);
+    // JSON 解析失败（status 400）→ 尝试 urlencoded
+    urlencodedParser(req, res, (err2) => {
+      if (err2) {
+        // 两种解析都失败，打印调试信息
+        console.error(`[BodyParser] ${req.method} ${req.path} — body parse failed, ct="${ct}", body_len=${(req.body || '').length || 0}`);
+      }
+      next(err2);
+    });
   });
 });
 
