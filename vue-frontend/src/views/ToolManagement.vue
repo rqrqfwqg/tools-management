@@ -59,19 +59,6 @@
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="领用" width="70" align="center">
-        <template #default="{row}">
-          <el-button
-            size="small"
-            type="primary"
-            @click="handleAddToCart(row)"
-            :disabled="row.status !== 'available'"
-            style="padding:2px 8px;font-size:12px"
-          >
-            领用
-          </el-button>
-        </template>
-      </el-table-column>
       <el-table-column prop="warehouse" label="仓库" width="100" />
       <el-table-column prop="storage_location" label="货位" width="100" />
       <el-table-column label="工具包" width="120">
@@ -81,11 +68,19 @@
         </template>
       </el-table-column>
       <el-table-column prop="borrow_count" label="借次" width="70" />
-      <el-table-column label="操作" width="230">
+      <el-table-column label="操作" width="300">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" @click="openUploadDialog(row)" title="上传图片">
             <el-icon><Upload /></el-icon>
+          </el-button>
+          <el-button
+            size="small"
+            type="primary"
+            @click="handleAddToCart(row)"
+            :disabled="row.status !== 'available'"
+          >
+            加入购物车
           </el-button>
           <el-button size="small" type="danger" @click="handleDelete(row.tool_id)">删除</el-button>
         </template>

@@ -185,14 +185,13 @@
             <van-tag v-if="tool.toolkit_name" plain type="success" size="medium" style="margin-left: 4px">
               {{ tool.toolkit_name }}
             </van-tag>
-          </template>
-          <template #footer>
             <van-button
               v-if="tool.status === 'available'"
               size="small"
               type="primary"
               @click="addToCart(tool)"
               :disabled="cartStore.hasItem(tool.tool_id)"
+              style="margin-left:8px"
             >
               {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
             </van-button>
@@ -221,14 +220,13 @@
             <van-tag :type="statusTagType(tool.status)" size="medium">
               {{ statusLabel(tool.status) }}
             </van-tag>
-          </template>
-          <template #footer>
             <van-button
               v-if="tool.status === 'available'"
               size="small"
               type="primary"
               @click="addToCart(tool); showKitDetail = false"
               :disabled="cartStore.hasItem(tool.tool_id)"
+              style="margin-left:8px"
             >
               {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
             </van-button>
