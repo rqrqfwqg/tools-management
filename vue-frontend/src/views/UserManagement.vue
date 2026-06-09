@@ -141,6 +141,7 @@ const handleSave = async () => {
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
+    load()
     loadDepts()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '操作失败')
@@ -152,6 +153,7 @@ const handleDelete = async (id: number) => {
   try {
     await deleteUser(id)
     ElMessage.success('删除成功')
+    load()
     loadDepts()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '删除失败')

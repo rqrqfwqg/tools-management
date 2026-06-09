@@ -33,11 +33,9 @@ import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/store/auth'
 import { useCartStore } from '@/store/cart'
 import { getDashboardStats } from '@/api'
-import { useAutoLogout } from '@/composables/useAutoLogout'
 
 const authStore = useAuthStore()
 const cartStore = useCartStore()
-useAutoLogout(10)
 
 const stats = ref<Record<string, number>>({})
 const cartCount = computed(() => cartStore.count)

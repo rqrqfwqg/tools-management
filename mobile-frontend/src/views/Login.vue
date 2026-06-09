@@ -24,6 +24,9 @@
           left-icon="lock"
         />
       </van-cell-group>
+      <div style="margin: 8px 16px 0">
+        <van-checkbox v-model="rememberMe" shape="square">记住密码</van-checkbox>
+      </div>
       <div style="margin: 16px">
         <van-button round block type="primary" native-type="submit" :loading="loading">
           登录
@@ -34,17 +37,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { login } from '@/api'
 import { showToast } from 'vant'
 
+const REMEMBER_KEY = 'saved_credentials'
+
 const router = useRouter()
 const authStore = useAuthStore()
 const phone = ref('')
 const password = ref('')
+const rememberMe = ref(false)
 const loading = ref(false)
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(REMEMBER_KEY)
+    if (saved) {
+      const cred = JSON.parse(saved)
+      phone.value = cred.phone || ''
+      password.value = cred.password || ''
+      rememberMe.value = true
+    }
+  } catch {
+    // ignore
+  }
+})
 
 async function handleLogin() {
   if (!phone.value || !password.value) return
@@ -53,6 +73,17 @@ async function handleLogin() {
     const res = await login(phone.value, password.value)
     authStore.setToken(res.access_token)
     authStore.setUser(res.user)
+
+    // 记住密码
+    if (rememberMe.value) {
+      localStorage.setItem(REMEMBER_KEY, JSON.stringify({
+        phone: phone.value,
+        password: password.value
+      }))
+    } else {
+      localStorage.removeItem(REMEMBER_KEY)
+    }
+
     showToast('登录成功')
     router.push('/dashboard')
   } catch (e: any) {
