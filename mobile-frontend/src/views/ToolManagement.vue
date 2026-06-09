@@ -176,25 +176,29 @@
           style="margin-bottom: 8px"
         >
           <template #tags>
-            <van-tag :type="statusTagType(tool.status)" size="medium">
-              {{ statusLabel(tool.status) }}
-            </van-tag>
-            <van-tag v-if="tool.shelf" plain type="primary" size="medium" style="margin-left: 4px">
-              {{ tool.shelf }}
-            </van-tag>
-            <van-tag v-if="tool.toolkit_name" plain type="success" size="medium" style="margin-left: 4px">
-              {{ tool.toolkit_name }}
-            </van-tag>
-            <van-button
-              v-if="tool.status === 'available'"
-              size="small"
-              type="primary"
-              @click="addToCart(tool)"
-              :disabled="cartStore.hasItem(tool.tool_id)"
-              style="margin-left:auto"
-            >
-              {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
-            </van-button>
+            <div class="tool-tags-row">
+              <span class="tool-tags-left">
+                <van-tag :type="statusTagType(tool.status)" size="medium">
+                  {{ statusLabel(tool.status) }}
+                </van-tag>
+                <van-tag v-if="tool.shelf" plain type="primary" size="medium" style="margin-left: 4px">
+                  {{ tool.shelf }}
+                </van-tag>
+                <van-tag v-if="tool.toolkit_name" plain type="success" size="medium" style="margin-left: 4px">
+                  {{ tool.toolkit_name }}
+                </van-tag>
+              </span>
+              <van-button
+                v-if="tool.status === 'available'"
+                size="small"
+                type="primary"
+                @click="addToCart(tool)"
+                :disabled="cartStore.hasItem(tool.tool_id)"
+                class="tool-borrow-btn"
+              >
+                {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
+              </van-button>
+            </div>
           </template>
         </van-card>
       </van-list>
@@ -217,19 +221,23 @@
           style="margin-bottom: 4px"
         >
           <template #tags>
-            <van-tag :type="statusTagType(tool.status)" size="medium">
-              {{ statusLabel(tool.status) }}
-            </van-tag>
-            <van-button
-              v-if="tool.status === 'available'"
-              size="small"
-              type="primary"
-              @click="addToCart(tool); showKitDetail = false"
-              :disabled="cartStore.hasItem(tool.tool_id)"
-              style="margin-left:auto"
-            >
-              {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
-            </van-button>
+            <div class="tool-tags-row">
+              <span class="tool-tags-left">
+                <van-tag :type="statusTagType(tool.status)" size="medium">
+                  {{ statusLabel(tool.status) }}
+                </van-tag>
+              </span>
+              <van-button
+                v-if="tool.status === 'available'"
+                size="small"
+                type="primary"
+                @click="addToCart(tool); showKitDetail = false"
+                :disabled="cartStore.hasItem(tool.tool_id)"
+                class="tool-borrow-btn"
+              >
+                {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
+              </van-button>
+            </div>
           </template>
         </van-card>
         <div class="kit-detail-actions">
@@ -615,5 +623,25 @@ onMounted(async () => {
 
 .filter-actions {
   margin-top: 20px;
+}
+
+/* 工具卡片标签行：左标签 + 右领用按钮 */
+.tool-tags-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.tool-tags-left {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tool-borrow-btn {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 </style>
