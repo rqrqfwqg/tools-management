@@ -174,6 +174,7 @@
           :title="tool.tool_name"
           :thumb="tool.image_url ? tool.image_url : ''"
           style="margin-bottom: 8px"
+          @click="openDetail(tool)"
         >
           <template #tags>
             <div class="tool-tags-row">
@@ -248,6 +249,112 @@
       </div>
     </van-action-sheet>
 
+    <!-- 工具详情弹出层 -->
+    <van-popup v-model:show="showDetail" position="bottom" round :style="{ height: '80%' }" closeable>
+      <div class="detail-panel" v-if="detailTool">
+        <!-- 工具图片 -->
+        <div class="detail-image-section">
+          <van-image
+            v-if="detailTool.image_url"
+            :src="detailTool.image_url"
+            fit="cover"
+            width="100%"
+            height="200"
+            radius="8"
+            @click="previewImage"
+          />
+          <div v-else class="detail-image-placeholder">
+            <van-icon name="photo-o" size="56" color="#c8c9cc" />
+            <p>暂无图片</p>
+          </div>
+        </div>
+
+        <!-- 工具基本信息 -->
+        <van-cell-group inset>
+          <van-cell title="工具名称" :value="detailTool.tool_name" />
+          <van-cell title="工具编码" :value="detailTool.tool_code" />
+          <van-cell title="分类" :value="detailTool.category_name || '-'" />
+          <van-cell title="状态">
+            <template #value>
+              <van-tag :type="statusTagType(detailTool.status)" size="medium">
+                {{ statusLabel(detailTool.status) }}
+              </van-tag>
+            </template>
+          </van-cell>
+          <van-cell title="仓库" :value="detailTool.warehouse || '未分配'" />
+          <van-cell title="描述" :label="detailTool.description || '无'" />
+        </van-cell-group>
+
+        <!-- 图片上传（仅管理员/审批人可见） -->
+        <div v-if="authStore.isApprover" class="upload-section">
+          <div class="upload-title">更新图片</div>
+          <div class="upload-buttons">
+            <van-button
+              type="primary"
+              size="small"
+              icon="photograph"
+              :loading="uploading"
+              @click="triggerCamera"
+            >拍照</van-button>
+            <van-button
+              type="default"
+              size="small"
+              icon="photo"
+              :loading="uploading"
+              @click="triggerGallery"
+            >相册</van-button>
+            <van-button
+              v-if="detailTool.image_url"
+              type="danger"
+              size="small"
+              icon="delete-o"
+              :loading="uploading"
+              @click="deleteImage"
+            >删除</van-button>
+          </div>
+          <!-- 上传进度提示 -->
+          <div v-if="uploadMsg" class="upload-msg" :class="{ 'upload-error': uploadError }">
+            {{ uploadMsg }}
+          </div>
+          <!-- 隐藏的文件选择器 -->
+          <input
+            ref="cameraInput"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style="display:none"
+            @change="onFileChange"
+          />
+          <input
+            ref="galleryInput"
+            type="file"
+            accept="image/*"
+            style="display:none"
+            @change="onFileChange"
+          />
+        </div>
+
+        <!-- 领用按钮 -->
+        <div class="detail-actions">
+          <van-button
+            v-if="detailTool.status === 'available'"
+            type="primary"
+            block
+            round
+            @click="addToCart(detailTool); showDetail = false"
+            :disabled="cartStore.hasItem(detailTool.tool_id)"
+          >{{ cartStore.hasItem(detailTool.tool_id) ? '已在领用篮' : '加入领用篮' }}</van-button>
+        </div>
+      </div>
+    </van-popup>
+
+    <!-- 图片预览 -->
+    <van-image-preview
+      v-model:show="showPreview"
+      :images="previewImages"
+      :start-position="0"
+    />
+
     <!-- 浮动购物车按钮 -->
     <div v-if="cartCount > 0" class="cart-float" @click="$router.push('/cart')">
       <van-badge :content="cartCount">
@@ -268,11 +375,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCartStore } from '@/store/cart'
-import { getTools, getWarehouses, getShelves, getLocations, getToolkits } from '@/api'
-import { showToast } from 'vant'
+import { useAuthStore } from '@/store/auth'
+import { getTools, getWarehouses, getShelves, getLocations, getToolkits, uploadToolImage, updateTool } from '@/api'
+import { showToast, showSuccessToast, showFailToast } from 'vant'
 
 const route = useRoute()
 const cartStore = useCartStore()
+const authStore = useAuthStore()
 
 const list = ref<any[]>([])
 const keyword = ref('')
@@ -289,6 +398,17 @@ const showFilter = ref(false)
 const viewMode = ref('tools')
 const showKitDetail = ref(false)
 const selectedKit = ref('')
+
+// 工具详情 + 图片上传
+const showDetail = ref(false)
+const detailTool = ref<any>(null)
+const uploading = ref(false)
+const uploadMsg = ref('')
+const uploadError = ref(false)
+const cameraInput = ref<HTMLInputElement | null>(null)
+const galleryInput = ref<HTMLInputElement | null>(null)
+const showPreview = ref(false)
+const previewImages = ref<string[]>([])
 
 // 下拉数据源
 const warehouses = ref<any[]>([])
@@ -391,6 +511,92 @@ function addToCart(tool: any) {
     image_url: tool.image_url || ''
   })
   showToast('已添加到领用篮')
+}
+
+// ===== 工具详情 + 图片上传 =====
+function openDetail(tool: any) {
+  detailTool.value = { ...tool }
+  showDetail.value = true
+  uploadMsg.value = ''
+  uploadError.value = false
+}
+
+function triggerCamera() {
+  cameraInput.value?.click()
+}
+
+function triggerGallery() {
+  galleryInput.value?.click()
+}
+
+function previewImage() {
+  if (detailTool.value?.image_url) {
+    previewImages.value = [detailTool.value.image_url]
+    showPreview.value = true
+  }
+}
+
+async function onFileChange(e: Event) {
+  const target = e.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file || !detailTool.value) return
+
+  // 前端预检：限制 10MB
+  if (file.size > 10 * 1024 * 1024) {
+    showFailToast('图片不能超过 10MB')
+    target.value = ''
+    return
+  }
+
+  uploading.value = true
+  uploadMsg.value = '上传中...'
+  uploadError.value = false
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const res = await uploadToolImage(detailTool.value.tool_id, formData)
+    // 更新本地状态
+    detailTool.value.image_url = res.image_url
+    // 同步更新列表中对应工具的 image_url
+    const idx = list.value.findIndex(t => t.tool_id === detailTool.value!.tool_id)
+    if (idx > -1) list.value[idx].image_url = res.image_url
+
+    uploadMsg.value = `上传成功 (已压缩至 ${(res.compressed_size / 1024).toFixed(0)}KB)`
+    showSuccessToast('图片上传成功')
+  } catch (err: any) {
+    uploadError.value = true
+    const msg = err.response?.data?.message || err.message || '上传失败'
+    uploadMsg.value = msg
+    showFailToast(msg)
+  } finally {
+    uploading.value = false
+    target.value = ''
+  }
+}
+
+async function deleteImage() {
+  if (!detailTool.value) return
+  uploading.value = true
+  uploadMsg.value = '删除中...'
+  uploadError.value = false
+
+  try {
+    // 通过更新工具清空 image_url
+    await updateTool(detailTool.value.tool_id, { image_url: '' })
+    detailTool.value.image_url = ''
+    const idx = list.value.findIndex(t => t.tool_id === detailTool.value!.tool_id)
+    if (idx > -1) list.value[idx].image_url = ''
+    uploadMsg.value = ''
+    showSuccessToast('图片已删除')
+  } catch (err: any) {
+    uploadError.value = true
+    uploadMsg.value = err.response?.data?.message || '删除失败'
+    showFailToast('删除失败')
+  } finally {
+    uploading.value = false
+  }
 }
 
 function selectWarehouse(val: string) {
@@ -643,5 +849,68 @@ onMounted(async () => {
 .tool-borrow-btn {
   flex-shrink: 0;
   margin-left: 8px;
+}
+
+/* ===== 工具详情弹出层 ===== */
+.detail-panel {
+  padding: 16px 16px 32px;
+  min-height: 50vh;
+}
+
+.detail-image-section {
+  margin-bottom: 16px;
+}
+
+.detail-image-placeholder {
+  width: 100%;
+  height: 200px;
+  border-radius: 8px;
+  background: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #c8c9cc;
+  font-size: 14px;
+}
+
+.detail-image-placeholder p {
+  margin: 0;
+}
+
+/* 图片上传 */
+.upload-section {
+  margin-top: 16px;
+  padding: 0 8px;
+}
+
+.upload-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #323233;
+  margin-bottom: 10px;
+}
+
+.upload-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.upload-msg {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #07c160;
+}
+
+.upload-msg.upload-error {
+  color: #ee0a24;
+}
+
+/* 底部操作 */
+.detail-actions {
+  margin-top: 24px;
+  padding: 0 8px;
 }
 </style>

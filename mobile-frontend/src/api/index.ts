@@ -86,8 +86,10 @@ export const getRoles = () => api.get('/roles').then(r => r.data)
 // Dashboard
 export const getDashboardStats = () => api.get('/dashboard').then(r => r.data)
 
-// Upload
-export const uploadImage = (formData: FormData) =>
-  api.post('/upload-image', formData).then(r => r.data)
+// Upload — 上传工具图片（需要 token 鉴权 + material_manager 角色）
+export const uploadToolImage = (toolId: number, formData: FormData) =>
+  api.post(`/tools/${toolId}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data)
 
 export default api

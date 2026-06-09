@@ -228,7 +228,7 @@ router.post('/tools', authenticate, requireMaterialManager, [
 // 更新工具
 router.put('/tools/:id', authenticate, requireMaterialManager, (req, res) => {
   const toolId = parseInt(req.params.id);
-  const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description, toolkit, toolkit_name } = req.body;
+  const { tool_code, tool_name, category_id, warehouse_id, shelf_id, storage_location_id, status, description, toolkit, toolkit_name, image_url } = req.body;
   const db = readDB();
 
   const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
@@ -251,7 +251,8 @@ router.put('/tools/:id', authenticate, requireMaterialManager, (req, res) => {
     storage_location: location ? `${shelf?.shelf_name || ''}${location.location_name}` : (storage_location_id === null ? '' : db.tools[toolIndex].storage_location),
     status: status || db.tools[toolIndex].status,
     description: description !== undefined ? description : db.tools[toolIndex].description,
-    toolkit_name: toolkit_name !== undefined ? toolkit_name : (toolkit !== undefined ? toolkit : db.tools[toolIndex].toolkit_name)
+    toolkit_name: toolkit_name !== undefined ? toolkit_name : (toolkit !== undefined ? toolkit : db.tools[toolIndex].toolkit_name),
+    image_url: image_url !== undefined ? image_url : db.tools[toolIndex].image_url
   };
 
   writeDB(db);
