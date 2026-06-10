@@ -170,7 +170,7 @@ const filteredList = computed(() => {
 
 function formatTime(t: string) {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN')
+  return new Date(t).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
 }
 
 function showActions(order: any) {

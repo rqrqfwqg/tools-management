@@ -97,4 +97,16 @@ function nextId(arr, key) {
   return Math.max(...arr.map(item => item[key]), 0) + 1;
 }
 
-module.exports = { initDB, readDB, writeDB, nextId, DB_PATH };
+function nowCST() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const M = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  const ms = String(now.getMilliseconds()).padStart(3, '0');
+  return `${y}-${M}-${d}T${h}:${m}:${s}.${ms}+08:00`;
+}
+
+module.exports = { initDB, readDB, writeDB, nextId, nowCST, DB_PATH };

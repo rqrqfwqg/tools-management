@@ -2,6 +2,10 @@
   <div class="page-container">
     <van-nav-bar title="用户管理" left-text="返回" left-arrow @click-left="$router.back()" fixed placeholder />
 
+    <van-dropdown-menu>
+      <van-dropdown-item v-model="deptFilter" :options="deptFilterOptions" />
+    </van-dropdown-menu>
+
     <van-search v-model="keyword" placeholder="搜索姓名/用户名/手机" shape="round" />
 
     <van-button type="primary" block round style="margin:10px 0" @click="openDialog()">新增用户</van-button>
@@ -57,12 +61,20 @@ const form = ref<any>({ role: 'staff', is_active: true })
 
 const deptColumns = computed(() => depts.value.map((d: any) => ({ text: d.dept_name, value: d.dept_id })))
 
+const deptFilter = ref('')
+
+const deptFilterOptions = computed(() => [
+  { text: '全部部门', value: '' },
+  ...depts.value.map((d: any) => ({ text: d.dept_name, value: String(d.dept_id) }))
+])
+
 const filteredList = computed(() => {
   return list.value.filter(u => {
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!u.real_name?.toLowerCase().includes(kw) && !u.username?.toLowerCase().includes(kw) && !u.phone?.includes(kw)) return false
     }
+    if (deptFilter.value && String(u.dept_id) !== deptFilter.value) return false
     return true
   })
 })

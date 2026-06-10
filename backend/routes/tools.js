@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const { body, validationResult } = require('express-validator');
-const { readDB, writeDB, nextId } = require('./db');
+const { readDB, writeDB, nextId, nowCST } = require('./db');
 const { authenticate, requireMaterialManager } = require('../middleware/auth');
 
 const router = express.Router();
@@ -96,7 +96,7 @@ router.post('/toolkits', authenticate, requireMaterialManager, (req, res) => {
     toolkit_id: nextId(db.toolkits || [], 'toolkit_id'),
     toolkit_name,
     description: description || '',
-    created_at: new Date().toISOString()
+    created_at: nowCST()
   };
   if (!db.toolkits) db.toolkits = [];
   db.toolkits.push(newKit);

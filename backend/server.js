@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
-const { initDB } = require('./routes/db');
+const { initDB, nowCST } = require('./routes/db');
 
 const app = express();
 app.set('trust proxy', 1);  // nginx 反向代理，express-rate-limit 需要此配置
@@ -92,7 +92,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     uptime: Math.floor(process.uptime()),
-    timestamp: new Date().toISOString(),
+    timestamp: nowCST(),
     version: '2.0.0',
     node_env: process.env.NODE_ENV || 'development'
   });

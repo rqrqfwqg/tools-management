@@ -2,7 +2,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
-const { readDB, writeDB, nextId } = require('./db');
+const { readDB, writeDB, nextId, nowCST } = require('./db');
 const { authenticate, requireAdmin, requireApprover } = require('../middleware/auth');
 
 const router = express.Router();
@@ -95,11 +95,11 @@ router.post('/orders', authenticate, [
     borrower_id: user.user_id,
     status: 'pending',
     warehouse: warehouse || '', scene: scene || '',
-    borrow_time: new Date().toISOString(),
+    borrow_time: nowCST(),
     expected_return: expected_return || null,
     actual_return: null, purpose: purpose || '',
     require_approval: true,
-    created_at: new Date().toISOString(),
+    created_at: nowCST(),
     items: items
   };
 
@@ -195,7 +195,7 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
     item.item_status = 'returned';
   }
   db.orders[orderIndex].status = 'returned';
-  db.orders[orderIndex].actual_return = new Date().toISOString();
+  db.orders[orderIndex].actual_return = nowCST();
   writeDB(db);
   res.json({ message: '已归还' });
 });

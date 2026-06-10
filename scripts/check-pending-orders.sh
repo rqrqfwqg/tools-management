@@ -1,11 +1,9 @@
 #!/bin/bash
-# 检查超时未审核工单（超过30分钟）
-# 直接读取 db.json，不需要认证
-
+# 检查超时未审核工单，直接输出格式化提醒消息
 DB_PATH="/opt/tools-management/backend/db.json"
 
 if [ ! -f "$DB_PATH" ]; then
-  echo '{"total":0,"orders":[],"error":"数据库文件不存在"}'
+  echo "NO_REPLY"
   exit 0
 fi
 
@@ -19,22 +17,26 @@ const overdue = (db.orders || []).filter(o => {
   if (o.status !== "pending") return false;
   const created = new Date(o.created_at);
   return created <= thirtyMinAgo;
-}).map(o => ({
-  order_id: o.order_id,
-  order_no: o.order_no,
-  borrower_name: o.borrower_name,
-  borrower_id: o.borrower_id,
-  created_at: o.created_at,
-  minutes_waiting: Math.floor((now - new Date(o.created_at)) / (60 * 1000)),
-  items_count: (o.items || []).length,
-  items: (o.items || []).map(i => i.tool_name),
-  scene: o.scene || "",
-  warehouse: o.warehouse || ""
-}));
+});
 
-console.log(JSON.stringify({
-  total: overdue.length,
-  checked_at: now.toISOString(),
-  orders: overdue
-}));
+if (overdue.length === 0) {
+  console.log("NO_REPLY");
+  process.exit(0);
+}
+
+const formatCST = (iso) => new Date(iso).toLocaleString("zh-CN", {timeZone:"Asia/Shanghai", hour12:false});
+
+let msg = "⚠️ 有工单等待审核！\n\n";
+overdue.forEach((o, i) => {
+  const items = (o.items || []).map(i => i.tool_name).join("、");
+  const mins = Math.floor((now - new Date(o.created_at)) / 60000);
+  msg += `工单 #${o.order_no || o.order_id}\n`
+       + `申请人：${o.borrower_name}\n`
+       + `时间：${formatCST(o.created_at)}（已等${mins}分钟）\n`
+       + `物品：${items}\n`;
+  if (o.scene) msg += `场景：${o.scene}\n`;
+  if (i < overdue.length - 1) msg += "——\n";
+});
+
+console.log(msg);
 '
