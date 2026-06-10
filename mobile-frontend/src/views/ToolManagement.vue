@@ -177,16 +177,15 @@
               <van-icon v-else name="photo-o" size="36" color="#c8c9cc" />
             </div>
             <div class="tool-card-info">
-              <div class="tool-card-title">{{ tool.tool_name }}</div>
+              <div class="tool-card-title">
+                {{ tool.tool_name }}
+                <van-tag :type="statusTagType(tool.status)" size="medium" class="status-inline">
+                  {{ statusLabel(tool.status) }}
+                </van-tag>
+              </div>
               <div class="tool-card-code">{{ tool.tool_code }}</div>
               <div class="tool-card-desc">{{ cardDesc(tool) }}</div>
               <div class="tool-card-tags">
-                <van-tag :type="statusTagType(tool.status)" size="medium">
-                  {{ statusLabel(tool.status) }}
-                </van-tag>
-                <van-tag v-if="tool.shelf_name" plain type="primary" size="medium">
-                  {{ tool.shelf_name }}
-                </van-tag>
                 <van-tag v-if="tool.location_name" plain type="warning" size="medium">
                   {{ tool.location_name }}
                 </van-tag>
@@ -230,12 +229,20 @@
               <van-icon v-else name="photo-o" size="36" color="#c8c9cc" />
             </div>
             <div class="tool-card-info">
-              <div class="tool-card-title">{{ tool.tool_name }}</div>
+              <div class="tool-card-title">
+                {{ tool.tool_name }}
+                <van-tag :type="statusTagType(tool.status)" size="medium" class="status-inline">
+                  {{ statusLabel(tool.status) }}
+                </van-tag>
+              </div>
               <div class="tool-card-code">{{ tool.tool_code }}</div>
               <div class="tool-card-desc">{{ cardDesc(tool) }}</div>
               <div class="tool-card-tags">
-                <van-tag :type="statusTagType(tool.status)" size="medium">
-                  {{ statusLabel(tool.status) }}
+                <van-tag v-if="tool.location_name" plain type="warning" size="medium">
+                  {{ tool.location_name }}
+                </van-tag>
+                <van-tag v-if="tool.toolkit_name" plain type="success" size="medium">
+                  {{ tool.toolkit_name }}
                 </van-tag>
               </div>
             </div>
@@ -912,9 +919,17 @@ onMounted(async () => {
   font-weight: 600;
   color: #323233;
   line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-card-title .status-inline {
+  flex-shrink: 0;
+}
+
+.tool-card-title::after {
+  content: '';
 }
 
 .tool-card-code {
