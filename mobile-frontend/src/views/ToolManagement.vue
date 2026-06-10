@@ -170,7 +170,7 @@
           v-for="tool in filteredList"
           :key="tool.tool_id"
           :price="tool.tool_code"
-          :desc="tool.category_name + ' | ' + (tool.warehouse || '未分配仓库')"
+          :desc="cardDesc(tool)"
           :title="tool.tool_name"
           :thumb="tool.image_url ? tool.image_url : ''"
           style="margin-bottom: 8px"
@@ -182,8 +182,11 @@
                 <van-tag :type="statusTagType(tool.status)" size="medium">
                   {{ statusLabel(tool.status) }}
                 </van-tag>
-                <van-tag v-if="tool.shelf" plain type="primary" size="medium" style="margin-left: 4px">
-                  {{ tool.shelf }}
+                <van-tag v-if="tool.shelf_name" plain type="primary" size="medium" style="margin-left: 4px">
+                  {{ tool.shelf_name }}
+                </van-tag>
+                <van-tag v-if="tool.location_name" plain type="warning" size="medium" style="margin-left: 4px">
+                  {{ tool.location_name }}
                 </van-tag>
                 <van-tag v-if="tool.toolkit_name" plain type="success" size="medium" style="margin-left: 4px">
                   {{ tool.toolkit_name }}
@@ -216,7 +219,7 @@
           v-for="tool in kitDetailTools"
           :key="tool.tool_id"
           :price="tool.tool_code"
-          :desc="tool.warehouse || '未分配仓库'"
+          :desc="cardDesc(tool)"
           :title="tool.tool_name"
           :thumb="tool.image_url || ''"
           style="margin-bottom: 4px"
@@ -282,6 +285,8 @@
             </template>
           </van-cell>
           <van-cell title="仓库" :value="detailTool.warehouse || '未分配'" />
+          <van-cell title="货架" :value="detailTool.shelf_name || '未分配'" />
+          <van-cell title="货位" :value="detailTool.location_name || '未分配'" />
           <van-cell title="描述" :label="detailTool.description || '无'" />
         </van-cell-group>
 
@@ -458,6 +463,14 @@ const statusLabel = (s: string) => {
 const statusTagType = (s: string) => {
   const map: Record<string, string> = { available: 'success', borrowed: 'warning', maintenance: 'primary', scrapped: '' }
   return (map[s] || '') as any
+}
+
+const cardDesc = (tool: any) => {
+  const parts = [tool.category_name || '']
+  parts.push(tool.warehouse || '未分配仓库')
+  if (tool.shelf_name) parts.push(tool.shelf_name)
+  if (tool.location_name) parts.push(tool.location_name)
+  return parts.join(' > ')
 }
 
 const cartCount = computed(() => cartStore.count)

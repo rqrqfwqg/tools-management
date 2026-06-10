@@ -24,15 +24,27 @@ router.get('/tools', authenticate, (req, res) => {
   const tools = db.tools || [];
   const toolkits = db.toolkits || [];
   const kitItems = db.toolkit_items || [];
+  const shelves = db.shelves || [];
+  const locations = db.storage_locations || [];
 
-  // 注入 toolkit_name 和 toolkit_seq
+  // 注入 toolkit_name / toolkit_seq / shelf_name / location_name
   const enriched = tools.map(tool => {
+    const shelf = shelves.find(s => s.shelf_id === tool.shelf_id);
+    const loc = locations.find(l => l.location_id === tool.storage_location_id);
+    const result = {
+      ...tool,
+      shelf_name: shelf?.shelf_name || '',
+      location_name: loc?.location_name || loc?.location_code || '',
+      toolkit_name: '',
+      toolkit_seq: 0
+    };
     const item = kitItems.find(i => i.tool_id === tool.tool_id);
     if (item) {
       const kit = toolkits.find(k => k.toolkit_id === item.toolkit_id);
-      return { ...tool, toolkit_name: kit?.toolkit_name || '', toolkit_seq: item.sort_order || 0 };
+      result.toolkit_name = kit?.toolkit_name || '';
+      result.toolkit_seq = item.sort_order || 0;
     }
-    return { ...tool, toolkit_name: '', toolkit_seq: 0 };
+    return result;
   });
 
   enriched.sort((a, b) => (b.borrow_count || 0) - (a.borrow_count || 0));
