@@ -166,45 +166,49 @@
         :finished="true"
         finished-text=""
       >
-        <van-card
+        <div
           v-for="tool in filteredList"
           :key="tool.tool_id"
-          :price="tool.tool_code"
-          :desc="cardDesc(tool)"
-          :title="tool.tool_name"
-          :thumb="tool.image_url ? tool.image_url : ''"
-          style="margin-bottom: 8px"
-          @click="openDetail(tool)"
+          class="tool-card"
         >
-          <template #tags>
-            <div class="tool-tags-row">
-              <span class="tool-tags-left">
+          <div class="tool-card-left" @click="openDetail(tool)">
+            <div class="tool-card-thumb">
+              <img v-if="tool.image_url" :src="tool.image_url" alt="" />
+              <van-icon v-else name="photo-o" size="36" color="#c8c9cc" />
+            </div>
+            <div class="tool-card-info">
+              <div class="tool-card-title">{{ tool.tool_name }}</div>
+              <div class="tool-card-code">{{ tool.tool_code }}</div>
+              <div class="tool-card-desc">{{ cardDesc(tool) }}</div>
+              <div class="tool-card-tags">
                 <van-tag :type="statusTagType(tool.status)" size="medium">
                   {{ statusLabel(tool.status) }}
                 </van-tag>
-                <van-tag v-if="tool.shelf_name" plain type="primary" size="medium" style="margin-left: 4px">
+                <van-tag v-if="tool.shelf_name" plain type="primary" size="medium">
                   {{ tool.shelf_name }}
                 </van-tag>
-                <van-tag v-if="tool.location_name" plain type="warning" size="medium" style="margin-left: 4px">
+                <van-tag v-if="tool.location_name" plain type="warning" size="medium">
                   {{ tool.location_name }}
                 </van-tag>
-                <van-tag v-if="tool.toolkit_name" plain type="success" size="medium" style="margin-left: 4px">
+                <van-tag v-if="tool.toolkit_name" plain type="success" size="medium">
                   {{ tool.toolkit_name }}
                 </van-tag>
-              </span>
-              <van-button
-                v-if="tool.status === 'available'"
-                size="small"
-                type="primary"
-                @click="addToCart(tool)"
-                :disabled="cartStore.hasItem(tool.tool_id)"
-                class="tool-borrow-btn"
-              >
-                {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
-              </van-button>
+              </div>
             </div>
-          </template>
-        </van-card>
+          </div>
+          <div class="tool-card-right" @click.stop="handleQuickBorrow(tool)">
+            <van-button
+              v-if="tool.status === 'available'"
+              size="normal"
+              type="primary"
+              :disabled="cartStore.hasItem(tool.tool_id)"
+              class="tool-borrow-btn"
+            >
+              {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
+            </van-button>
+            <span v-else class="tool-card-unavail">{{ statusLabel(tool.status) }}</span>
+          </div>
+        </div>
       </van-list>
     </van-pull-refresh>
     </template>
@@ -215,35 +219,40 @@
         <div v-if="kitDetailTools.length === 0" style="text-align:center;padding:30px;color:#999">
           该工具包为空
         </div>
-        <van-card
+        <div
           v-for="tool in kitDetailTools"
           :key="tool.tool_id"
-          :price="tool.tool_code"
-          :desc="cardDesc(tool)"
-          :title="tool.tool_name"
-          :thumb="tool.image_url || ''"
-          style="margin-bottom: 4px"
+          class="tool-card"
         >
-          <template #tags>
-            <div class="tool-tags-row">
-              <span class="tool-tags-left">
+          <div class="tool-card-left" @click="openDetail(tool)">
+            <div class="tool-card-thumb">
+              <img v-if="tool.image_url" :src="tool.image_url" alt="" />
+              <van-icon v-else name="photo-o" size="36" color="#c8c9cc" />
+            </div>
+            <div class="tool-card-info">
+              <div class="tool-card-title">{{ tool.tool_name }}</div>
+              <div class="tool-card-code">{{ tool.tool_code }}</div>
+              <div class="tool-card-desc">{{ cardDesc(tool) }}</div>
+              <div class="tool-card-tags">
                 <van-tag :type="statusTagType(tool.status)" size="medium">
                   {{ statusLabel(tool.status) }}
                 </van-tag>
-              </span>
-              <van-button
-                v-if="tool.status === 'available'"
-                size="small"
-                type="primary"
-                @click="addToCart(tool); showKitDetail = false"
-                :disabled="cartStore.hasItem(tool.tool_id)"
-                class="tool-borrow-btn"
-              >
-                {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
-              </van-button>
+              </div>
             </div>
-          </template>
-        </van-card>
+          </div>
+          <div class="tool-card-right" @click.stop="handleQuickBorrow(tool)">
+            <van-button
+              v-if="tool.status === 'available'"
+              size="normal"
+              type="primary"
+              :disabled="cartStore.hasItem(tool.tool_id)"
+              class="tool-borrow-btn"
+            >
+              {{ cartStore.hasItem(tool.tool_id) ? '已添加' : '领用' }}
+            </van-button>
+            <span v-else class="tool-card-unavail">{{ statusLabel(tool.status) }}</span>
+          </div>
+        </div>
         <div class="kit-detail-actions">
           <van-button type="success" block round @click="borrowKitAll">
             借一箱（{{ kitDetailTools.filter(t => t.status === 'available').length }} 件可用）
@@ -524,6 +533,11 @@ function addToCart(tool: any) {
     image_url: tool.image_url || ''
   })
   showToast('已添加到领用篮')
+}
+
+function handleQuickBorrow(tool: any) {
+  if (tool.status !== 'available' || cartStore.hasItem(tool.tool_id)) return
+  addToCart(tool)
 }
 
 // ===== 工具详情 + 图片上传 =====
@@ -844,24 +858,109 @@ onMounted(async () => {
   margin-top: 20px;
 }
 
-/* 工具卡片标签行：左标签 + 右领用按钮 */
-.tool-tags-row {
+/* ===== 左右分区工具卡片 ===== */
+.tool-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
+  background: #fff;
+  border-radius: 8px;
+  margin: 0 12px 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  min-height: 88px;
 }
 
-.tool-tags-left {
-  display: inline-flex;
+.tool-card-left {
+  flex: 1;
+  display: flex;
+  padding: 10px;
+  min-width: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tool-card-left:active {
+  background: #f5f5f5;
+}
+
+.tool-card-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f7f8fa;
+  flex-shrink: 0;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+.tool-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tool-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.tool-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #323233;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card-code {
+  font-size: 12px;
+  color: #969799;
+  margin-top: 1px;
+}
+
+.tool-card-desc {
+  font-size: 12px;
+  color: #969799;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card-tags {
+  display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  margin-top: 4px;
+}
+
+.tool-card-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  min-width: 72px;
+  cursor: pointer;
+  border-left: 1px solid #f0f0f0;
+  -webkit-tap-highlight-color: transparent;
+}
+.tool-card-right:active {
+  background: #f0f8ff;
+}
+
+.tool-card-unavail {
+  color: #969799;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .tool-borrow-btn {
   flex-shrink: 0;
-  margin-left: 8px;
 }
 
 /* ===== 工具详情弹出层 ===== */
