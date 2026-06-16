@@ -34,3 +34,8 @@ uploads/
 
 # Database (runtime data, not code)
 backend/db.json
+backend/db.json.bak
+*.bak
+
+# Workspace files
+HEARTBEAT.md
