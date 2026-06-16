@@ -92,4 +92,12 @@ export const uploadToolImage = (toolId: number, formData: FormData) =>
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data)
 
+// Scan — 按 tool_code 查询工具
+export const getToolByCode = (code: string) =>
+  api.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
+
+// Scan — 按 tool_code 快速领用（单件工具）
+export const borrowToolByCode = (code: string, data?: { scene?: string; expected_return?: string; purpose?: string }) =>
+  api.post(`/tools/code/${encodeURIComponent(code)}/borrow`, data || {}).then(r => r.data)
+
 export default api

@@ -1,0 +1,102 @@
+classDiagram
+    %% ========== 数据模型 ==========
+    class Tool {
+        +string id
+        +string tool_code
+        +string name
+        +string category
+        +string warehouse_id
+        +string shelf_name
+        +string location_name
+        +string status
+        +string barcode_svg?
+    }
+
+    class ScanHistory {
+        +string id
+        +string tool_code
+        +string tool_name
+        +number scanned_at
+        +string action
+    }
+
+    %% ========== API 接口 ==========
+    class ToolsAPI {
+        +getTools(params: ToolQueryParams): Promise~Tool[]~
+        +getToolByCode(code: string): Promise~Tool~
+        +borrowTool(code: string, userId: string): Promise~BorrowResult~
+    }
+
+    class ToolQueryParams {
+        +string? warehouse_id
+        +string? category
+        +string? keyword
+    }
+
+    class BorrowResult {
+        +boolean success
+        +string message
+        +string? order_id
+    }
+
+    %% ========== PC 端组件 ==========
+    class BarcodeList {
+        -Tool[] tools
+        -boolean loading
+        -ToolQueryParams filters
+        +fetchTools() Promise~void~
+        +generateBarcode(code) string
+        +printBarcodes() void
+        +applyFilters() void
+    }
+
+    %% ========== 手机端组件 ==========
+    class ScanTool {
+        -boolean scanning
+        -boolean cameraReady
+        -string? lastError
+        +startScan() void
+        +stopScan() void
+        +onScanSuccess(decodedText) void
+        +onScanFailure(error) void
+    }
+
+    class ScanResultPopup {
+        -boolean visible
+        -Tool? tool
+        -boolean borrowing
+        +onBorrow() Promise~void~
+        +onClose() void
+    }
+
+    class ToolManagement {
+        +onScanClick() void
+    }
+
+    class useScanner {
+        -Html5Qrcode scannerInstance
+        +start(elementId: string, onResult: callback): Promise~void~
+        +stop(): Promise~void~
+        +isSupported(): boolean
+    }
+
+    class ScanHistoryStore {
+        -ScanHistory[] histories
+        +addHistory(entry: ScanHistory): void
+        +getHistories(): ScanHistory[]
+        +clearHistories(): void
+    }
+
+    %% ========== 关系 ==========
+    ToolsAPI ..> Tool : returns
+    ToolsAPI ..> ToolQueryParams : uses
+    ToolsAPI ..> BorrowResult : returns
+    BarcodeList --> ToolsAPI : calls
+    BarcodeList --> Tool : renders
+    ScanTool --> useScanner : uses
+    ScanTool --> ToolsAPI : calls
+    ScanResultPopup --> Tool : displays
+    ScanResultPopup --> ToolsAPI : calls
+    ScanResultPopup --> ScanHistoryStore : writes
+    ToolManagement --> ScanTool : navigates
+    ScanHistoryStore --> ScanHistory : stores

@@ -23,6 +23,7 @@ const router = createRouter({
         { path: 'roles', name: 'RoleManagement', component: () => import('@/views/RoleManagement.vue'), meta: { requireAdmin: true } },
         { path: 'change-password', name: 'ChangePassword', component: () => import('@/views/ChangePassword.vue') },
         { path: 'cart', name: 'ShoppingCart', component: () => import('@/views/ShoppingCart.vue') },
+        { path: 'barcodes', name: 'BarcodeList', component: () => import('@/views/BarcodeList.vue') },
       ]
     }
   ]

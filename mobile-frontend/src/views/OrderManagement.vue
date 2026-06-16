@@ -81,7 +81,7 @@
               v-if="item.image_url"
               :src="item.image_url"
               style="width:48px;height:48px;border-radius:6px;object-fit:cover;background:#f5f5f5"
-              @error="$event.target.style.display='none'"
+              @error="($event.target as HTMLElement).style.display='none'"
             />
             <div v-else style="width:48px;height:48px;border-radius:6px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:20px;flex-shrink:0">
               📦

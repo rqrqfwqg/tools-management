@@ -34,7 +34,14 @@ export interface Tool {
   category_name: string
   scene?: string
   warehouse?: string
+  warehouse_id?: number
+  shelf_id?: number
+  shelf_name?: string
+  storage_location_id?: number
   storage_location?: string
+  location_name?: string
+  toolkit_name?: string
+  toolkit_seq?: number
   status: string
   purchase_date?: string
   scrap_date?: string

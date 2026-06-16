@@ -383,6 +383,11 @@
       </van-badge>
     </div>
 
+    <!-- 扫码浮动按钮 -->
+    <div class="scan-float" @click="$router.push('/scan')">
+      <van-icon name="scan" size="28" />
+    </div>
+
     <van-tabbar v-model="active" route active-color="#1989fa" inactive-color="#999" safe-area-inset-bottom>
       <van-tabbar-item icon="home-o" to="/dashboard">首页</van-tabbar-item>
       <van-tabbar-item icon="orders-o" to="/tools">工具</van-tabbar-item>
@@ -779,6 +784,23 @@ onMounted(async () => {
   color: #fff;
   box-shadow: 0 4px 12px rgba(25,137,250,0.4);
   z-index: 100;
+}
+
+.scan-float {
+  position: fixed;
+  right: 16px;
+  bottom: 148px;
+  width: 56px;
+  height: 56px;
+  background: #07c160;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(7,193,96,0.4);
+  z-index: 100;
+  cursor: pointer;
 }
 
 /* 筛选行 */

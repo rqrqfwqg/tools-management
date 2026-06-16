@@ -208,4 +208,8 @@ export const changePassword = (oldPassword: string, newPassword: string) =>
 export const resetPassword = (userId: number, newPassword: string) =>
   request.post(`/users/${userId}/reset-password`, { new_password: newPassword }).then(r => r.data)
 
+// Barcode — 按 tool_code 查询
+export const getToolByCode = (code: string) =>
+  request.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
+
 export default request

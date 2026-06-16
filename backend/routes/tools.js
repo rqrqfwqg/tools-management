@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const sharp = require('sharp');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId, nowCST } = require('./db');
@@ -466,6 +467,116 @@ router.delete('/tool-categories/:id', authenticate, requireMaterialManager, (req
   db.categories.splice(idx, 1);
   writeDB(db);
   res.json({ message: '删除成功' });
+});
+
+// ========== 扫码相关接口 ==========
+
+// 按 tool_code 查询工具详情
+router.get('/tools/code/:code', authenticate, (req, res) => {
+  const code = decodeURIComponent(req.params.code);
+  const db = readDB();
+  const tools = db.tools || [];
+  const toolkits = db.toolkits || [];
+  const kitItems = db.toolkit_items || [];
+  const shelves = db.shelves || [];
+  const locations = db.storage_locations || [];
+
+  const tool = tools.find(t => t.tool_code === code);
+  if (!tool) {
+    return res.status(404).json({ message: `未找到编码为 "${code}" 的工具` });
+  }
+
+  // 注入关联数据（与 GET /tools 保持一致）
+  const shelf = shelves.find(s => s.shelf_id === tool.shelf_id);
+  const loc = locations.find(l => l.location_id === tool.storage_location_id);
+  const result = {
+    ...tool,
+    shelf_name: shelf?.shelf_name || '',
+    location_name: loc?.location_name || loc?.location_code || '',
+    toolkit_name: '',
+    toolkit_seq: 0
+  };
+  const item = kitItems.find(i => i.tool_id === tool.tool_id);
+  if (item) {
+    const kit = toolkits.find(k => k.toolkit_id === item.toolkit_id);
+    result.toolkit_name = kit?.toolkit_name || '';
+    result.toolkit_seq = item.sort_order || 0;
+  }
+
+  res.json(result);
+});
+
+// 按 tool_code 快速领用（单件工具，扫码即借）
+router.post('/tools/code/:code/borrow', authenticate, (req, res) => {
+  const code = decodeURIComponent(req.params.code);
+  const { scene, expected_return, purpose } = req.body || {};
+  const db = readDB();
+  const user = db.users.find(u => u.user_id === req.user.user_id);
+  if (!user) return res.status(404).json({ message: '用户不存在' });
+
+  const tool = (db.tools || []).find(t => t.tool_code === code);
+  if (!tool) {
+    return res.status(404).json({ message: `未找到编码为 "${code}" 的工具` });
+  }
+  if (tool.status !== 'available') {
+    return res.status(400).json({ message: `工具"${tool.tool_name}"当前状态为"${tool.status}"，不可领用` });
+  }
+
+  // 生成订单号
+  const orderNo = `ORD${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+  const randomPart = crypto.randomBytes(3).readUIntBE(0, 3);
+  const itemCounter = Date.now();
+
+  const item = {
+    item_id: (itemCounter << 12) | (randomPart & 0xFFF),
+    tool_id: tool.tool_id,
+    tool_code: tool.tool_code,
+    tool_name: tool.tool_name,
+    item_status: 'reserved'
+  };
+
+  const category = (db.categories || []).find(c => c.category_id === tool.category_id);
+
+  const newOrder = {
+    order_id: nextId(db.orders || [], 'order_id'),
+    order_no: orderNo,
+    borrower_name: user.real_name || user.username,
+    borrower_id: user.user_id,
+    status: 'pending',
+    warehouse: tool.warehouse || '',
+    scene: scene || '扫码领用',
+    borrow_time: new Date().toISOString(),
+    expected_return: expected_return || null,
+    actual_return: null,
+    purpose: purpose || '',
+    require_approval: category?.require_approval ?? true,
+    created_at: new Date().toISOString(),
+    items: [item]
+  };
+
+  // 更新工具状态
+  const toolIndex = db.tools.findIndex(t => t.tool_id === tool.tool_id);
+  if (toolIndex > -1) {
+    db.tools[toolIndex].status = 'reserved';
+    db.tools[toolIndex].borrow_count = (db.tools[toolIndex].borrow_count || 0) + 1;
+  }
+
+  // 写入订单
+  if (!db.orders) db.orders = [];
+  db.orders.push(newOrder);
+  writeDB(db);
+
+  res.json({
+    message: `领用成功，订单号 ${orderNo}`,
+    order_no: orderNo,
+    order_id: newOrder.order_id,
+    tool: {
+      tool_id: tool.tool_id,
+      tool_code: tool.tool_code,
+      tool_name: tool.tool_name,
+      status: 'reserved'
+    }
+  });
 });
 
 module.exports = router;

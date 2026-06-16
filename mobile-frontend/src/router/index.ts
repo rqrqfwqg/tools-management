@@ -41,6 +41,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Profile',
     component: () => import('@/views/Profile.vue'),
     meta: { title: '我的' }
+  },
+  {
+    path: '/scan',
+    name: 'Scan',
+    component: () => import('@/views/ScanTool.vue'),
+    meta: { title: '扫码' }
   }
 ]
 
