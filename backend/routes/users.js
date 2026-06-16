@@ -9,7 +9,11 @@ const router = express.Router();
 // 获取用户列表
 router.get('/users', authenticate, requireAdmin, (req, res) => {
   const db = readDB();
-  const users = db.users.map(({ password, ...user }) => user);
+  const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
+  const users = db.users.map(({ password, ...user }) => ({
+    ...user,
+    dept_name: deptMap[user.dept_id] || ''
+  }));
   res.json(users);
 });
 
@@ -28,6 +32,7 @@ router.post('/users', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ message: '用户名已存在' });
   }
 
+  const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
   const newUser = {
     user_id: nextId(db.users, 'user_id'),
     username: username.trim(),
@@ -37,7 +42,8 @@ router.post('/users', authenticate, requireAdmin, (req, res) => {
     role_id: role === 'admin' ? 1 : role === 'team_leader' ? 3 : role === 'material_manager' ? 4 : 2,
     role_name: role === 'admin' ? '管理员' : role === 'team_leader' ? '分队长' : role === 'material_manager' ? '物料管理员' : '普通员工',
     is_active: is_active !== false,
-    phone: phone || ''
+    phone: phone || '',
+    dept_name: deptMap[dept_id] || ''
   };
 
   db.users.push(newUser);
@@ -55,6 +61,7 @@ router.put('/users/:id', authenticate, requireAdmin, (req, res) => {
   const idx = db.users.findIndex(u => u.user_id === userId);
   if (idx === -1) return res.status(404).json({ message: '用户不存在' });
 
+  const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
   db.users[idx] = {
     ...db.users[idx],
     real_name: real_name || db.users[idx].real_name,
@@ -62,7 +69,8 @@ router.put('/users/:id', authenticate, requireAdmin, (req, res) => {
     role: role || db.users[idx].role,
     role_name: role === 'admin' ? '管理员' : role === 'team_leader' ? '分队长' : role === 'material_manager' ? '物料管理员' : role === 'staff' ? '普通员工' : db.users[idx].role_name,
     is_active: is_active !== undefined ? is_active : db.users[idx].is_active,
-    phone: phone || db.users[idx].phone
+    phone: phone || db.users[idx].phone,
+    dept_name: deptMap[db.users[idx].dept_id] || ''
   };
   writeDB(db);
 

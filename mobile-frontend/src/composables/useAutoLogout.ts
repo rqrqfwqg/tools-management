@@ -38,20 +38,25 @@ export function useAutoLogout(minutes = 10) {
     resetTimer()
   }
 
+  const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart']
+
   onMounted(() => {
     if (!authStore.isLoggedIn) return
     resetTimer()
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart']
     events.forEach(e => document.addEventListener(e, onActivity))
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') resetTimer()
-    })
-    onUnmounted(() => {
-      clearTimeout(timer)
-      clearTimeout(warningTimer)
-      events.forEach(e => document.removeEventListener(e, onActivity))
-    })
+    document.addEventListener('visibilitychange', onVisibilityChange)
   })
+
+  onUnmounted(() => {
+    clearTimeout(timer)
+    clearTimeout(warningTimer)
+    events.forEach(e => document.removeEventListener(e, onActivity))
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+  })
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'visible') resetTimer()
+  }
 
   return { warned }
 }

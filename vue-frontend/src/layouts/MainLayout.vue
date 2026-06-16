@@ -38,6 +38,10 @@
           <el-icon><Box /></el-icon>
           <span>工器具管理</span>
         </el-menu-item>
+        <el-menu-item index="/toolkits" v-if="authStore.hasRole(['admin'])">
+          <el-icon><Suitcase /></el-icon>
+          <span>工具箱管理</span>
+        </el-menu-item>
         <el-menu-item index="/orders">
           <el-icon><Document /></el-icon>
           <span>领用管理</span>
@@ -88,7 +92,7 @@ import { useAuthStore } from '@/store/auth'
 import { useCartStore } from '@/store/cart'
 import { onMounted } from 'vue'
 import { useAutoLogout } from '@/composables/useAutoLogout'
-import { DataLine, User, OfficeBuilding, Collection, House, Box, Document, Key, ArrowDown, Lock, SwitchButton, ShoppingCart } from '@element-plus/icons-vue'
+import { DataLine, User, OfficeBuilding, Collection, House, Box, Document, Key, ArrowDown, Lock, SwitchButton, ShoppingCart, Suitcase } from '@element-plus/icons-vue'
 import type { ComponentSize } from 'element-plus'
 
 const router = useRouter()

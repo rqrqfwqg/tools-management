@@ -1,0 +1,58 @@
+sequenceDiagram
+    actor User as 用户 (手机)
+    participant TM as ToolManagement.vue
+    participant Router as Vue Router
+    participant ST as ScanTool.vue
+    participant US as useScanner
+    participant Cam as 手机摄像头
+    participant API as api/index.ts
+    participant BE as Backend
+    participant Popup as ScanResultPopup
+    participant SH as ScanHistoryStore
+
+    User->>TM: 点击扫码按钮 (FAB)
+    TM->>Router: router.push('/scan')
+    Router->>ST: 渲染全屏扫码页
+    ST->>US: useScanner().start('scanner-container', callback)
+    US->>Cam: 请求 getUserMedia({ video: { facingMode: 'environment' } })
+    
+    alt 权限被拒
+        Cam-->>US: NotAllowedError
+        US-->>ST: error = '摄像头权限被拒'
+        ST-->>User: 显示权限引导 + 手动输入 tool_code 兜底
+    else 非 HTTPS
+        US-->>ST: error = '需HTTPS环境'
+        ST-->>User: 显示手动输入框
+    else 权限通过
+        Cam-->>US: MediaStream
+        US-->>ST: cameraReady = true
+        ST-->>User: 全屏扫码取景框
+
+        User->>Cam: 对准条形码
+        Cam->>US: 持续解析视频帧
+        US->>US: 识别到 Code128 → decodedText = 'TL-001'
+        US->>ST: onScanSuccess('TL-001')
+        ST->>US: stopScan()
+        ST->>API: getToolByCode('TL-001')
+        API->>BE: GET /api/tools/code/TL-001
+        BE-->>API: { tool: {...} }
+        API-->>ST: tool 数据
+        ST->>Popup: 显示弹窗 (tool详情 + 领用按钮)
+        Popup-->>User: 工具名称、位置、状态
+        
+        opt 领用
+            User->>Popup: 点击"立即领用"
+            Popup->>API: borrowTool('TL-001', userId)
+            API->>BE: POST /api/tools/TL-001/borrow
+            BE-->>API: { success: true, order_id: '...' }
+            API-->>Popup: 领用成功
+            Popup->>SH: addHistory({ tool_code, action: 'borrowed' })
+            Popup-->>User: 成功提示 + 订单号
+        end
+        
+        opt 关闭
+            User->>Popup: 关闭弹窗
+            Popup->>ST: 恢复扫码
+            ST->>US: startScan()
+        end
+    end

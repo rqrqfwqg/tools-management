@@ -37,6 +37,8 @@ export const resetPassword = (id: number, password: string) =>
 
 // Tools
 export const getTools = () => api.get('/tools').then(r => r.data)
+export const getToolkits = () => api.get('/toolkits').then(r => r.data)
+export const getToolkitDetail = (id: number) => api.get(`/toolkits/${id}`).then(r => r.data)
 export const createTool = (data: any) => api.post('/tools', data).then(r => r.data)
 export const updateTool = (id: number, data: any) => api.put(`/tools/${id}`, data).then(r => r.data)
 export const deleteTool = (id: number) => api.delete(`/tools/${id}`).then(r => r.data)
@@ -84,8 +86,18 @@ export const getRoles = () => api.get('/roles').then(r => r.data)
 // Dashboard
 export const getDashboardStats = () => api.get('/dashboard').then(r => r.data)
 
-// Upload
-export const uploadImage = (formData: FormData) =>
-  api.post('/upload-image', formData).then(r => r.data)
+// Upload — 上传工具图片（需要 token 鉴权 + material_manager 角色）
+export const uploadToolImage = (toolId: number, formData: FormData) =>
+  api.post(`/tools/${toolId}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data)
+
+// Scan — 按 tool_code 查询工具
+export const getToolByCode = (code: string) =>
+  api.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
+
+// Scan — 按 tool_code 快速领用（单件工具）
+export const borrowToolByCode = (code: string, data?: { scene?: string; expected_return?: string; purpose?: string }) =>
+  api.post(`/tools/code/${encodeURIComponent(code)}/borrow`, data || {}).then(r => r.data)
 
 export default api

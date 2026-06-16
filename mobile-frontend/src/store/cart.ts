@@ -15,8 +15,9 @@ export const useCartStore = defineStore('cart', () => {
   const count = computed(() => items.value.length)
 
   function addItem(item: CartItem) {
-    if (!items.value.find(i => i.tool_id === item.tool_id)) {
-      items.value.push(item)
+    const tid = Number(item.tool_id)
+    if (!items.value.find(i => Number(i.tool_id) === tid)) {
+      items.value.push({ ...item, tool_id: tid })
     }
   }
 

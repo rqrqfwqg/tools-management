@@ -3,7 +3,7 @@ import type { User, Dept, Category, Tool, Order, Role, DashboardStats } from '@/
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 10000
+  timeout: 30000
 })
 
 request.interceptors.request.use(config => {
@@ -18,9 +18,14 @@ request.interceptors.request.use(config => {
 request.interceptors.response.use(
   res => res,
   err => {
+    // 忽略请求取消（如页面跳转导致的 abort），避免日志噪音
+    if (axios.isCancel(err)) {
+      return Promise.reject(err)
+    }
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      // 用 replace 避免 history 堆积，且不会触发并行请求的级联取消
+      location.replace('/login')
     }
     return Promise.reject(err)
   }
@@ -131,6 +136,27 @@ export const getStorageLocation = (id: number) =>
 export const getTools = () =>
   request.get<Tool[]>('/tools').then(r => r.data)
 
+export const getToolkits = () =>
+  request.get<any[]>('/toolkits').then(r => r.data)
+
+export const getToolkitDetail = (id: number) =>
+  request.get<any>(`/toolkits/${id}`).then(r => r.data)
+
+export const createToolkit = (data: { toolkit_name: string; description?: string }) =>
+  request.post('/toolkits', data).then(r => r.data)
+
+export const updateToolkit = (id: number, data: any) =>
+  request.put(`/toolkits/${id}`, data).then(r => r.data)
+
+export const deleteToolkit = (id: number) =>
+  request.delete(`/toolkits/${id}`).then(r => r.data)
+
+export const addToolsToKit = (toolkitId: number, toolIds: number[]) =>
+  request.post(`/toolkits/${toolkitId}/add-tools`, { tool_ids: toolIds }).then(r => r.data)
+
+export const removeToolFromKit = (toolkitId: number, toolId: number) =>
+  request.delete(`/toolkits/${toolkitId}/remove-tool/${toolId}`).then(r => r.data)
+
 export const createTool = (data: any) =>
   request.post('/tools', data).then(r => r.data)
 
@@ -181,5 +207,9 @@ export const changePassword = (oldPassword: string, newPassword: string) =>
 
 export const resetPassword = (userId: number, newPassword: string) =>
   request.post(`/users/${userId}/reset-password`, { new_password: newPassword }).then(r => r.data)
+
+// Barcode — 按 tool_code 查询
+export const getToolByCode = (code: string) =>
+  request.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
 
 export default request

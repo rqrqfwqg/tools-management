@@ -32,6 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     role.value = ''
     localStorage.removeItem('token')
+    localStorage.removeItem('saved_credentials')
   }
 
   const hasRole = (requiredRoles: string[]) => {

@@ -16,4 +16,14 @@ body {
   padding: 0;
   font-family: 'Microsoft YaHei', Arial, sans-serif;
 }
+
+/* 表格自适应优化 */
+.el-table .cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.el-table .el-table__cell.is-leaf .cell {
+  word-break: keep-all;
+}
 </style>

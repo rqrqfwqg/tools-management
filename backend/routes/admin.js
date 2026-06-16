@@ -211,14 +211,36 @@ router.delete('/departments/:id', authenticate, requireAdmin, (req, res) => {
 
 // ========== 角色管理 ==========
 router.get('/roles', authenticate, (req, res) => {
-  res.json(readDB().roles || []);
+  const db = readDB();
+  const roles = (db.roles || []).map(r => ({
+    ...r,
+    user_count: (db.users || []).filter(u => u.role === r.role_code).length
+  }));
+  res.json(roles);
+});
+
+router.get('/roles/:id', authenticate, (req, res) => {
+  const db = readDB();
+  const r = db.roles.find(r => r.role_id === parseInt(req.params.id));
+  if (!r) return res.status(404).json({ message: '角色不存在' });
+  res.json({ ...r, user_count: (db.users || []).filter(u => u.role === r.role_code).length });
 });
 
 router.post('/roles', authenticate, requireAdmin, (req, res) => {
-  const { role_name, role_code, description } = req.body;
+  const { role_name, role_code, description, permissions } = req.body;
+  if (!role_name?.trim()) return res.status(400).json({ message: '角色名称不能为空' });
+  if (!role_code?.trim()) return res.status(400).json({ message: '角色编码不能为空' });
   const db = readDB();
   if (db.roles.find(r => r.role_code === role_code)) return res.status(400).json({ message: '角色编码已存在' });
-  const newRole = { role_id: nextId(db.roles, 'role_id'), role_name, role_code, description: description || '', is_system: false, permission_ids: [] };
+  const defaultPerms = { approve_orders: false, manage_tools: false, manage_warehouses: false, manage_users: false, manage_categories: false };
+  const newRole = {
+    role_id: nextId(db.roles, 'role_id'),
+    role_name: role_name.trim(),
+    role_code: role_code.trim(),
+    description: description || '',
+    is_system: false,
+    permissions: permissions || defaultPerms
+  };
   db.roles.push(newRole);
   writeDB(db);
   res.json(newRole);
@@ -226,13 +248,27 @@ router.post('/roles', authenticate, requireAdmin, (req, res) => {
 
 router.put('/roles/:id', authenticate, requireAdmin, (req, res) => {
   const roleId = parseInt(req.params.id);
-  const { role_name, role_code, description } = req.body;
+  const { role_name, role_code, description, permissions } = req.body;
   const db = readDB();
   const idx = db.roles.findIndex(r => r.role_id === roleId);
   if (idx === -1) return res.status(404).json({ message: '角色不存在' });
-  db.roles[idx] = { ...db.roles[idx], role_name: role_name || db.roles[idx].role_name, role_code: role_code || db.roles[idx].role_code, description: description !== undefined ? description : db.roles[idx].description };
+  const role = db.roles[idx];
+  if (role_name !== undefined) role.role_name = role_name;
+  if (role_code !== undefined) role.role_code = role_code;
+  if (description !== undefined) role.description = description;
+  if (permissions !== undefined) role.permissions = permissions;
+
+  // 同步已有用户的 role_name
+  if (role_name || role_code) {
+    db.users.forEach(u => {
+      if (u.role_id === roleId) {
+        if (role_name) u.role_name = role_name;
+        if (role_code) u.role = role_code;
+      }
+    });
+  }
   writeDB(db);
-  res.json(db.roles[idx]);
+  res.json({ ...role, user_count: (db.users || []).filter(u => u.role === role.role_code).length });
 });
 
 router.delete('/roles/:id', authenticate, requireAdmin, (req, res) => {
@@ -241,6 +277,7 @@ router.delete('/roles/:id', authenticate, requireAdmin, (req, res) => {
   const idx = db.roles.findIndex(r => r.role_id === roleId);
   if (idx === -1) return res.status(404).json({ message: '角色不存在' });
   if (db.roles[idx].is_system) return res.status(400).json({ message: '不能删除系统内置角色' });
+  if ((db.users || []).some(u => u.role === db.roles[idx].role_code)) return res.status(400).json({ message: '该角色下有用户，无法删除' });
   db.roles.splice(idx, 1);
   writeDB(db);
   res.json({ message: '删除成功' });

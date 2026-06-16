@@ -8,27 +8,26 @@
         <el-option v-for="d in depts" :key="d.dept_id" :label="d.dept_name" :value="d.dept_name" />
       </el-select>
       <el-select v-model="roleFilter" placeholder="全部角色" clearable style="width:120px">
-        <el-option label="管理员" value="admin" />
-        <el-option label="普通员工" value="staff" />
+        <el-option v-for="r in allRoles" :key="r.role_id" :label="r.role_name" :value="r.role_code" />
       </el-select>
       <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:100px">
         <el-option label="启用" value="yes" />
         <el-option label="停用" value="no" />
       </el-select>
     </div>
-    <el-table :data="filteredList" style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0">
       <el-table-column prop="user_id" label="ID" width="60" />
-      <el-table-column prop="username" label="用户名" />
-      <el-table-column prop="real_name" label="姓名" />
-      <el-table-column prop="dept_name" label="部门" />
-      <el-table-column prop="role_name" label="角色" />
-      <el-table-column prop="phone" label="手机" width="130" />
+      <el-table-column prop="username" label="用户名" show-overflow-tooltip />
+      <el-table-column prop="real_name" label="姓名" show-overflow-tooltip />
+      <el-table-column prop="dept_name" label="部门" show-overflow-tooltip />
+      <el-table-column prop="role_name" label="角色" show-overflow-tooltip />
+      <el-table-column prop="phone" label="手机" min-width="110" />
       <el-table-column prop="is_active" label="状态" width="80">
         <template #default="{row}">
           <el-tag :type="row.is_active ? 'success' : 'danger'">{{ row.is_active ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280">
+      <el-table-column label="操作" min-width="260" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="warning" @click="handleResetPassword(row)">重置密码</el-button>
@@ -142,6 +141,7 @@ const handleSave = async () => {
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
+    load()
     loadDepts()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '操作失败')
@@ -153,6 +153,7 @@ const handleDelete = async (id: number) => {
   try {
     await deleteUser(id)
     ElMessage.success('删除成功')
+    load()
     loadDepts()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '删除失败')

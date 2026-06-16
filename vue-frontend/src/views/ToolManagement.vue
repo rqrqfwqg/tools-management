@@ -13,11 +13,28 @@
       <el-select v-model="categoryFilter" placeholder="全部分类" clearable style="width:120px">
         <el-option v-for="c in categories" :key="c.category_id" :label="c.category_name" :value="c.category_name" />
       </el-select>
-      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px">
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:120px" @change="onWarehouseFilterChange">
         <el-option v-for="w in warehouses" :key="w.warehouse_id" :label="w.warehouse_name" :value="w.warehouse_name" />
       </el-select>
+      <el-select v-model="shelfFilter" placeholder="全部货架" clearable style="width:120px" @change="onShelfFilterChange">
+        <el-option v-for="s in shelfFilterOptions" :key="s.shelf_id" :label="s.shelf_name" :value="s.shelf_name" />
+      </el-select>
+      <el-select v-model="locationFilter" placeholder="全部货位" clearable style="width:140px">
+        <el-option v-for="l in locationFilterOptions" :key="l.location_id" :label="l.location_name || l.location_code" :value="l.location_name || l.location_code" />
+      </el-select>
+      <el-select v-model="toolkitFilter" placeholder="全部工具包" clearable style="width:140px">
+        <el-option v-for="k in toolkits" :key="k.toolkit_id" :label="k.toolkit_name" :value="k.toolkit_name" />
+      </el-select>
+      <el-dropdown v-if="toolkitFilter" style="margin-left:4px">
+        <el-button size="small" type="success">借一箱</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="handleBorrowKit(toolkitFilter)">领用"{{ toolkitFilter }}"全部可用工具</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
-    <el-table :data="filteredList" style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0">
       <el-table-column label="图片" width="80">
         <template #default="{row}">
           <el-image
@@ -34,18 +51,24 @@
         </template>
       </el-table-column>
       <el-table-column prop="tool_id" label="ID" width="60" />
-      <el-table-column prop="tool_code" label="编码" width="120" />
-      <el-table-column prop="tool_name" label="名称" />
-      <el-table-column prop="category_name" label="分类" width="100" />
+      <el-table-column prop="tool_code" label="编码" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="tool_name" label="名称" min-width="120" show-overflow-tooltip />
+      <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />
       <el-table-column label="状态" width="90">
         <template #default="{row}">
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="warehouse" label="仓库" width="100" />
-      <el-table-column prop="storage_location" label="货位" width="100" />
+      <el-table-column prop="warehouse" label="仓库" min-width="80" show-overflow-tooltip />
+      <el-table-column prop="storage_location" label="货位" min-width="80" show-overflow-tooltip />
+      <el-table-column label="工具包" min-width="100">
+        <template #default="{row}">
+          <el-tag v-if="row.toolkit_name" type="success" size="small">{{ row.toolkit_name }}</el-tag>
+          <span v-else style="color:#ccc">-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="borrow_count" label="借次" width="70" />
-      <el-table-column label="操作" width="300">
+      <el-table-column label="操作" min-width="280" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" @click="openUploadDialog(row)" title="上传图片">
@@ -98,6 +121,11 @@
             <el-option label="报废" value="scrapped" />
           </el-select>
         </el-form-item>
+        <el-form-item label="工具包">
+          <el-select v-model="form.toolkit_name" placeholder="选择工具包（可选）" style="width:100%" clearable>
+            <el-option v-for="k in toolkits" :key="k.toolkit_id" :label="k.toolkit_name" :value="k.toolkit_name" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="form.description" type="textarea" :rows="2" />
         </el-form-item>
@@ -130,6 +158,7 @@
         :limit="1"
         :on-change="handleFileChange"
         :on-remove="handleFileRemove"
+        :before-upload="beforeUpload"
         accept="image/*"
         drag
         style="text-align:center"
@@ -137,7 +166,7 @@
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
         <div class="el-upload__text">拖拽图片到此处，或 <em>点击上传</em></div>
         <template #tip>
-          <div class="el-upload__tip">支持 JPG/PNG/GIF，最大 5MB</div>
+          <div class="el-upload__tip">支持 JPG/PNG/GIF/WebP，最大 10MB（自动压缩至 2MB 以内）</div>
         </template>
       </el-upload>
       <template #footer>
@@ -151,7 +180,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getTools, createTool, updateTool, deleteTool } from '@/api'
+import { getTools, createTool, updateTool, deleteTool, getToolkits } from '@/api'
 import { getCategories } from '@/api'
 import { getWarehouses, getShelves, getStorageLocations } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -172,6 +201,10 @@ const selectedFile = ref<File | null>(null)
 const statusFilter = ref('')
 const categoryFilter = ref('')
 const warehouseFilter = ref('')
+const shelfFilter = ref('')
+const locationFilter = ref('')
+const toolkitFilter = ref('')
+const toolkits = ref<any[]>([])
 const keyword = ref('')
 
 // 筛选后的列表
@@ -180,6 +213,15 @@ const filteredList = computed(() => {
     if (statusFilter.value && t.status !== statusFilter.value) return false
     if (categoryFilter.value && t.category_name !== categoryFilter.value) return false
     if (warehouseFilter.value && t.warehouse !== warehouseFilter.value) return false
+    if (shelfFilter.value) {
+      const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value)
+      if (s && t.shelf_id !== s.shelf_id) return false
+    }
+    if (locationFilter.value) {
+      const l = locations.value.find(ll => (ll.location_name || ll.location_code) === locationFilter.value)
+      if (l && t.storage_location_id !== l.location_id) return false
+    }
+    if (toolkitFilter.value && t.toolkit_name !== toolkitFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
       if (!t.tool_name?.toLowerCase().includes(kw) && !t.tool_code?.toLowerCase().includes(kw)) return false
@@ -209,6 +251,31 @@ const filteredLocations = computed(() => {
   return locations.value.filter(l => l.shelf_id === form.value.shelf_id)
 })
 
+// 筛选下拉：货架按仓库过滤
+const shelfFilterOptions = computed(() => {
+  if (!warehouseFilter.value) return shelves.value
+  const w = warehouses.value.find(ww => ww.warehouse_name === warehouseFilter.value)
+  if (!w) return shelves.value
+  return shelves.value.filter(s => s.warehouse_id === w.warehouse_id)
+})
+
+// 筛选下拉：货位按货架过滤
+const locationFilterOptions = computed(() => {
+  if (!shelfFilter.value) return locations.value
+  const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value)
+  if (!s) return locations.value
+  return locations.value.filter(l => l.shelf_id === s.shelf_id)
+})
+
+const onWarehouseFilterChange = () => {
+  shelfFilter.value = ''
+  locationFilter.value = ''
+}
+
+const onShelfFilterChange = () => {
+  locationFilter.value = ''
+}
+
 const onWarehouseChange = () => {
   form.value.shelf_id = undefined
   form.value.storage_location_id = undefined
@@ -223,6 +290,18 @@ const loadCategories = async () => { categories.value = await getCategories() }
 const loadWarehouses = async () => { warehouses.value = await getWarehouses() }
 const loadShelves = async () => { shelves.value = await getShelves() }
 const loadLocations = async () => { locations.value = await getStorageLocations() }
+const loadToolkits = async () => { toolkits.value = await getToolkits() }
+
+// 借一箱：将工具包下所有可用工具加入购物车
+const handleBorrowKit = (kitName: string) => {
+  const kitTools = list.value.filter(t => t.toolkit_name === kitName && t.status === 'available')
+  if (kitTools.length === 0) {
+    ElMessage.warning(`工具包"${kitName}"中没有可用工具`)
+    return
+  }
+  kitTools.forEach(t => cartStore.addToCart(t))
+  ElMessage.success(`已将"${kitName}"中的 ${kitTools.length} 件工具加入购物车`)
+}
 
 const openDialog = (row?: any) => {
   if (row) {
@@ -267,6 +346,15 @@ const openUploadDialog = (row: any) => {
   uploadDialogVisible.value = true
 }
 
+const beforeUpload = (file: File) => {
+  const maxSize = 10 * 1024 * 1024  // 10MB
+  if (file.size > maxSize) {
+    ElMessage.error(`文件过大（${(file.size / 1024 / 1024).toFixed(1)}MB），最大支持 10MB`)
+    return false
+  }
+  return true
+}
+
 const handleFileChange = (uploadFile: any) => {
   selectedFile.value = uploadFile.raw as File
 }
@@ -307,7 +395,7 @@ const handleAddToCart = (tool: any) => {
 }
 
 onMounted(() => {
-  load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations()
+  load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations(); loadToolkits()
   // 从仪表盘跳转时自动筛选
   if (route.query.status) statusFilter.value = route.query.status as string
 })

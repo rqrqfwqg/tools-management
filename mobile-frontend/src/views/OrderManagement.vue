@@ -131,8 +131,8 @@ const currentOrder = ref<any>(null)
 const statusOptions = [
   { text: '全部状态', value: '' },
   { text: '待审核', value: 'pending' },
-  { text: '已批准', value: 'approved' },
   { text: '借出中', value: 'borrowed' },
+  { text: '已批准', value: 'approved' },
   { text: '已归还', value: 'returned' },
   { text: '已拒绝', value: 'rejected' },
   { text: '已取消', value: 'cancelled' }
@@ -161,7 +161,7 @@ function itemStatusLabel(s: string) { return itemStatusLabels[s] || s }
 function itemStatusType(s: string) { return (itemStatusTypes[s] || '') as any }
 
 const filteredList = computed(() => {
-  return list.value.filter(o => {
+  const filtered = list.value.filter(o => {
     if (statusFilter.value && o.status !== statusFilter.value) return false
     if (keyword.value) {
       const kw = keyword.value.toLowerCase()
@@ -169,11 +169,18 @@ const filteredList = computed(() => {
     }
     return true
   })
+  // 未归还(borrowed)和待审批(pending)置顶
+  const priOrder: Record<string, number> = { pending: 0, borrowed: 1 }
+  return [...filtered].sort((a, b) => {
+    const pa = priOrder[a.status] ?? 2
+    const pb = priOrder[b.status] ?? 2
+    return pa - pb
+  })
 })
 
 function formatTime(t: string) {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN')
+  return new Date(t).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
 }
 
 function showActions(order: any) {

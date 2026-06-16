@@ -10,7 +10,7 @@
     </div>
 
     <div v-else>
-      <el-table :data="cartStore.items" style="margin-top: 15px;">
+      <el-table :data="cartStore.items" border style="margin-top: 15px;">
         <el-table-column label="工具图片" width="100">
           <template #default="{row}">
             <el-image
@@ -25,12 +25,12 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="tool_code" label="编码" width="120" />
-        <el-table-column prop="tool_name" label="名称" />
-        <el-table-column prop="category_name" label="分类" width="100" />
-        <el-table-column prop="storage_location" label="位置" width="120" />
+        <el-table-column prop="tool_code" label="编码" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="tool_name" label="名称" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />
+        <el-table-column prop="storage_location" label="位置" min-width="100" show-overflow-tooltip />
 
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" min-width="100">
           <template #default="{row}">
             <el-button size="small" type="danger" @click="handleRemove(row.tool_id)">
               移除

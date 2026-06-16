@@ -5,12 +5,12 @@
       <el-button type="primary" @click="openDialog()">新增部门</el-button>
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
     </div>
-    <el-table :data="filteredList" style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0">
       <el-table-column prop="dept_id" label="ID" width="60" />
-      <el-table-column prop="dept_name" label="部门名称" />
-      <el-table-column prop="dept_code" label="部门编码" width="120" />
-      <el-table-column prop="description" label="描述" />
-      <el-table-column label="操作" width="180">
+      <el-table-column prop="dept_name" label="部门名称" show-overflow-tooltip />
+      <el-table-column prop="dept_code" label="部门编码" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="description" label="描述" show-overflow-tooltip />
+      <el-table-column label="操作" min-width="160">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" type="danger" @click="handleDelete(row.dept_id)">删除</el-button>
