@@ -50,6 +50,11 @@ export const updateOrderStatus = (id: number, status: string) =>
   api.put(`/orders/${id}/status`, { status }).then(r => r.data)
 export const returnOrder = (id: number) => api.post(`/orders/${id}/return`).then(r => r.data)
 
+// Checklist — 现场清点
+export const getChecklist = (orderId: number) => api.get(`/orders/${orderId}/checklist`).then(r => r.data)
+export const saveChecklistItem = (orderId: number, toolId: number, checked: boolean) =>
+  api.post(`/orders/${orderId}/checklist`, { tool_id: toolId, checked }).then(r => r.data)
+
 // Warehouses
 export const getWarehouses = () => api.get('/warehouses').then(r => r.data)
 export const createWarehouse = (data: any) => api.post('/warehouses', data).then(r => r.data)

@@ -72,10 +72,16 @@
           <p><strong>时间:</strong> {{ formatTime(currentOrder.created_at) }}</p>
         </div>
         <div v-if="currentOrder?.items?.length" style="margin-top:12px">
-          <h4 style="margin-bottom:8px">工具清单 ({{ currentOrder.items.length }} 件)</h4>
+          <h4 style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+            <span>工具清单 ({{ currentOrder.items.length }} 件)</span>
+            <van-tag v-if="currentOrder.status === 'borrowed'" :type="allChecked ? 'success' : 'warning'" size="medium">
+              已清点 {{ checkedCount }}/{{ currentOrder.items.length }}
+            </van-tag>
+          </h4>
           <table class="tool-table">
             <thead>
               <tr>
+                <th v-if="currentOrder.status === 'borrowed'" style="width:40px;text-align:center">✓</th>
                 <th>序号</th>
                 <th>编码</th>
                 <th>名称</th>
@@ -84,6 +90,12 @@
             </thead>
             <tbody>
               <tr v-for="(item, idx) in currentOrder.items" :key="item.item_id || item.tool_id">
+                <td v-if="currentOrder.status === 'borrowed'" style="text-align:center">
+                  <van-checkbox
+                    :model-value="!!checklistMap[item.tool_id]"
+                    @update:model-value="(val) => onCheckChange(item.tool_id, val as boolean)"
+                  />
+                </td>
                 <td style="text-align:center">{{ idx + 1 }}</td>
                 <td>{{ item.tool_code }}</td>
                 <td>{{ item.tool_name }}</td>
@@ -95,6 +107,9 @@
               </tr>
             </tbody>
           </table>
+          <div v-if="currentOrder.status === 'borrowed' && !allChecked" style="margin-top:8px;font-size:12px;color:#ee0a24;text-align:center">
+            请逐件清点确认后才能归还
+          </div>
         </div>
       </div>
     </van-action-sheet>
@@ -112,7 +127,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
-import { getOrders, updateOrderStatus, returnOrder as apiReturnOrder } from '@/api'
+import { getOrders, updateOrderStatus, returnOrder as apiReturnOrder, getChecklist, saveChecklistItem } from '@/api'
 import { showToast, showConfirmDialog } from 'vant'
 
 const route = useRoute()
@@ -127,6 +142,16 @@ const loading = ref(false)
 const active = ref(2)
 const detailVisible = ref(false)
 const currentOrder = ref<any>(null)
+const checklistMap = ref<Record<number, boolean>>({})
+
+const checkedCount = computed(() => {
+  if (!currentOrder.value?.items) return 0
+  return currentOrder.value.items.filter((i: any) => checklistMap.value[i.tool_id]).length
+})
+const allChecked = computed(() => {
+  if (!currentOrder.value?.items?.length) return false
+  return checkedCount.value === currentOrder.value.items.length
+})
 
 const statusOptions = [
   { text: '全部状态', value: '' },
@@ -187,9 +212,23 @@ function showActions(order: any) {
   return ['pending', 'approved', 'borrowed'].includes(order.status)
 }
 
-function showDetail(order: any) {
+async function showDetail(order: any) {
   currentOrder.value = order
   detailVisible.value = true
+  checklistMap.value = {}
+  // 借出中的工单加载已有清点进度
+  if (order.status === 'borrowed' && order.items?.length) {
+    try {
+      const data = await getChecklist(order.order_id)
+      const map: Record<number, boolean> = {}
+      for (const item of data.items) {
+        map[item.tool_id] = item.checked
+      }
+      checklistMap.value = map
+    } catch (e) {
+      console.error('加载清点进度失败', e)
+    }
+  }
 }
 
 async function approve(order: any) {
@@ -212,7 +251,35 @@ async function reject(order: any) {
   }
 }
 
+async function onCheckChange(toolId: number, checked: boolean) {
+  if (!currentOrder.value) return
+  checklistMap.value[toolId] = checked
+  try {
+    await saveChecklistItem(currentOrder.value.order_id, toolId, checked)
+  } catch (e: any) {
+    showToast(e.response?.data?.message || '保存失败')
+    checklistMap.value[toolId] = !checked
+  }
+}
+
 async function returnOrder(order: any) {
+  // 借出中的工单：先检查是否全部清点
+  if (order.status === 'borrowed') {
+    try {
+      const data = await getChecklist(order.order_id)
+      const unchecked = data.items.filter((i: any) => !i.checked)
+      if (unchecked.length > 0) {
+        showToast(`请先完成现场清点（${data.items.length - unchecked.length}/${data.items.length}）`)
+        // 同步更新本地进度
+        const map: Record<number, boolean> = {}
+        for (const item of data.items) map[item.tool_id] = item.checked
+        checklistMap.value = map
+        return
+      }
+    } catch (e) {
+      // 加载失败，继续让后端校验
+    }
+  }
   try {
     await showConfirmDialog({ title: '确认归还', message: '确定归还该工单的所有工具吗？' })
     await apiReturnOrder(order.order_id)

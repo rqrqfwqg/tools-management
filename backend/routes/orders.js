@@ -192,6 +192,14 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
     return res.status(403).json({ message: '只有领用人、分队长、管理员或物料管理员才能归还' });
   }
 
+  // 借出中的工单必须完成现场清点才能归还
+  if (order.status === 'borrowed') {
+    const unchecked = order.items.filter(i => !i.checked);
+    if (unchecked.length > 0) {
+      return res.status(400).json({ message: `请先完成现场清点（${order.items.length - unchecked.length}/${order.items.length}）` });
+    }
+  }
+
   for (const item of order.items) {
     const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
     if (toolIndex > -1) db.tools[toolIndex].status = 'available';
@@ -201,6 +209,51 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
   db.orders[orderIndex].actual_return = nowCST();
   writeDB(db);
   res.json({ message: '已归还' });
+});
+
+// 获取清点进度
+router.get('/orders/:id/checklist', authenticate, (req, res) => {
+  const orderId = parseInt(req.params.id);
+  const db = readDB();
+  const order = db.orders.find(o => o.order_id === orderId);
+  if (!order) return res.status(404).json({ message: '订单不存在' });
+
+  const items = (order.items || []).map(item => ({
+    tool_id: item.tool_id,
+    tool_code: item.tool_code,
+    tool_name: item.tool_name,
+    checked: !!item.checked,
+    checked_at: item.checked_at || null,
+    checked_by: item.checked_by || null
+  }));
+  res.json({ items });
+});
+
+// 保存单项清点状态
+router.post('/orders/:id/checklist', authenticate, (req, res) => {
+  const orderId = parseInt(req.params.id);
+  const { tool_id, checked } = req.body;
+  if (!tool_id) return res.status(400).json({ message: '缺少 tool_id' });
+
+  const db = readDB();
+  const orderIndex = db.orders.findIndex(o => o.order_id === orderId);
+  if (orderIndex === -1) return res.status(404).json({ message: '订单不存在' });
+
+  const order = db.orders[orderIndex];
+  if (order.status !== 'borrowed') return res.status(400).json({ message: '只有借出中的订单才能清点' });
+
+  const item = order.items.find(i => i.tool_id === tool_id);
+  if (!item) return res.status(404).json({ message: '工具不在该工单中' });
+
+  item.checked = !!checked;
+  item.checked_at = checked ? nowCST() : null;
+  item.checked_by = checked ? (req.user.real_name || req.user.username) : null;
+
+  writeDB(db);
+  res.json({
+    message: '已更新',
+    item: { tool_id, checked: item.checked, checked_at: item.checked_at, checked_by: item.checked_by }
+  });
 });
 
 // 取消订单
