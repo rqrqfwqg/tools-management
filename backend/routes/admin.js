@@ -7,7 +7,21 @@ const router = express.Router();
 
 // ========== 仓库管理 ==========
 router.get('/warehouses', authenticate, (req, res) => {
-  res.json(readDB().warehouses || []);
+  const db = readDB();
+  let warehouses = db.warehouses || [];
+  // 非 admin/material_manager 只能看本部门 + 共享仓库
+  if (req.user.role !== 'admin' && req.user.role !== 'material_manager') {
+    const user = db.users.find(u => u.user_id === req.user.user_id);
+    const userDeptId = user?.dept_id;
+    warehouses = warehouses.filter(w => w.dept_id === null || w.dept_id === undefined || w.dept_id === userDeptId);
+  }
+  // 注入 dept_name 方便前端显示
+  const departments = db.departments || [];
+  const result = warehouses.map(w => ({
+    ...w,
+    dept_name: w.dept_id ? (departments.find(d => d.dept_id === w.dept_id)?.dept_name || '') : '共享'
+  }));
+  res.json(result);
 });
 
 router.get('/warehouses/:id', authenticate, (req, res) => {
@@ -29,7 +43,8 @@ router.post('/warehouses', authenticate, requireMaterialManager, (req, res) => {
   const newWarehouse = {
     warehouse_id: nextId(db.warehouses, 'warehouse_id'),
     warehouse_name, warehouse_code, description: description || '',
-    is_active: true, is_restricted: req.body.is_restricted !== undefined ? req.body.is_restricted : true
+    is_active: true, is_restricted: req.body.is_restricted !== undefined ? req.body.is_restricted : true,
+    dept_id: req.body.dept_id !== undefined ? req.body.dept_id : null
   };
   db.warehouses.push(newWarehouse);
   writeDB(db);
@@ -53,7 +68,8 @@ router.put('/warehouses/:id', authenticate, requireMaterialManager, (req, res) =
     warehouse_name: warehouse_name ?? db.warehouses[idx].warehouse_name,
     warehouse_code: warehouse_code ?? db.warehouses[idx].warehouse_code,
     description: description !== undefined ? description : db.warehouses[idx].description,
-    is_active: is_active !== undefined ? is_active : db.warehouses[idx].is_active
+    is_active: is_active !== undefined ? is_active : db.warehouses[idx].is_active,
+    dept_id: req.body.dept_id !== undefined ? req.body.dept_id : db.warehouses[idx].dept_id
   };
   writeDB(db);
 

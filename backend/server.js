@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
-const { initDB, nowCST } = require('./routes/db');
+const { initDB, migrateDB, nowCST } = require('./routes/db');
 
 const app = express();
 app.set('trust proxy', 1);  // nginx 反向代理，express-rate-limit 需要此配置
@@ -165,6 +165,7 @@ app.use((req, res) => {
 
 // ============ 启动 ============
 initDB();
+migrateDB();
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`✅ 工器具管理系统后端运行在 http://127.0.0.1:${PORT}`);
   console.log(`   环境: ${process.env.NODE_ENV || 'development'}`);

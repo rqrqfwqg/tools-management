@@ -42,7 +42,7 @@ function initDB() {
         { role_id: 4, role_name: '物料管理员', role_code: 'material_manager', description: '管理仓库、工具及工具类型', is_system: true, permissions: { approve_orders: false, manage_tools: true, manage_warehouses: true, manage_users: false, manage_categories: true } }
       ],
       warehouses: [
-        { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, is_restricted: true }
+        { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, is_restricted: true, dept_id: null }
       ],
       shelves: [
         { shelf_id: 1, warehouse_id: 1, shelf_name: 'A区', shelf_code: 'A', description: 'A区货架', is_active: true },
@@ -109,4 +109,35 @@ function nowCST() {
   return `${y}-${M}-${d}T${h}:${m}:${s}.${ms}+08:00`;
 }
 
-module.exports = { initDB, readDB, writeDB, nextId, nowCST, DB_PATH };
+// 数据迁移：为已有数据补充新字段（幂等，可重复执行）
+function migrateDB() {
+  if (!fs.existsSync(DB_PATH)) return; // db.json 不存在则跳过（initDB 会创建）
+  const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+
+  let changed = false;
+
+  // 1. 给已有仓库补 dept_id: null（如果缺失）
+  if (db.warehouses && Array.isArray(db.warehouses)) {
+    db.warehouses.forEach(w => {
+      if (w.dept_id === undefined) { w.dept_id = null; changed = true; }
+    });
+  }
+
+  // 2. 确保 phone=13800138000 的用户是 admin
+  if (db.users && Array.isArray(db.users)) {
+    const adminUser = db.users.find(u => u.phone === '13800138000');
+    if (adminUser && adminUser.role !== 'admin') {
+      adminUser.role = 'admin';
+      adminUser.role_id = 1;
+      adminUser.role_name = '管理员';
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+    console.log('[migrateDB] 已完成数据迁移');
+  }
+}
+
+module.exports = { initDB, migrateDB, readDB, writeDB, nextId, nowCST, DB_PATH };

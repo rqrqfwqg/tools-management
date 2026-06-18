@@ -29,7 +29,7 @@ router.get('/tools', authenticate, (req, res) => {
   const locations = db.storage_locations || [];
 
   // 注入 toolkit_name / toolkit_seq / shelf_name / location_name
-  const enriched = tools.map(tool => {
+  let enriched = tools.map(tool => {
     const shelf = shelves.find(s => s.shelf_id === tool.shelf_id);
     const loc = locations.find(l => l.location_id === tool.storage_location_id);
     const result = {
@@ -47,6 +47,20 @@ router.get('/tools', authenticate, (req, res) => {
     }
     return result;
   });
+
+  // 部门权限过滤：非 admin/material_manager 只看本部门 + 共享仓库的工具
+  if (req.user.role !== 'admin' && req.user.role !== 'material_manager') {
+    const currentUser = db.users.find(u => u.user_id === req.user.user_id);
+    const userDeptId = currentUser?.dept_id;
+    const warehouses = db.warehouses || [];
+    const allowedWarehouseIds = new Set(
+      warehouses
+        .filter(w => w.dept_id === null || w.dept_id === undefined || w.dept_id === userDeptId)
+        .map(w => w.warehouse_id)
+    );
+    // 工具没有 warehouse_id 或 warehouse_id 在允许列表内才显示
+    enriched = enriched.filter(t => !t.warehouse_id || allowedWarehouseIds.has(t.warehouse_id));
+  }
 
   enriched.sort((a, b) => (b.borrow_count || 0) - (a.borrow_count || 0));
   res.json(enriched);
@@ -520,6 +534,14 @@ router.post('/tools/code/:code/borrow', authenticate, (req, res) => {
   }
   if (tool.status !== 'available') {
     return res.status(400).json({ message: `工具"${tool.tool_name}"当前状态为"${tool.status}"，不可领用` });
+  }
+
+  // 部门权限校验：非 admin 用户只能借本部门 + 共享仓库的工具
+  if (req.user.role !== 'admin') {
+    const warehouse = (db.warehouses || []).find(w => w.warehouse_id === tool.warehouse_id);
+    if (warehouse && warehouse.dept_id !== null && warehouse.dept_id !== undefined && warehouse.dept_id !== user.dept_id) {
+      return res.status(403).json({ message: `工具"${tool.tool_name}"属于其他部门仓库，无权领用` });
+    }
   }
 
   // 生成订单号

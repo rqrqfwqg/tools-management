@@ -76,6 +76,23 @@ router.post('/orders', authenticate, [
     return res.status(400).json({ message: unavailableTools.join('；') });
   }
 
+  // 部门权限校验：非 admin 用户只能借本部门 + 共享仓库的工具
+  if (req.user.role !== 'admin') {
+    const warehouses = db.warehouses || [];
+    const deptMismatchTools = [];
+    for (const toolId of resolvedIds) {
+      const tool = db.tools.find(t => t.tool_id === toolId);
+      if (!tool) continue;
+      const warehouse = warehouses.find(w => w.warehouse_id === tool.warehouse_id);
+      if (warehouse && warehouse.dept_id !== null && warehouse.dept_id !== undefined && warehouse.dept_id !== user.dept_id) {
+        deptMismatchTools.push(`${tool.tool_name}（${warehouse.warehouse_name}）`);
+      }
+    }
+    if (deptMismatchTools.length > 0) {
+      return res.status(403).json({ message: `无权领用其他部门仓库的工具：${deptMismatchTools.join('、')}` });
+    }
+  }
+
   const orderNo = `ORD${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
   let itemCounter = Date.now();
   const items = resolvedIds.map(toolId => {
