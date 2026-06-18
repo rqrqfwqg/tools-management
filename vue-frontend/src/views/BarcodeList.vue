@@ -42,7 +42,7 @@
         />
       </div>
       <div class="toolbar-right">
-        <span class="tool-count">共 {{ filteredTools.length }} 件 · 打印 {{ printPages.length }} 页</span>
+        <span class="tool-count">共 {{ filteredTools.length }} 件 · {{ Math.max(1, Math.ceil(filteredTools.length / 24)) }} 页</span>
         <el-button type="primary" @click="handlePrint">
           <el-icon style="margin-right:4px"><Printer /></el-icon>
           打印条形码
@@ -73,42 +73,16 @@
       </div>
     </div>
 
-    <!-- 打印用布局（A4 分页，3列×8行=24个/页） -->
-    <div class="print-area">
-      <div
-        v-for="(page, pageIdx) in printPages"
-        :key="pageIdx"
-        class="print-page"
-      >
-        <div
-          v-for="tool in page"
-          :key="tool.tool_id"
-          class="print-cell"
-        >
-          <svg :id="`print-barcode-${tool.tool_id}`" class="print-barcode-svg"></svg>
-          <div class="print-cell-code">{{ tool.tool_code }}</div>
-          <div class="print-cell-name">{{ tool.tool_name }}</div>
-          <div class="print-cell-loc" v-if="tool.shelf_name || tool.location_name">
-            {{ tool.shelf_name }}{{ tool.location_name ? ' ' + tool.location_name : '' }}
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- 打印用布局已改为新窗口生成，此处不需要 -->
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { Printer } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { getTools, getWarehouses, getCategories } from '@/api'
 import type { Tool } from '@/types'
-
-// ============ A4 打印参数 ============
-// A4: 210mm×297mm，页边距 10mm → 可打印 190mm×277mm
-// 每个标签: 宽 62mm × 高 34mm（含间距），3列×8行 = 24个/页
-const PRINT_COLS = 3
-const PRINT_ROWS = 8
-const ITEMS_PER_PAGE = PRINT_COLS * PRINT_ROWS // 24
 
 // ============ 数据 ============
 const allTools = ref<Tool[]>([])
@@ -142,21 +116,9 @@ function doFilter() {
 
   filteredTools.value = result
 
-  // 数据变更后重新渲染条形码（屏幕+打印）
-  nextTick(() => {
-    renderAllBarcodes()
-    nextTick(() => renderPrintBarcodes())
-  })
+  // 数据变更后重新渲染条形码（屏幕浏览）
+  nextTick(() => renderAllBarcodes())
 }
-
-// ============ 打印分页 ============
-const printPages = computed<Tool[][]>(() => {
-  const pages: Tool[][] = []
-  for (let i = 0; i < filteredTools.value.length; i += ITEMS_PER_PAGE) {
-    pages.push(filteredTools.value.slice(i, i + ITEMS_PER_PAGE))
-  }
-  return pages.length > 0 ? pages : [[]]
-})
 
 // ============ 条形码渲染 ============
 let JsBarcodeModule: any = null
@@ -192,30 +154,80 @@ function renderAllBarcodes() {
 
 // ============ 打印 ============
 function handlePrint() {
-  // 打印前确保打印区条形码已渲染
-  renderPrintBarcodes()
-  window.print()
+  // 生成独立打印窗口，避免 Vue 布局干扰分页
+  const tools = filteredTools.value
+  if (tools.length === 0) return
+
+  const ITEMS_PER_PAGE = 24 // 3列×8行
+  const pages: Tool[][] = []
+  for (let i = 0; i < tools.length; i += ITEMS_PER_PAGE) {
+    pages.push(tools.slice(i, i + ITEMS_PER_PAGE))
+  }
+
+  // 生成每页 HTML
+  const pagesHtml = pages.map((pageTools, pageIdx) => {
+    const cellsHtml = pageTools.map(tool => {
+      const loc = tool.shelf_name || tool.location_name
+        ? `${tool.shelf_name || ''}${tool.location_name ? ' ' + tool.location_name : ''}`
+        : ''
+      return `<div class="cell">
+        <svg class="bc" data-code="${tool.tool_code}"></svg>
+        <div class="code">${tool.tool_code}</div>
+        <div class="name">${escapeHtml(tool.tool_name)}</div>
+        ${loc ? `<div class="loc">${escapeHtml(loc)}</div>` : ''}
+      </div>`
+    }).join('\n')
+    return `<div class="page${pageIdx < pages.length - 1 ? ' page-break' : ''}">${cellsHtml}</div>`
+  }).join('\n')
+
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) {
+    ElMessage.warning('弹窗被拦截，请允许弹窗后重试')
+    return
+  }
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>条形码打印 - 共 ${tools.length} 件 ${pages.length} 页</title>
+<style>
+  @page { size: A4; margin: 8mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #fff; }
+  .page { width: 194mm; min-height: 281mm; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0; }
+  .page-break { page-break-after: always; break-after: page; }
+  .cell {
+    width: 64mm; height: 34mm;
+    border: 0.5pt solid #666;
+    border-radius: 1mm;
+    padding: 1.5mm 2mm;
+    text-align: center;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    margin-right: 1mm; margin-bottom: 1mm;
+  }
+  .cell:nth-child(3n) { margin-right: 0; }
+  .bc { max-width: 58mm; height: 16mm; }
+  .code { font-size: 9pt; font-weight: 700; font-family: "Courier New", monospace; margin-top: 0.5mm; }
+  .name { font-size: 7.5pt; color: #333; margin-top: 0.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 58mm; }
+  .loc { font-size: 7pt; color: #888; }
+</style></head><body>
+${pagesHtml}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<script>
+  document.querySelectorAll('.bc').forEach(function(svg) {
+    var code = svg.getAttribute('data-code');
+    try { JsBarcode(svg, code, { format: 'CODE128', width: 1.5, height: 50, displayValue: false, margin: 0 }); }
+    catch(e) { svg.textContent = code; }
+  });
+  setTimeout(function() { window.print(); }, 800);
+<\/script>
+</body></html>`)
+  win.document.close()
 }
 
-// ============ 渲染打印区条形码 ============
-function renderPrintBarcodes() {
-  if (!JsBarcodeModule) return
-  for (const tool of filteredTools.value) {
-    const svgEl = document.getElementById(`print-barcode-${tool.tool_id}`)
-    if (!svgEl) continue
-    if (svgEl.children.length > 0) continue
-    try {
-      JsBarcodeModule(svgEl, tool.tool_code, {
-        format: 'CODE128',
-        width: 1.5,
-        height: 40,
-        displayValue: false,
-        margin: 2
-      })
-    } catch (e) {
-      console.warn(`打印条形码渲染失败: ${tool.tool_code}`, e)
-    }
-  }
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 // ============ 加载 ============
@@ -360,122 +372,5 @@ onMounted(async () => {
   margin-top: 1px;
 }
 
-/* ===== 打印区（屏幕上隐藏） ===== */
-.print-area {
-  display: none;
-}
-</style>
-
-<!-- ===== 全局打印样式（A4 分页） ===== -->
-<style>
-@media print {
-  /* 隐藏所有非打印元素 */
-  .no-print,
-  .el-menu,
-  .el-header,
-  .el-aside,
-  .sidebar,
-  .navbar,
-  header,
-  nav,
-  .barcode-toolbar,
-  .barcode-grid {
-    display: none !important;
-  }
-
-  /* 显示打印区 */
-  .print-area {
-    display: block !important;
-  }
-
-  body {
-    background: #fff !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .barcode-page {
-    padding: 0 !important;
-    background: #fff !important;
-  }
-
-  /* A4 页面：每页明确分页 */
-  .print-page {
-    width: 100%;
-    page-break-after: always;
-    page-break-inside: avoid;
-    break-after: page;
-    break-inside: avoid;
-  }
-
-  .print-page:last-child {
-    page-break-after: auto;
-    break-after: auto;
-  }
-
-  /* 每个标签：3列布局，inline-block 保证不被切断 */
-  .print-cell {
-    display: inline-block;
-    vertical-align: top;
-    width: 62mm;
-    height: 33mm;
-    margin: 0;
-    padding: 2mm 2mm;
-    box-sizing: border-box;
-    border: 0.5pt solid #888;
-    border-radius: 1mm;
-    text-align: center;
-    overflow: hidden;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-
-  /* 用负 margin 消除 inline-block 间距，每行3个 */
-  .print-page {
-    font-size: 0; /* 消除 inline-block 空白 */
-    letter-spacing: 0;
-  }
-
-  .print-cell {
-    font-size: 10px; /* 重置字号 */
-    margin-right: 1mm;
-    margin-bottom: 1mm;
-  }
-
-  /* 每3个换行 */
-  .print-cell:nth-child(3n) {
-    margin-right: 0;
-  }
-
-  .print-barcode-svg {
-    max-width: 100%;
-    height: 38px;
-  }
-
-  .print-cell-code {
-    font-size: 9pt;
-    font-weight: 700;
-    font-family: 'Courier New', monospace;
-    margin-top: 1mm;
-  }
-
-  .print-cell-name {
-    font-size: 8pt;
-    color: #333;
-    margin-top: 0.5mm;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .print-cell-loc {
-    font-size: 7pt;
-    color: #888;
-  }
-
-  @page {
-    size: A4;
-    margin: 8mm;
-  }
-}
+/* ===== 打印区已改为新窗口生成，此处不需要 ===== */
 </style>
