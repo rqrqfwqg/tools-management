@@ -383,10 +383,10 @@
       </van-badge>
     </div>
 
-    <!-- 扫码浮动按钮 -->
-    <div class="scan-float" @click="$router.push('/scan')">
+    <!-- 扫码浮动按钮（已禁用，域名+HTTPS配好后取消注释） -->
+    <!-- <div class="scan-float" @click="$router.push('/scan')">
       <van-icon name="scan" size="28" />
-    </div>
+    </div> -->
 
     <van-tabbar v-model="active" route active-color="#1989fa" inactive-color="#999" safe-area-inset-bottom>
       <van-tabbar-item icon="home-o" to="/dashboard">首页</van-tabbar-item>

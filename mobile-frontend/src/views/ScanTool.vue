@@ -87,7 +87,8 @@
     <van-tabbar v-model="active" route active-color="#1989fa" inactive-color="#999" safe-area-inset-bottom>
       <van-tabbar-item icon="home-o" to="/dashboard">首页</van-tabbar-item>
       <van-tabbar-item icon="orders-o" to="/tools">工具</van-tabbar-item>
-      <van-tabbar-item icon="scan" to="/scan">扫码</van-tabbar-item>
+      <!-- 扫码tab已禁用，域名+HTTPS配好后取消注释 -->
+      <!-- <van-tabbar-item icon="scan" to="/scan">扫码</van-tabbar-item> -->
       <van-tabbar-item icon="description" to="/orders">工单</van-tabbar-item>
       <van-tabbar-item icon="contact" to="/profile">我的</van-tabbar-item>
     </van-tabbar>
