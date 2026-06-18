@@ -3,6 +3,8 @@
     <h2>工器具管理</h2>
     <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
       <el-button type="primary" @click="openDialog()">新增工器具</el-button>
+      <el-button type="success" @click="exportExcel"><el-icon style="margin-right:4px"><Download /></el-icon>导出Excel</el-button>
+      <el-button @click="goBarcodeList"><el-icon style="margin-right:4px"><Printer /></el-icon>条形码清单</el-button>
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
       <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:120px">
         <el-option label="可用" value="available" />
@@ -68,11 +70,14 @@
         </template>
       </el-table-column>
       <el-table-column prop="borrow_count" label="借次" width="70" />
-      <el-table-column label="操作" min-width="280" fixed="right">
+      <el-table-column label="操作" min-width="340" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" @click="openUploadDialog(row)" title="上传图片">
             <el-icon><Upload /></el-icon>
+          </el-button>
+          <el-button size="small" @click="openBarcodeDialog(row)" title="生成条形码">
+            <el-icon><Operation /></el-icon>
           </el-button>
           <el-button
             size="small"
@@ -174,17 +179,37 @@
         <el-button type="primary" :loading="uploading" :disabled="!selectedFile" @click="handleUpload">上传</el-button>
       </template>
     </el-dialog>
+
+    <!-- 条形码弹窗 -->
+    <el-dialog v-model="barcodeDialogVisible" title="工具条形码" width="420px">
+      <div v-if="barcodeTool" style="text-align:center">
+        <p style="margin-bottom:12px">
+          <strong>{{ barcodeTool.tool_name }}</strong>
+          <span style="color:#909399;margin-left:8px">{{ barcodeTool.tool_code }}</span>
+        </p>
+        <div style="background:#fff;border:1px solid #e0e0e0;padding:16px;border-radius:8px;display:flex;justify-content:center">
+          <svg id="single-barcode"></svg>
+        </div>
+        <p v-if="barcodeTool.shelf_name || barcodeTool.location_name" style="margin-top:8px;color:#909399;font-size:13px">
+          {{ barcodeTool.shelf_name }}{{ barcodeTool.location_name ? ' ' + barcodeTool.location_name : '' }}
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="barcodeDialogVisible=false">关闭</el-button>
+        <el-button type="primary" @click="printBarcode">打印条形码</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getTools, createTool, updateTool, deleteTool, getToolkits } from '@/api'
 import { getCategories } from '@/api'
 import { getWarehouses, getShelves, getStorageLocations } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Picture, UploadFilled, ShoppingCart } from '@element-plus/icons-vue'
+import { Upload, Picture, UploadFilled, ShoppingCart, Download, Printer, Operation } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { useCartStore } from '@/store/cart'
 
@@ -392,6 +417,110 @@ const cartStore = useCartStore()
 const handleAddToCart = (tool: any) => {
   cartStore.addToCart(tool)
   ElMessage.success(`已添加"${tool.tool_name}"到购物车`)
+}
+
+// ===== 条形码 =====
+const router = useRouter()
+const barcodeDialogVisible = ref(false)
+const barcodeTool = ref<any>(null)
+let JsBarcodeMod: any = null
+
+async function openBarcodeDialog(row: any) {
+  barcodeTool.value = row
+  barcodeDialogVisible.value = true
+  await nextTick()
+  if (!JsBarcodeMod) {
+    const mod = await import('jsbarcode')
+    JsBarcodeMod = mod.default || mod
+  }
+  const svgEl = document.getElementById('single-barcode')
+  if (svgEl) {
+    svgEl.innerHTML = ''
+    try {
+      JsBarcodeMod(svgEl, row.tool_code, {
+        format: 'CODE128',
+        width: 2,
+        height: 80,
+        displayValue: true,
+        fontSize: 16,
+        margin: 10
+      })
+    } catch (e) {
+      console.warn('条形码渲染失败', e)
+    }
+  }
+}
+
+function printBarcode() {
+  const svgEl = document.getElementById('single-barcode')
+  if (!svgEl || !barcodeTool.value) return
+  const svgHtml = svgEl.outerHTML
+  const tool = barcodeTool.value
+  const win = window.open('', '_blank', 'width=420,height=320')
+  if (!win) {
+    ElMessage.warning('弹窗被拦截，请允许弹窗后重试')
+    return
+  }
+  win.document.write(`<!DOCTYPE html><html><head><title>条形码 - ${tool.tool_code}</title>
+    <style>
+      body { margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:sans-serif; }
+      .label { text-align:center; padding:16px; }
+      .label svg { max-width:100%; }
+      .name { font-size:14px; font-weight:bold; margin-bottom:6px; }
+      .loc { font-size:11px; color:#999; margin-top:4px; }
+      @page { size: auto; margin: 5mm; }
+    </style></head><body>
+    <div class="label">
+      <div class="name">${tool.tool_name}</div>
+      ${svgHtml}
+      <div class="loc">${tool.shelf_name || ''} ${tool.location_name || ''}</div>
+    </div>
+    </body></html>`)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print() }, 300)
+}
+
+function goBarcodeList() {
+  router.push('/barcodes')
+}
+
+// ===== 导出 Excel =====
+async function exportExcel() {
+  if (filteredList.value.length === 0) {
+    ElMessage.warning('没有可导出的数据')
+    return
+  }
+  try {
+    const XLSX = await import('xlsx')
+    const data = filteredList.value.map((t: any, i: number) => ({
+      '序号': i + 1,
+      '编码': t.tool_code || '',
+      '名称': t.tool_name || '',
+      '分类': t.category_name || '',
+      '仓库': t.warehouse || '',
+      '货架': t.shelf_name || '',
+      '货位': t.location_name || t.storage_location || '',
+      '状态': statusText(t.status),
+      '工具包': t.toolkit_name || '',
+      '使用场景': t.scene || '',
+      '借出次数': t.borrow_count || 0
+    }))
+    const ws = XLSX.utils.json_to_sheet(data)
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 12 },
+      { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 8 },
+      { wch: 12 }, { wch: 16 }, { wch: 10 }
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '工具清单')
+    const date = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `工具清单_${date}.xlsx`)
+    ElMessage.success(`已导出 ${data.length} 条记录`)
+  } catch (e: any) {
+    console.error('导出Excel失败', e)
+    ElMessage.error('导出失败：' + (e.message || '未知错误'))
+  }
 }
 
 onMounted(() => {
