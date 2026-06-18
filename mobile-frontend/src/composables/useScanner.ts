@@ -66,63 +66,73 @@ export function useScanner(options: ScannerOptions = {}) {
   /**
    * 开始扫码
    *
+   * ⚠️ 摄像头扫码已临时禁用（等域名+HTTPS 配置好后恢复）
+   * 恢复方法：取消下方注释块，删掉 cameraSupported.value = false 即可
+   *
    * @param facingMode 摄像头方向 'environment'（后摄）| 'user'（前摄）
    */
   async function startScanning(facingMode: 'environment' | 'user' = 'environment'): Promise<void> {
-    error.value = ''
+    // ---- 临时禁用：摄像头需 HTTPS 环境，域名配置好后取消注释恢复 ----
+    cameraSupported.value = false
+    scanning.value = false
+    error.value = '扫码功能暂未开启，请使用手动输入工具编码。'
+    return
+    // ---- 以下为原始扫码逻辑，恢复时取消注释 ----
 
-    // 前置检查：环境是否支持摄像头
-    if (!checkCameraSupport()) {
-      cameraSupported.value = false
-      scanning.value = false
-      error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      onError?.(error.value)
-      return
-    }
+    // error.value = ''
 
-    const s = getScanner()
+    // // 前置检查：环境是否支持摄像头
+    // if (!checkCameraSupport()) {
+    //   cameraSupported.value = false
+    //   scanning.value = false
+    //   error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
+    //   onError?.(error.value)
+    //   return
+    // }
 
-    try {
-      scanning.value = true
+    // const s = getScanner()
 
-      await s.start(
-        { facingMode },
-        {
-          fps: 10,
-          qrbox
-        },
-        (decodedText: string) => {
-          // 成功识别
-          lastCode.value = decodedText
-          onSuccess?.(decodedText)
-          // 立即停止扫描防止重复识别
-          stopScanning()
-        },
-        () => {
-          // 每帧扫描尝试（空回调，忽略未识别帧）
-        }
-      )
-    } catch (err: any) {
-      scanning.value = false
-      const msg: string = err?.message || String(err)
+    // try {
+    //   scanning.value = true
 
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-        error.value = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问，或手动输入工具编码。'
-      } else if (msg.includes('NotFoundError') || msg.includes('No camera')) {
-        error.value = '未检测到摄像头设备，请手动输入工具编码。'
-      } else if (msg.includes('NotReadableError')) {
-        error.value = '摄像头被其他应用占用，请关闭其他使用摄像头的应用后重试。'
-      } else if (msg.includes('NotSecure') || msg.includes('not supported') || msg.includes('streaming not supported')) {
-        cameraSupported.value = false
-        error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      } else if (msg.includes('already')) {
-        // 已在扫描中，忽略
-      } else {
-        error.value = `摄像头启动失败: ${msg}`
-      }
+    //   await s.start(
+    //     { facingMode },
+    //     {
+    //       fps: 10,
+    //       qrbox
+    //     },
+    //     (decodedText: string) => {
+    //       // 成功识别
+    //       lastCode.value = decodedText
+    //       onSuccess?.(decodedText)
+    //       // 立即停止扫描防止重复识别
+    //       stopScanning()
+    //     },
+    //     () => {
+    //       // 每帧扫描尝试（空回调，忽略未识别帧）
+    //     }
+    //   )
+    // } catch (err: any) {
+    //   scanning.value = false
+    //   const msg: string = err?.message || String(err)
 
-      onError?.(error.value)
-    }
+    //   if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+    //     error.value = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问，或手动输入工具编码。'
+    //   } else if (msg.includes('NotFoundError') || msg.includes('No camera')) {
+    //     error.value = '未检测到摄像头设备，请手动输入工具编码。'
+    //   } else if (msg.includes('NotReadableError')) {
+    //     error.value = '摄像头被其他应用占用，请关闭其他使用摄像头的应用后重试。'
+    //   } else if (msg.includes('NotSecure') || msg.includes('not supported') || msg.includes('streaming not supported')) {
+    //     cameraSupported.value = false
+    //     error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
+    //   } else if (msg.includes('already')) {
+    //     // 已在扫描中，忽略
+    //   } else {
+    //     error.value = `摄像头启动失败: ${msg}`
+    //   }
+
+    //   onError?.(error.value)
+    // }
   }
 
   /**

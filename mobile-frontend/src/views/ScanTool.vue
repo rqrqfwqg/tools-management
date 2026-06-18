@@ -11,29 +11,28 @@
     />
 
     <!-- 扫码视口（仅摄像头可用时显示） -->
-    <div v-if="cameraSupported" class="scanner-container">
+    <!-- ⚠️ 摄像头扫码已临时禁用，域名+HTTPS配置好后取消注释恢复 -->
+    <!-- <div v-if="cameraSupported" class="scanner-container">
       <div
         id="scanner-viewport"
         class="scanner-viewport"
       ></div>
 
-      <!-- 扫描中动画提示 -->
       <div v-if="scanning" class="scan-overlay">
         <div class="scan-line" />
         <p class="scan-hint">将条形码对准扫描框</p>
       </div>
 
-      <!-- 错误提示 -->
       <div v-if="error && !scanning" class="scan-error">
         <van-icon name="warning-o" size="40" color="#ee0a24" />
         <p>{{ error }}</p>
       </div>
-    </div>
+    </div> -->
 
     <!-- 摄像头不可用时的提示横幅 -->
-    <div v-if="!cameraSupported" class="camera-unsupported-banner">
+    <div class="camera-unsupported-banner">
       <van-icon name="warning-o" size="24" color="#ff9800" />
-      <span>摄像头不可用，请使用手动输入</span>
+      <span>扫码功能暂未开启，请使用手动输入</span>
     </div>
 
     <!-- 手动输入区域 -->
@@ -62,7 +61,8 @@
 
       <!-- 快捷按钮 -->
       <div class="manual-actions">
-        <van-button
+        <!-- 重新扫码按钮已禁用，恢复时取消注释 -->
+        <!-- <van-button
           v-if="!scanning && cameraSupported"
           type="primary"
           block
@@ -71,7 +71,7 @@
           @click="retryScan"
         >
           重新扫码
-        </van-button>
+        </van-button> -->
       </div>
     </div>
 
@@ -149,9 +149,9 @@ async function onCodeDetected(code: string): Promise<void> {
     closeToast()
     const msg = err?.response?.data?.message || '查询失败，请确认编码是否正确'
     showFailToast(msg)
-    // 查询失败时重新开始扫描
-    await stopScanning()
-    await startScanning()
+    // 查询失败时重新开始扫描（已禁用）
+    // await stopScanning()
+    // await startScanning()
   }
 }
 
@@ -161,9 +161,6 @@ async function handleManualSubmit(): Promise<void> {
   if (!code) return
 
   manualLoading.value = true
-
-  // 停止摄像头扫描
-  await stopScanning()
 
   try {
     await onCodeDetected(code)
@@ -177,18 +174,20 @@ async function handleManualSubmit(): Promise<void> {
 /** 结果弹窗关闭后 */
 function onResultClosed(): void {
   resultTool.value = null
-  // 重新开始扫描
-  startScanning()
+  // 重新开始扫描（已禁用，仅保留手动输入）
+  // startScanning()
 }
 
 /** 重新扫码 */
 async function retryScan(): Promise<void> {
-  manualCode.value = ''
-  await startScanning()
+  // 已禁用，域名+HTTPS配置好后取消注释恢复
+  // manualCode.value = ''
+  // await startScanning()
 }
 
 onMounted(() => {
-  startScanning()
+  // 摄像头扫码已禁用，仅手动输入
+  // startScanning()
 })
 
 onUnmounted(() => {
@@ -199,14 +198,9 @@ onUnmounted(() => {
 <style scoped>
 .scan-page {
   min-height: 100vh;
-  background: #000;
+  background: #f7f8fa;
   display: flex;
   flex-direction: column;
-}
-
-/* 无摄像头时白底 */
-.scan-page:has(.camera-unsupported-banner) {
-  background: #f7f8fa;
 }
 
 /* ===== 扫码区域 ===== */
