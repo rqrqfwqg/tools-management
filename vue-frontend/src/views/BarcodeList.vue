@@ -42,7 +42,7 @@
         />
       </div>
       <div class="toolbar-right">
-        <span class="tool-count">共 {{ filteredTools.length }} 件</span>
+        <span class="tool-count">共 {{ filteredTools.length }} 件 · 打印 {{ printPages.length }} 页</span>
         <el-button type="primary" @click="handlePrint">
           <el-icon style="margin-right:4px"><Printer /></el-icon>
           打印条形码
@@ -50,7 +50,7 @@
       </div>
     </div>
 
-    <!-- 条形码网格 -->
+    <!-- 条形码网格（屏幕浏览用） -->
     <div v-if="filteredTools.length === 0" class="empty-hint">
       <el-empty description="暂无匹配工具" />
     </div>
@@ -72,14 +72,43 @@
         </div>
       </div>
     </div>
+
+    <!-- 打印用布局（A4 分页，3列×8行=24个/页） -->
+    <div class="print-area">
+      <div
+        v-for="(page, pageIdx) in printPages"
+        :key="pageIdx"
+        class="print-page"
+      >
+        <div
+          v-for="tool in page"
+          :key="tool.tool_id"
+          class="print-cell"
+        >
+          <svg :id="`print-barcode-${tool.tool_id}`" class="print-barcode-svg"></svg>
+          <div class="print-cell-code">{{ tool.tool_code }}</div>
+          <div class="print-cell-name">{{ tool.tool_name }}</div>
+          <div class="print-cell-loc" v-if="tool.shelf_name || tool.location_name">
+            {{ tool.shelf_name }}{{ tool.location_name ? ' ' + tool.location_name : '' }}
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { Printer } from '@element-plus/icons-vue'
 import { getTools, getWarehouses, getCategories } from '@/api'
 import type { Tool } from '@/types'
+
+// ============ A4 打印参数 ============
+// A4: 210mm×297mm，页边距 10mm → 可打印 190mm×277mm
+// 每个标签: 宽 62mm × 高 34mm（含间距），3列×8行 = 24个/页
+const PRINT_COLS = 3
+const PRINT_ROWS = 8
+const ITEMS_PER_PAGE = PRINT_COLS * PRINT_ROWS // 24
 
 // ============ 数据 ============
 const allTools = ref<Tool[]>([])
@@ -113,9 +142,21 @@ function doFilter() {
 
   filteredTools.value = result
 
-  // 数据变更后重新渲染条形码
-  nextTick(() => renderAllBarcodes())
+  // 数据变更后重新渲染条形码（屏幕+打印）
+  nextTick(() => {
+    renderAllBarcodes()
+    nextTick(() => renderPrintBarcodes())
+  })
 }
+
+// ============ 打印分页 ============
+const printPages = computed<Tool[][]>(() => {
+  const pages: Tool[][] = []
+  for (let i = 0; i < filteredTools.value.length; i += ITEMS_PER_PAGE) {
+    pages.push(filteredTools.value.slice(i, i + ITEMS_PER_PAGE))
+  }
+  return pages.length > 0 ? pages : [[]]
+})
 
 // ============ 条形码渲染 ============
 let JsBarcodeModule: any = null
@@ -151,7 +192,30 @@ function renderAllBarcodes() {
 
 // ============ 打印 ============
 function handlePrint() {
+  // 打印前确保打印区条形码已渲染
+  renderPrintBarcodes()
   window.print()
+}
+
+// ============ 渲染打印区条形码 ============
+function renderPrintBarcodes() {
+  if (!JsBarcodeModule) return
+  for (const tool of filteredTools.value) {
+    const svgEl = document.getElementById(`print-barcode-${tool.tool_id}`)
+    if (!svgEl) continue
+    if (svgEl.children.length > 0) continue
+    try {
+      JsBarcodeModule(svgEl, tool.tool_code, {
+        format: 'CODE128',
+        width: 1.5,
+        height: 40,
+        displayValue: false,
+        margin: 2
+      })
+    } catch (e) {
+      console.warn(`打印条形码渲染失败: ${tool.tool_code}`, e)
+    }
+  }
 }
 
 // ============ 加载 ============
@@ -295,12 +359,17 @@ onMounted(async () => {
   color: #909399;
   margin-top: 1px;
 }
+
+/* ===== 打印区（屏幕上隐藏） ===== */
+.print-area {
+  display: none;
+}
 </style>
 
-<!-- ===== 全局打印样式 ===== -->
+<!-- ===== 全局打印样式（A4 分页） ===== -->
 <style>
 @media print {
-  /* 隐藏侧边栏、顶栏、工具栏 */
+  /* 隐藏所有非打印元素 */
   .no-print,
   .el-menu,
   .el-header,
@@ -309,11 +378,16 @@ onMounted(async () => {
   .navbar,
   header,
   nav,
-  .barcode-toolbar {
+  .barcode-toolbar,
+  .barcode-grid {
     display: none !important;
   }
 
-  /* 页面背景 */
+  /* 显示打印区 */
+  .print-area {
+    display: block !important;
+  }
+
   body {
     background: #fff !important;
     -webkit-print-color-adjust: exact;
@@ -325,31 +399,78 @@ onMounted(async () => {
     background: #fff !important;
   }
 
-  /* A4 适配：5列网格 */
-  .barcode-grid {
-    display: grid !important;
-    grid-template-columns: repeat(5, 1fr) !important;
-    gap: 10px !important;
-    padding: 8mm 10mm !important;
-  }
-
-  .barcode-cell {
-    box-shadow: none !important;
-    border: 1px solid #e0e0e0;
-    padding: 10px 8px 8px !important;
+  /* A4 页面：每页明确分页 */
+  .print-page {
+    width: 100%;
+    page-break-after: always;
     page-break-inside: avoid;
+    break-after: page;
+    break-inside: avoid;
   }
 
-  .barcode-code {
-    font-size: 11px !important;
+  .print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
   }
 
-  .barcode-name {
-    font-size: 10px !important;
+  /* 每个标签：3列布局，inline-block 保证不被切断 */
+  .print-cell {
+    display: inline-block;
+    vertical-align: top;
+    width: 62mm;
+    height: 33mm;
+    margin: 0;
+    padding: 2mm 2mm;
+    box-sizing: border-box;
+    border: 0.5pt solid #888;
+    border-radius: 1mm;
+    text-align: center;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
-  .barcode-location {
-    font-size: 9px !important;
+  /* 用负 margin 消除 inline-block 间距，每行3个 */
+  .print-page {
+    font-size: 0; /* 消除 inline-block 空白 */
+    letter-spacing: 0;
+  }
+
+  .print-cell {
+    font-size: 10px; /* 重置字号 */
+    margin-right: 1mm;
+    margin-bottom: 1mm;
+  }
+
+  /* 每3个换行 */
+  .print-cell:nth-child(3n) {
+    margin-right: 0;
+  }
+
+  .print-barcode-svg {
+    max-width: 100%;
+    height: 38px;
+  }
+
+  .print-cell-code {
+    font-size: 9pt;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    margin-top: 1mm;
+  }
+
+  .print-cell-name {
+    font-size: 8pt;
+    color: #333;
+    margin-top: 0.5mm;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .print-cell-loc {
+    font-size: 7pt;
+    color: #888;
   }
 
   @page {
