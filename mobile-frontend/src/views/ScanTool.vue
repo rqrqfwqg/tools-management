@@ -10,8 +10,8 @@
       @click-left="$router.back()"
     />
 
-    <!-- 扫码视口 -->
-    <div class="scanner-container">
+    <!-- 扫码视口（仅摄像头可用时显示） -->
+    <div v-if="cameraSupported" class="scanner-container">
       <div
         id="scanner-viewport"
         class="scanner-viewport"
@@ -28,6 +28,12 @@
         <van-icon name="warning-o" size="40" color="#ee0a24" />
         <p>{{ error }}</p>
       </div>
+    </div>
+
+    <!-- 摄像头不可用时的提示横幅 -->
+    <div v-if="!cameraSupported" class="camera-unsupported-banner">
+      <van-icon name="warning-o" size="24" color="#ff9800" />
+      <span>摄像头不可用，请使用手动输入</span>
     </div>
 
     <!-- 手动输入区域 -->
@@ -57,7 +63,7 @@
       <!-- 快捷按钮 -->
       <div class="manual-actions">
         <van-button
-          v-if="!scanning"
+          v-if="!scanning && cameraSupported"
           type="primary"
           block
           round
@@ -105,6 +111,7 @@ const resultTool = ref<Tool | null>(null)
 const {
   scanning,
   error,
+  cameraSupported,
   startScanning,
   stopScanning,
   destroy
@@ -197,6 +204,11 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+/* 无摄像头时白底 */
+.scan-page:has(.camera-unsupported-banner) {
+  background: #f7f8fa;
+}
+
 /* ===== 扫码区域 ===== */
 .scanner-container {
   flex: 1;
@@ -261,6 +273,18 @@ onUnmounted(() => {
   font-size: 14px;
   line-height: 1.6;
   max-width: 280px;
+}
+
+/* 摄像头不可用横幅 */
+.camera-unsupported-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #fff3e0;
+  color: #e65100;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 /* ===== 手动输入 ===== */

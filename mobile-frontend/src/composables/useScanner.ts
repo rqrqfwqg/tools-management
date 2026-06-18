@@ -32,8 +32,25 @@ export function useScanner(options: ScannerOptions = {}) {
   const scanning = ref(false)
   const error = ref('')
   const lastCode = ref('')
+  /** 当前环境是否支持摄像头扫码 */
+  const cameraSupported = ref(true)
 
   let scanner: Html5Qrcode | null = null
+
+  /**
+   * 检测当前环境是否支持摄像头扫码
+   * getUserMedia 要求 HTTPS 或 localhost，否则 navigator.mediaDevices 为 undefined
+   */
+  function checkCameraSupport(): boolean {
+    if (typeof navigator === 'undefined') return false
+    // 安全上下文检查（HTTPS / localhost / file://）
+    if (!window.isSecureContext) return false
+    // mediaDevices API 存在性检查
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      return false
+    }
+    return true
+  }
 
   /** 初始化 Html5Qrcode 实例 */
   function getScanner(): Html5Qrcode {
@@ -53,6 +70,16 @@ export function useScanner(options: ScannerOptions = {}) {
    */
   async function startScanning(facingMode: 'environment' | 'user' = 'environment'): Promise<void> {
     error.value = ''
+
+    // 前置检查：环境是否支持摄像头
+    if (!checkCameraSupport()) {
+      cameraSupported.value = false
+      scanning.value = false
+      error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
+      onError?.(error.value)
+      return
+    }
+
     const s = getScanner()
 
     try {
@@ -85,8 +112,9 @@ export function useScanner(options: ScannerOptions = {}) {
         error.value = '未检测到摄像头设备，请手动输入工具编码。'
       } else if (msg.includes('NotReadableError')) {
         error.value = '摄像头被其他应用占用，请关闭其他使用摄像头的应用后重试。'
-      } else if (msg.includes('NotSecure')) {
-        error.value = '摄像头需要 HTTPS 或 localhost 环境，当前页面可能无法使用扫码功能，请手动输入工具编码。'
+      } else if (msg.includes('NotSecure') || msg.includes('not supported') || msg.includes('streaming not supported')) {
+        cameraSupported.value = false
+        error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
       } else if (msg.includes('already')) {
         // 已在扫描中，忽略
       } else {
@@ -131,6 +159,7 @@ export function useScanner(options: ScannerOptions = {}) {
     scanning,
     error,
     lastCode,
+    cameraSupported,
     startScanning,
     stopScanning,
     destroy
