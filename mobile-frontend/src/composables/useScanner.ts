@@ -6,6 +6,7 @@
  * - 扫码成功自动停止
  * - 手动输入降级
  * - 权限错误友好提示
+ * - 多次连续扫码不卡死（每次销毁实例 + 清理 DOM）
  */
 import { ref, onUnmounted } from 'vue'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
@@ -36,8 +37,6 @@ export function useScanner(options: ScannerOptions = {}) {
   const cameraSupported = ref(true)
 
   let scanner: Html5Qrcode | null = null
-  /** 防止并发启动扫码 */
-  let isStarting = false
 
   /**
    * 检测当前环境是否支持摄像头扫码
@@ -45,50 +44,60 @@ export function useScanner(options: ScannerOptions = {}) {
    */
   function checkCameraSupport(): boolean {
     if (typeof navigator === 'undefined') return false
-    // 安全上下文检查（HTTPS / localhost / file://）
     if (!window.isSecureContext) return false
-    // mediaDevices API 存在性检查
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
       return false
     }
     return true
   }
 
-  /** 初始化 Html5Qrcode 实例 */
-  function getScanner(): Html5Qrcode {
-    if (!scanner) {
-      scanner = new Html5Qrcode(elementId, {
-        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
-        verbose: false
-      })
+  /**
+   * 清理扫码容器 DOM 中的残留元素
+   * html5-qrcode 会在容器内注入 <video> 和 <canvas>，
+   * 如果不清理，新实例 start() 会失败
+   */
+  function cleanDomContainer(): void {
+    const el = document.getElementById(elementId)
+    if (el) {
+      el.innerHTML = ''
     }
-    return scanner
   }
 
   /**
-   * 停止扫码并清理内部状态
+   * 停止扫码并彻底清理
    *
-   * 必须先 stop() 再 clear()，否则 html5-qrcode 抛出
-   * "Cannot clear while scan is ongoing, close it first."
+   * 1. scanner.stop() — 关闭摄像头流
+   * 2. scanner.clear() — 清理 UI 状态
+   * 3. scanner = null — 释放实例引用
+   * 4. 清理 DOM — 移除残留的 <video>/<canvas>
    */
   async function stopScanning(): Promise<void> {
     scanning.value = false
-    if (!scanner) return
-
-    try {
-      // 先停止扫描（关闭摄像头流）
-      if (scanner.isScanning) {
-        await scanner.stop()
-      }
-      // 再清理 UI 状态
-      try { scanner.clear() } catch { /* 已清理或未启动，忽略 */ }
-    } catch {
-      // 已停止或未在扫描，忽略
+    if (!scanner) {
+      // 即使没有 scanner 实例，也清理一下 DOM（防御性）
+      cleanDomContainer()
+      return
     }
 
-    // 销毁实例，下次 startScanning 时重新创建
-    // html5-qrcode 多次 stop/start 复用同一实例后会进入坏状态
+    const s = scanner
     scanner = null
+
+    try {
+      if (s.isScanning) {
+        await s.stop()
+      }
+    } catch {
+      // 忽略停止错误
+    }
+
+    try {
+      s.clear()
+    } catch {
+      // 忽略清理错误
+    }
+
+    // 彻底清理 DOM 中的残留 video/canvas
+    cleanDomContainer()
   }
 
   /**
@@ -97,12 +106,11 @@ export function useScanner(options: ScannerOptions = {}) {
    * @param facingMode 摄像头方向 'environment'（后摄）| 'user'（前摄）
    */
   async function startScanning(facingMode: 'environment' | 'user' = 'environment'): Promise<void> {
-    // 防止并发启动（onSuccess 回调中可能触发 restart）
-    if (isStarting) return
-    isStarting = true
+    // 如果已经在扫描中，不重复启动
+    if (scanning.value) return
 
     try {
-      // 先确保上一次扫描已完全停止 + 清理完毕
+      // 先确保上一次完全停止 + DOM 清理完毕
       await stopScanning()
 
       error.value = ''
@@ -116,11 +124,18 @@ export function useScanner(options: ScannerOptions = {}) {
         return
       }
 
-      const s = getScanner()
+      // 确保容器存在且干净
+      cleanDomContainer()
+
+      // 每次都创建全新实例
+      scanner = new Html5Qrcode(elementId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
+        verbose: false
+      })
 
       scanning.value = true
 
-      await s.start(
+      await scanner.start(
         { facingMode },
         {
           fps: 10,
@@ -129,8 +144,8 @@ export function useScanner(options: ScannerOptions = {}) {
         (decodedText: string) => {
           // 成功识别
           lastCode.value = decodedText
-          // 先完全停止扫描（await），再触发回调
-          // 确保回调中 restart 时 scanner 已处于干净状态
+          // 先完全停止 + 清理 DOM，再触发回调
+          // 确保回调中 restart 时一切干净
           stopScanning().then(() => {
             onSuccess?.(decodedText)
           })
@@ -143,6 +158,9 @@ export function useScanner(options: ScannerOptions = {}) {
       scanning.value = false
       const msg: string = err?.message || String(err)
 
+      // 确保异常时也清理
+      await stopScanning()
+
       if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
         error.value = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问，或手动输入工具编码。'
       } else if (msg.includes('NotFoundError') || msg.includes('No camera')) {
@@ -152,16 +170,11 @@ export function useScanner(options: ScannerOptions = {}) {
       } else if (msg.includes('NotSecure') || msg.includes('not supported') || msg.includes('streaming not supported')) {
         cameraSupported.value = false
         error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      } else if (msg.includes('already') || msg.includes('Cannot clear')) {
-        // 扫描器仍残留状态，强制清理后静默处理（不报错给用户）
-        await stopScanning()
       } else {
         error.value = `摄像头启动失败: ${msg}`
       }
 
       if (error.value) onError?.(error.value)
-    } finally {
-      isStarting = false
     }
   }
 
@@ -170,7 +183,6 @@ export function useScanner(options: ScannerOptions = {}) {
    */
   async function destroy(): Promise<void> {
     await stopScanning()
-    scanner = null
   }
 
   // 组件卸载时自动清理
