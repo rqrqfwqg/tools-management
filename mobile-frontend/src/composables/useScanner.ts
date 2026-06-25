@@ -36,6 +36,8 @@ export function useScanner(options: ScannerOptions = {}) {
   const cameraSupported = ref(true)
 
   let scanner: Html5Qrcode | null = null
+  /** 防止并发启动扫码 */
+  let isStarting = false
 
   /**
    * 检测当前环境是否支持摄像头扫码
@@ -64,25 +66,54 @@ export function useScanner(options: ScannerOptions = {}) {
   }
 
   /**
+   * 停止扫码并清理内部状态
+   *
+   * 必须先 stop() 再 clear()，否则 html5-qrcode 抛出
+   * "Cannot clear while scan is ongoing, close it first."
+   */
+  async function stopScanning(): Promise<void> {
+    scanning.value = false
+    if (!scanner) return
+
+    try {
+      // 先停止扫描（关闭摄像头流）
+      if (scanner.isScanning) {
+        await scanner.stop()
+      }
+      // 再清理 UI 状态，为下次 start 做准备
+      try { scanner.clear() } catch { /* 已清理或未启动，忽略 */ }
+    } catch {
+      // 已停止或未在扫描，忽略
+    }
+  }
+
+  /**
    * 开始扫码
    *
    * @param facingMode 摄像头方向 'environment'（后摄）| 'user'（前摄）
    */
   async function startScanning(facingMode: 'environment' | 'user' = 'environment'): Promise<void> {
-    error.value = ''
-
-    // 前置检查：环境是否支持摄像头
-    if (!checkCameraSupport()) {
-      cameraSupported.value = false
-      scanning.value = false
-      error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      onError?.(error.value)
-      return
-    }
-
-    const s = getScanner()
+    // 防止并发启动（onSuccess 回调中可能触发 restart）
+    if (isStarting) return
+    isStarting = true
 
     try {
+      // 先确保上一次扫描已完全停止 + 清理完毕
+      await stopScanning()
+
+      error.value = ''
+
+      // 前置检查：环境是否支持摄像头
+      if (!checkCameraSupport()) {
+        cameraSupported.value = false
+        scanning.value = false
+        error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
+        onError?.(error.value)
+        return
+      }
+
+      const s = getScanner()
+
       scanning.value = true
 
       await s.start(
@@ -94,9 +125,11 @@ export function useScanner(options: ScannerOptions = {}) {
         (decodedText: string) => {
           // 成功识别
           lastCode.value = decodedText
-          onSuccess?.(decodedText)
-          // 立即停止扫描防止重复识别
-          stopScanning()
+          // 先完全停止扫描（await），再触发回调
+          // 确保回调中 restart 时 scanner 已处于干净状态
+          stopScanning().then(() => {
+            onSuccess?.(decodedText)
+          })
         },
         () => {
           // 每帧扫描尝试（空回调，忽略未识别帧）
@@ -115,27 +148,16 @@ export function useScanner(options: ScannerOptions = {}) {
       } else if (msg.includes('NotSecure') || msg.includes('not supported') || msg.includes('streaming not supported')) {
         cameraSupported.value = false
         error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      } else if (msg.includes('already')) {
-        // 已在扫描中，忽略
+      } else if (msg.includes('already') || msg.includes('Cannot clear')) {
+        // 扫描器仍残留状态，强制清理后静默处理（不报错给用户）
+        await stopScanning()
       } else {
         error.value = `摄像头启动失败: ${msg}`
       }
 
-      onError?.(error.value)
-    }
-  }
-
-  /**
-   * 停止扫码
-   */
-  async function stopScanning(): Promise<void> {
-    scanning.value = false
-    if (!scanner) return
-
-    try {
-      await scanner.stop()
-    } catch {
-      // 已停止或未在扫描，忽略
+      if (error.value) onError?.(error.value)
+    } finally {
+      isStarting = false
     }
   }
 
@@ -144,10 +166,7 @@ export function useScanner(options: ScannerOptions = {}) {
    */
   async function destroy(): Promise<void> {
     await stopScanning()
-    if (scanner) {
-      try { scanner.clear() } catch { /* ignore */ }
-      scanner = null
-    }
+    scanner = null
   }
 
   // 组件卸载时自动清理

@@ -73,13 +73,12 @@
       </div>
     </div>
 
-    <!-- 扫码结果弹窗 -->
-    <ScanResultPopup
-      :show="showResult"
-      :tool="resultTool"
-      @update:show="showResult = $event"
-      @close="onResultClosed"
-    />
+    <!-- 本次扫码统计 -->
+    <div v-if="scanCount > 0" class="scan-stats">
+      <van-icon name="success" color="#07c160" />
+      <span>本次已领用 <b>{{ scanCount }}</b> 件</span>
+      <span v-if="lastScannedName" class="last-name">· {{ lastScannedName }}</span>
+    </div>
 
     <!-- 底部导航 -->
     <van-tabbar v-model="active" route active-color="#1989fa" inactive-color="#999" safe-area-inset-bottom>
@@ -94,17 +93,23 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { showLoadingToast, closeToast, showFailToast } from 'vant'
+import { showLoadingToast, closeToast, showFailToast, showSuccessToast } from 'vant'
 import { useScanner } from '@/composables/useScanner'
-import { getToolByCode } from '@/api'
+import { getToolByCode, borrowToolByCode } from '@/api'
+import { useCartStore } from '@/store/cart'
+import { useScanHistoryStore } from '@/store/scanHistory'
 import type { Tool } from '@/types'
-import ScanResultPopup from '@/components/ScanResultPopup.vue'
 
 const active = ref(2)
 const manualCode = ref('')
 const manualLoading = ref(false)
-const showResult = ref(false)
-const resultTool = ref<Tool | null>(null)
+
+/** 本次扫码领用统计 */
+const scanCount = ref(0)
+const lastScannedName = ref('')
+
+const cartStore = useCartStore()
+const scanHistoryStore = useScanHistoryStore()
 
 const {
   scanning,
@@ -124,32 +129,79 @@ const {
   }
 })
 
+/** 工具状态文案 */
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    available: '可用',
+    borrowed: '已借出',
+    reserved: '已预留',
+    maintenance: '维修中',
+    scrapped: '已报废'
+  }
+  return map[status] || status
+}
+
+/** 延迟后自动恢复扫码 */
+function resumeScanAfterDelay(ms = 1500): void {
+  setTimeout(() => startScanning(), ms)
+}
+
 /**
  * 识别到工具编码后的统一处理
+ * 扫码/手动输入成功 → 自动领用加入购物车，不弹确认窗
  */
 async function onCodeDetected(code: string): Promise<void> {
   if (!code.trim()) return
 
-  showLoadingToast({
-    message: '查询中...',
-    forbidClick: true,
-    duration: 0
-  })
+  showLoadingToast({ message: '查询中...', forbidClick: true, duration: 0 })
 
   try {
     const tool = await getToolByCode(code.trim())
     closeToast()
 
-    // 弹出详情
-    resultTool.value = tool
-    showResult.value = true
+    // 不可用的工具直接提示
+    if (tool.status !== 'available') {
+      showFailToast(`${tool.tool_name} 当前${statusLabel(tool.status)}，无法领用`)
+      resumeScanAfterDelay()
+      return
+    }
+
+    // 自动领用
+    showLoadingToast({ message: `领用中: ${tool.tool_name}`, forbidClick: true, duration: 0 })
+
+    const result = await borrowToolByCode(code.trim(), { scene: '扫码领用' })
+    closeToast()
+
+    // 加入领用篮
+    cartStore.addItem({
+      tool_id: tool.tool_id,
+      tool_name: tool.tool_name,
+      tool_code: tool.tool_code,
+      warehouse: tool.warehouse || '',
+      image_url: tool.image_url || ''
+    })
+
+    // 记录扫码历史
+    scanHistoryStore.addRecord({
+      tool_id: tool.tool_id,
+      tool_code: tool.tool_code,
+      tool_name: tool.tool_name,
+      status: 'reserved'
+    })
+
+    // 更新统计
+    scanCount.value++
+    lastScannedName.value = tool.tool_name
+
+    showSuccessToast(`领用成功: ${tool.tool_name}`)
+
+    // 1.5 秒后自动恢复扫码，连续扫下一件
+    resumeScanAfterDelay()
   } catch (err: any) {
     closeToast()
     const msg = err?.response?.data?.message || '查询失败，请确认编码是否正确'
     showFailToast(msg)
-    // 查询失败时重新开始扫描
-    await stopScanning()
-    await startScanning()
+    resumeScanAfterDelay()
   }
 }
 
@@ -163,17 +215,11 @@ async function handleManualSubmit(): Promise<void> {
   try {
     await onCodeDetected(code)
     manualCode.value = ''
-    manualLoading.value = false
   } catch {
+    // 错误已在 onCodeDetected 中处理
+  } finally {
     manualLoading.value = false
   }
-}
-
-/** 结果弹窗关闭后 */
-function onResultClosed(): void {
-  resultTool.value = null
-  // 重新开始扫描
-  startScanning()
 }
 
 /** 重新扫码 */
@@ -290,6 +336,26 @@ onUnmounted(() => {
 
 .manual-actions {
   padding: 12px 16px;
+}
+
+/* 扫码统计 */
+.scan-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: #f0fff3;
+  color: #07c160;
+  font-size: 13px;
+}
+
+.scan-stats b {
+  font-size: 16px;
+}
+
+.scan-stats .last-name {
+  color: #969799;
+  font-size: 12px;
 }
 
 /* ===== dark mode 适配 ===== */
