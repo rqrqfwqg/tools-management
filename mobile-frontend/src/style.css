@@ -74,3 +74,37 @@ html, body {
   padding: 40px 20px;
   color: #999;
 }
+
+/* ===== Toast 弹窗：白底黑字 ===== */
+:root {
+  --van-toast-background: #ffffff;
+  --van-toast-text-color: #323233;
+}
+
+.van-toast {
+  background: #fff !important;
+  color: #323233 !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.van-toast__text {
+  color: #323233 !important;
+}
+
+.van-toast__icon {
+  color: #323233 !important;
+}
+
+/* loading spinner 默认白色，白底不可见，改为蓝色 */
+.van-toast .van-loading__spinner {
+  color: #1989fa !important;
+}
+
+/* success/fail 图标保持原色（绿/红在白底上可见） */
+.van-toast--success .van-toast__icon {
+  color: #07c160 !important;
+}
+
+.van-toast--fail .van-toast__icon {
+  color: #ee0a24 !important;
+}

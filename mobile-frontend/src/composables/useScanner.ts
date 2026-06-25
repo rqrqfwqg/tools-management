@@ -80,11 +80,15 @@ export function useScanner(options: ScannerOptions = {}) {
       if (scanner.isScanning) {
         await scanner.stop()
       }
-      // 再清理 UI 状态，为下次 start 做准备
+      // 再清理 UI 状态
       try { scanner.clear() } catch { /* 已清理或未启动，忽略 */ }
     } catch {
       // 已停止或未在扫描，忽略
     }
+
+    // 销毁实例，下次 startScanning 时重新创建
+    // html5-qrcode 多次 stop/start 复用同一实例后会进入坏状态
+    scanner = null
   }
 
   /**
