@@ -76,7 +76,7 @@
     <!-- 本次扫码统计 -->
     <div v-if="scanCount > 0" class="scan-stats">
       <van-icon name="success" color="#07c160" />
-      <span>本次已领用 <b>{{ scanCount }}</b> 件</span>
+      <span>本次已加入领用篮 <b>{{ scanCount }}</b> 件</span>
       <span v-if="lastScannedName" class="last-name">· {{ lastScannedName }}</span>
     </div>
 
@@ -95,7 +95,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { showLoadingToast, closeToast, showFailToast, showSuccessToast } from 'vant'
 import { useScanner } from '@/composables/useScanner'
-import { getToolByCode, borrowToolByCode } from '@/api'
+import { getToolByCode } from '@/api'
 import { useCartStore } from '@/store/cart'
 import { useScanHistoryStore } from '@/store/scanHistory'
 import type { Tool } from '@/types'
@@ -148,7 +148,7 @@ function resumeScanAfterDelay(ms = 1500): void {
 
 /**
  * 识别到工具编码后的统一处理
- * 扫码/手动输入成功 → 自动领用加入购物车，不弹确认窗
+ * 扫码/手动输入成功 → 直接加入领用篮，不弹确认窗
  */
 async function onCodeDetected(code: string): Promise<void> {
   if (!code.trim()) return
@@ -166,12 +166,6 @@ async function onCodeDetected(code: string): Promise<void> {
       return
     }
 
-    // 自动领用
-    showLoadingToast({ message: `领用中: ${tool.tool_name}`, forbidClick: true, duration: 0 })
-
-    const result = await borrowToolByCode(code.trim(), { scene: '扫码领用' })
-    closeToast()
-
     // 加入领用篮
     cartStore.addItem({
       tool_id: tool.tool_id,
@@ -186,14 +180,14 @@ async function onCodeDetected(code: string): Promise<void> {
       tool_id: tool.tool_id,
       tool_code: tool.tool_code,
       tool_name: tool.tool_name,
-      status: 'reserved'
+      status: 'available'
     })
 
     // 更新统计
     scanCount.value++
     lastScannedName.value = tool.tool_name
 
-    showSuccessToast(`领用成功: ${tool.tool_name}`)
+    showSuccessToast(`已加入领用篮: ${tool.tool_name}`)
 
     // 1.5 秒后自动恢复扫码，连续扫下一件
     resumeScanAfterDelay()

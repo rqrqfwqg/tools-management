@@ -57,10 +57,10 @@
           type="primary"
           block
           round
-          :loading="borrowing"
-          @click="handleBorrow"
+          :loading="adding"
+          @click="handleAddToCart"
         >
-          立即领用
+          加入领用篮
         </van-button>
         <van-button
           v-else-if="tool.status === 'borrowed'"
@@ -102,7 +102,6 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { borrowToolByCode } from '@/api'
 import { showSuccessToast, showFailToast } from 'vant'
 import type { TagType } from 'vant'
 import { useCartStore } from '@/store/cart'
@@ -121,7 +120,7 @@ const emit = defineEmits<{
 
 const cartStore = useCartStore()
 const scanHistoryStore = useScanHistoryStore()
-const borrowing = ref(false)
+const adding = ref(false)
 
 /** 状态标签映射 */
 function statusLabel(status: string): string {
@@ -146,16 +145,12 @@ function statusTagType(status: string): TagType {
   return map[status] || 'default'
 }
 
-/** 立即领用 */
-async function handleBorrow(): Promise<void> {
+/** 加入领用篮 */
+async function handleAddToCart(): Promise<void> {
   if (!props.tool) return
-  borrowing.value = true
+  adding.value = true
 
   try {
-    const result = await borrowToolByCode(props.tool.tool_code, {
-      scene: '扫码领用'
-    })
-
     // 加入领用篮
     cartStore.addItem({
       tool_id: props.tool.tool_id,
@@ -170,19 +165,19 @@ async function handleBorrow(): Promise<void> {
       tool_id: props.tool.tool_id,
       tool_code: props.tool.tool_code,
       tool_name: props.tool.tool_name,
-      status: 'reserved'
+      status: 'available'
     })
 
-    showSuccessToast(`领用成功! 订单号: ${result.order_no}`)
+    showSuccessToast(`已加入领用篮: ${props.tool.tool_name}`)
 
     // 关闭弹窗
     emit('update:show', false)
     emit('close')
   } catch (err: any) {
-    const msg = err?.response?.data?.message || err?.message || '领用失败'
+    const msg = err?.response?.data?.message || err?.message || '加入领用篮失败'
     showFailToast(msg)
   } finally {
-    borrowing.value = false
+    adding.value = false
   }
 }
 </script>
