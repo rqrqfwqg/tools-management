@@ -65,6 +65,11 @@
 
       <el-table-column prop="toolkit_id" label="ID" width="60" />
       <el-table-column prop="toolkit_name" label="工具箱名称" show-overflow-tooltip />
+      <el-table-column prop="toolkit_code" label="条形码编码" min-width="110">
+        <template #default="{ row }">
+          <span style="font-family:'Courier New',monospace;font-weight:700;color:#303133">{{ row.toolkit_code || '-' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="description" label="描述" show-overflow-tooltip />
       <el-table-column label="工具数量" width="100">
         <template #default="{ row }">
@@ -92,6 +97,10 @@
       <el-form :model="kitForm" label-width="80px">
         <el-form-item label="名称">
           <el-input v-model="kitForm.toolkit_name" placeholder="例如：电气试验箱" />
+        </el-form-item>
+        <el-form-item label="条形码编码">
+          <el-input v-model="kitForm.toolkit_code" placeholder="留空则自动生成，格式 BX-{id}" clearable />
+          <div style="font-size:12px;color:#909399;margin-top:4px">格式：BX-{序号}，如 BX-1、BX-2。留空系统自动生成。</div>
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="kitForm.description" type="textarea" :rows="2" placeholder="工具箱的描述说明（可选）" />
@@ -145,7 +154,7 @@ const saving = ref(false)
 
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
-const kitForm = ref({ toolkit_id: 0, toolkit_name: '', description: '' })
+const kitForm = ref({ toolkit_id: 0, toolkit_name: '', description: '', toolkit_code: '' })
 
 const addDialogVisible = ref(false)
 const currentKit = ref<any>(null)
@@ -202,7 +211,7 @@ async function onExpandChange(row: any, expandedRowsArr: any[]) {
 
 function openCreateDialog() {
   dialogMode.value = 'create'
-  kitForm.value = { toolkit_id: 0, toolkit_name: '', description: '' }
+  kitForm.value = { toolkit_id: 0, toolkit_name: '', description: '', toolkit_code: '' }
   dialogVisible.value = true
 }
 
@@ -217,10 +226,18 @@ async function handleSaveKit() {
   saving.value = true
   try {
     if (dialogMode.value === 'create') {
-      await createToolkit({ toolkit_name: kitForm.value.toolkit_name, description: kitForm.value.description })
+      await createToolkit({
+        toolkit_name: kitForm.value.toolkit_name,
+        description: kitForm.value.description,
+        toolkit_code: kitForm.value.toolkit_code || undefined
+      })
       ElMessage.success('创建成功')
     } else {
-      await updateToolkit(kitForm.value.toolkit_id, { toolkit_name: kitForm.value.toolkit_name, description: kitForm.value.description })
+      await updateToolkit(kitForm.value.toolkit_id, {
+        toolkit_name: kitForm.value.toolkit_name,
+        description: kitForm.value.description,
+        toolkit_code: kitForm.value.toolkit_code
+      })
       ElMessage.success('更新成功')
     }
     dialogVisible.value = false

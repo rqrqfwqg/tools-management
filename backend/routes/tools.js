@@ -80,6 +80,27 @@ router.get('/toolkits', authenticate, (req, res) => {
   res.json(result);
 });
 
+// 按 toolkit_code 查询工具箱详情（含内部工具列表）
+router.get('/toolkits/code/:code', authenticate, (req, res) => {
+  const code = decodeURIComponent(req.params.code);
+  const db = readDB();
+  const toolkit = (db.toolkits || []).find(k => k.toolkit_code === code);
+  if (!toolkit) {
+    return res.status(404).json({ message: `未找到编码为 "${code}" 的工具箱` });
+  }
+
+  const items = (db.toolkit_items || [])
+    .filter(i => i.toolkit_id === toolkit.toolkit_id)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+  const tools = items.map(item => {
+    const tool = (db.tools || []).find(t => t.tool_id === item.tool_id);
+    return tool ? { ...tool, toolkit_seq: item.sort_order } : null;
+  }).filter(Boolean);
+
+  res.json({ ...toolkit, tools, tool_count: tools.length });
+});
+
 // 获取单个工具箱详情（含内部工具列表）
 router.get('/toolkits/:id', authenticate, (req, res) => {
   const id = parseInt(req.params.id);
@@ -101,16 +122,24 @@ router.get('/toolkits/:id', authenticate, (req, res) => {
 
 // 创建工具箱
 router.post('/toolkits', authenticate, requireMaterialManager, (req, res) => {
-  const { toolkit_name, description } = req.body;
+  const { toolkit_name, description, toolkit_code } = req.body;
   if (!toolkit_name) return res.status(400).json({ message: '工具箱名称不能为空' });
   const db = readDB();
   if ((db.toolkits || []).find(k => k.toolkit_name === toolkit_name)) {
     return res.status(400).json({ message: '工具箱名称已存在' });
   }
+  const newId = nextId(db.toolkits || [], 'toolkit_id');
+  // 自动生成 toolkit_code：如果用户提供了就用用户提供的，否则用 BX-{id} 格式
+  const code = toolkit_code || `BX-${newId}`;
+  // 检查 toolkit_code 唯一性
+  if ((db.toolkits || []).find(k => k.toolkit_code === code)) {
+    return res.status(400).json({ message: '工具箱编码已存在' });
+  }
   const newKit = {
-    toolkit_id: nextId(db.toolkits || [], 'toolkit_id'),
+    toolkit_id: newId,
     toolkit_name,
     description: description || '',
+    toolkit_code: code,
     created_at: nowCST()
   };
   if (!db.toolkits) db.toolkits = [];
@@ -122,12 +151,19 @@ router.post('/toolkits', authenticate, requireMaterialManager, (req, res) => {
 // 更新工具箱
 router.put('/toolkits/:id', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
-  const { toolkit_name, description } = req.body;
+  const { toolkit_name, description, toolkit_code } = req.body;
   const db = readDB();
   const idx = (db.toolkits || []).findIndex(k => k.toolkit_id === id);
   if (idx === -1) return res.status(404).json({ message: '工具箱不存在' });
   if (toolkit_name) db.toolkits[idx].toolkit_name = toolkit_name;
   if (description !== undefined) db.toolkits[idx].description = description;
+  // 支持修改 toolkit_code，需唯一性检查
+  if (toolkit_code !== undefined) {
+    if ((db.toolkits || []).find(k => k.toolkit_code === toolkit_code && k.toolkit_id !== id)) {
+      return res.status(400).json({ message: '工具箱编码已存在' });
+    }
+    db.toolkits[idx].toolkit_code = toolkit_code;
+  }
   writeDB(db);
   res.json(db.toolkits[idx]);
 });

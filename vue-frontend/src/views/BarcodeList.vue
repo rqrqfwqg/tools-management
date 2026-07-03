@@ -3,46 +3,69 @@
     <!-- 操作栏 -->
     <div class="barcode-toolbar no-print">
       <div class="toolbar-left">
-        <el-select
-          v-model="warehouseFilter"
-          placeholder="全部仓库"
-          clearable
-          style="width: 180px"
-          @change="doFilter"
-        >
-          <el-option label="全部仓库" value="" />
-          <el-option
-            v-for="wh in warehouses"
-            :key="wh.warehouse_name"
-            :label="wh.warehouse_name"
-            :value="wh.warehouse_name"
+        <!-- 模式切换：工具条形码 / 工具箱条形码 -->
+        <el-radio-group v-model="mode" size="default" @change="onModeChange">
+          <el-radio-button value="tool">工具条形码</el-radio-button>
+          <el-radio-button value="toolkit">工具箱条形码</el-radio-button>
+        </el-radio-group>
+
+        <!-- 工具模式筛选 -->
+        <template v-if="mode === 'tool'">
+          <el-select
+            v-model="warehouseFilter"
+            placeholder="全部仓库"
+            clearable
+            style="width: 180px"
+            @change="doFilter"
+          >
+            <el-option label="全部仓库" value="" />
+            <el-option
+              v-for="wh in warehouses"
+              :key="wh.warehouse_name"
+              :label="wh.warehouse_name"
+              :value="wh.warehouse_name"
+            />
+          </el-select>
+          <el-select
+            v-model="categoryFilter"
+            placeholder="全部分类"
+            clearable
+            style="width: 180px"
+            @change="doFilter"
+          >
+            <el-option label="全部分类" value="" />
+            <el-option
+              v-for="cat in categories"
+              :key="cat.category_name"
+              :label="cat.category_name"
+              :value="cat.category_name"
+            />
+          </el-select>
+          <el-input
+            v-model="keyword"
+            placeholder="搜索名称/编码"
+            clearable
+            style="width: 200px"
+            @input="doFilter"
           />
-        </el-select>
-        <el-select
-          v-model="categoryFilter"
-          placeholder="全部分类"
-          clearable
-          style="width: 180px"
-          @change="doFilter"
-        >
-          <el-option label="全部分类" value="" />
-          <el-option
-            v-for="cat in categories"
-            :key="cat.category_name"
-            :label="cat.category_name"
-            :value="cat.category_name"
+        </template>
+
+        <!-- 工具箱模式筛选 -->
+        <template v-if="mode === 'toolkit'">
+          <el-input
+            v-model="kitKeyword"
+            placeholder="搜索工具箱名称/编码"
+            clearable
+            style="width: 200px"
+            @input="doFilter"
           />
-        </el-select>
-        <el-input
-          v-model="keyword"
-          placeholder="搜索名称/编码"
-          clearable
-          style="width: 200px"
-          @input="doFilter"
-        />
+        </template>
       </div>
       <div class="toolbar-right">
-        <span class="tool-count">共 {{ filteredTools.length }} 件 · {{ Math.max(1, Math.ceil(filteredTools.length / 24)) }} 页</span>
+        <span class="tool-count">
+          共 {{ mode === 'tool' ? filteredTools.length : filteredToolkits.length }} 件 ·
+          {{ Math.max(1, Math.ceil(mode === 'tool' ? filteredTools.length / 24 : filteredToolkits.length / 10)) }} 页
+        </span>
         <el-button type="primary" @click="handlePrint">
           <el-icon style="margin-right:4px"><Printer /></el-icon>
           打印条形码
@@ -50,11 +73,11 @@
       </div>
     </div>
 
-    <!-- 条形码网格（屏幕浏览用） -->
-    <div v-if="filteredTools.length === 0" class="empty-hint">
+    <!-- 工具条形码网格 -->
+    <div v-if="mode === 'tool' && filteredTools.length === 0" class="empty-hint">
       <el-empty description="暂无匹配工具" />
     </div>
-    <div v-else class="barcode-grid" ref="gridRef">
+    <div v-if="mode === 'tool' && filteredTools.length > 0" class="barcode-grid" ref="gridRef">
       <div
         v-for="tool in filteredTools"
         :key="tool.tool_id"
@@ -73,6 +96,27 @@
       </div>
     </div>
 
+    <!-- 工具箱条形码网格 -->
+    <div v-if="mode === 'toolkit' && filteredToolkits.length === 0" class="empty-hint">
+      <el-empty description="暂无匹配工具箱" />
+    </div>
+    <div v-if="mode === 'toolkit' && filteredToolkits.length > 0" class="barcode-grid toolkit-grid" ref="kitGridRef">
+      <div
+        v-for="kit in filteredToolkits"
+        :key="kit.toolkit_id"
+        class="barcode-cell toolkit-cell"
+      >
+        <div class="barcode-svg-wrapper">
+          <svg :id="`kit-barcode-${kit.toolkit_id}`" class="barcode-svg"></svg>
+        </div>
+        <div class="barcode-info">
+          <div class="barcode-code">{{ kit.toolkit_code }}</div>
+          <div class="barcode-name">{{ kit.toolkit_name }}</div>
+          <div class="barcode-location">{{ kit.tool_count }} 件工具</div>
+        </div>
+      </div>
+    </div>
+
     <!-- 打印用布局已改为新窗口生成，此处不需要 -->
   </div>
 </template>
@@ -81,10 +125,13 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { Printer } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getTools, getWarehouses, getCategories } from '@/api'
+import { getTools, getWarehouses, getCategories, getToolkits } from '@/api'
 import type { Tool } from '@/types'
 
-// ============ 数据 ============
+// ============ 模式切换 ============
+const mode = ref<'tool' | 'toolkit'>('tool')
+
+// ============ 工具数据 ============
 const allTools = ref<Tool[]>([])
 const warehouses = ref<{ warehouse_name: string }[]>([])
 const categories = ref<{ category_name: string }[]>([])
@@ -95,8 +142,24 @@ const keyword = ref('')
 const filteredTools = ref<Tool[]>([])
 const gridRef = ref<HTMLElement | null>(null)
 
+// ============ 工具箱数据 ============
+const allToolkits = ref<any[]>([])
+const kitKeyword = ref('')
+const filteredToolkits = ref<any[]>([])
+const kitGridRef = ref<HTMLElement | null>(null)
+
 // ============ 筛选 ============
 function doFilter() {
+  if (mode.value === 'tool') {
+    filterTools()
+  } else {
+    filterToolkits()
+  }
+  // 数据变更后重新渲染条形码（屏幕浏览）
+  nextTick(() => renderAllBarcodes())
+}
+
+function filterTools() {
   let result = [...allTools.value]
 
   if (warehouseFilter.value) {
@@ -115,9 +178,26 @@ function doFilter() {
   }
 
   filteredTools.value = result
+}
 
-  // 数据变更后重新渲染条形码（屏幕浏览）
-  nextTick(() => renderAllBarcodes())
+function filterToolkits() {
+  let result = [...allToolkits.value]
+
+  if (kitKeyword.value.trim()) {
+    const kw = kitKeyword.value.trim().toLowerCase()
+    result = result.filter(
+      k =>
+        k.toolkit_name.toLowerCase().includes(kw) ||
+        (k.toolkit_code && k.toolkit_code.toLowerCase().includes(kw))
+    )
+  }
+
+  filteredToolkits.value = result
+}
+
+function onModeChange() {
+  // 切换模式时重新筛选并渲染
+  doFilter()
 }
 
 // ============ 条形码渲染 ============
@@ -132,29 +212,56 @@ async function loadJsBarcode() {
 
 function renderAllBarcodes() {
   if (!JsBarcodeModule) return
-  for (const tool of filteredTools.value) {
-    const svgEl = document.getElementById(`barcode-${tool.tool_id}`)
-    if (!svgEl) continue
-    // 已渲染过则跳过（防止重复渲染撕裂）
-    if (svgEl.children.length > 0) continue
-    try {
-      JsBarcodeModule(svgEl, tool.tool_code, {
-        format: 'CODE128',
-        width: 2,
-        height: 60,
-        displayValue: true,
-        fontSize: 12,
-        margin: 10
-      })
-    } catch (e) {
-      console.warn(`条形码渲染失败: ${tool.tool_code}`, e)
+
+  if (mode.value === 'tool') {
+    for (const tool of filteredTools.value) {
+      const svgEl = document.getElementById(`barcode-${tool.tool_id}`)
+      if (!svgEl) continue
+      if (svgEl.children.length > 0) continue
+      try {
+        JsBarcodeModule(svgEl, tool.tool_code, {
+          format: 'CODE128',
+          width: 2,
+          height: 60,
+          displayValue: true,
+          fontSize: 12,
+          margin: 10
+        })
+      } catch (e) {
+        console.warn(`条形码渲染失败: ${tool.tool_code}`, e)
+      }
+    }
+  } else {
+    for (const kit of filteredToolkits.value) {
+      const svgEl = document.getElementById(`kit-barcode-${kit.toolkit_id}`)
+      if (!svgEl) continue
+      if (svgEl.children.length > 0) continue
+      try {
+        JsBarcodeModule(svgEl, kit.toolkit_code, {
+          format: 'CODE128',
+          width: 2,
+          height: 60,
+          displayValue: true,
+          fontSize: 14,
+          margin: 10
+        })
+      } catch (e) {
+        console.warn(`条形码渲染失败: ${kit.toolkit_code}`, e)
+      }
     }
   }
 }
 
 // ============ 打印 ============
 function handlePrint() {
-  // 生成独立打印窗口，避免 Vue 布局干扰分页
+  if (mode.value === 'tool') {
+    handlePrintTools()
+  } else {
+    handlePrintToolkits()
+  }
+}
+
+function handlePrintTools() {
   const tools = filteredTools.value
   if (tools.length === 0) return
 
@@ -164,7 +271,6 @@ function handlePrint() {
     pages.push(tools.slice(i, i + ITEMS_PER_PAGE))
   }
 
-  // 生成每页 HTML
   const pagesHtml = pages.map((pageTools, pageIdx) => {
     const cellsHtml = pageTools.map(tool => {
       const loc = tool.shelf_name || tool.location_name
@@ -187,7 +293,7 @@ function handlePrint() {
   }
 
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>条形码打印 - 共 ${tools.length} 件 ${pages.length} 页</title>
+<title>工具条形码打印 - 共 ${tools.length} 件 ${pages.length} 页</title>
 <style>
   @page { size: A4; margin: 8mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -226,6 +332,74 @@ ${pagesHtml}
   win.document.close()
 }
 
+function handlePrintToolkits() {
+  const toolkits = filteredToolkits.value
+  if (toolkits.length === 0) return
+
+  const ITEMS_PER_PAGE = 10 // 2列×5行
+  const pages: any[][] = []
+  for (let i = 0; i < toolkits.length; i += ITEMS_PER_PAGE) {
+    pages.push(toolkits.slice(i, i + ITEMS_PER_PAGE))
+  }
+
+  const pagesHtml = pages.map((pageKits, pageIdx) => {
+    const cellsHtml = pageKits.map(kit => {
+      return `<div class="cell">
+        <svg class="bc" data-code="${kit.toolkit_code}"></svg>
+        <div class="code">${kit.toolkit_code}</div>
+        <div class="name">${escapeHtml(kit.toolkit_name)}</div>
+        <div class="loc">${kit.tool_count} 件工具</div>
+      </div>`
+    }).join('\n')
+    return `<div class="page${pageIdx < pages.length - 1 ? ' page-break' : ''}">${cellsHtml}</div>`
+  }).join('\n')
+
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) {
+    ElMessage.warning('弹窗被拦截，请允许弹窗后重试')
+    return
+  }
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>工具箱条形码打印 - 共 ${toolkits.length} 箱 ${pages.length} 页</title>
+<style>
+  @page { size: A4; margin: 8mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #fff; }
+  .page { width: 194mm; min-height: 281mm; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0; }
+  .page-break { page-break-after: always; break-after: page; }
+  .cell {
+    width: 96mm; height: 52mm;
+    border: 0.5pt solid #666;
+    border-radius: 1mm;
+    padding: 2mm 3mm;
+    text-align: center;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    margin-right: 1mm; margin-bottom: 1mm;
+  }
+  .cell:nth-child(2n) { margin-right: 0; }
+  .bc { max-width: 88mm; height: 20mm; }
+  .code { font-size: 11pt; font-weight: 700; font-family: "Courier New", monospace; margin-top: 0.5mm; }
+  .name { font-size: 9pt; color: #333; margin-top: 0.5mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 88mm; }
+  .loc { font-size: 8pt; color: #888; }
+</style></head><body>
+${pagesHtml}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<script>
+  document.querySelectorAll('.bc').forEach(function(svg) {
+    var code = svg.getAttribute('data-code');
+    try { JsBarcode(svg, code, { format: 'CODE128', width: 2, height: 60, displayValue: false, margin: 0 }); }
+    catch(e) { svg.textContent = code; }
+  });
+  setTimeout(function() { window.print(); }, 800);
+<\/script>
+</body></html>`)
+  win.document.close()
+}
+
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -233,14 +407,16 @@ function escapeHtml(str: string): string {
 // ============ 加载 ============
 onMounted(async () => {
   try {
-    const [tools, whs, cats] = await Promise.all([
+    const [tools, whs, cats, kits] = await Promise.all([
       getTools(),
       getWarehouses(),
-      getCategories()
+      getCategories(),
+      getToolkits()
     ])
     allTools.value = tools
     warehouses.value = whs
     categories.value = cats
+    allToolkits.value = kits
 
     // 加载 JsBarcode 并首次渲染
     await loadJsBarcode()
@@ -306,14 +482,25 @@ onMounted(async () => {
   gap: 16px;
 }
 
+/* 工具箱条形码用更宽的卡片，2列布局 */
+.toolkit-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 @media (max-width: 1400px) {
   .barcode-grid {
     grid-template-columns: repeat(4, 1fr);
+  }
+  .toolkit-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 @media (max-width: 1100px) {
   .barcode-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+  .toolkit-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 @media (max-width: 800px) {
@@ -331,6 +518,11 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   page-break-inside: avoid;
+}
+
+/* 工具箱卡片稍大 */
+.toolkit-cell {
+  padding: 20px 16px 16px;
 }
 
 .barcode-svg-wrapper {

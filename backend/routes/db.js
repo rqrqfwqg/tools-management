@@ -57,6 +57,8 @@ function initDB() {
         { category_id: 1, category_name: '电动工具', category_code: 'ELECTRIC', description: '', require_approval: false },
         { category_id: 2, category_name: '手动工具', category_code: 'MANUAL', description: '', require_approval: false }
       ],
+      toolkits: [],
+      toolkit_items: [],
       orders: []
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initialDB, null, 2));
@@ -133,6 +135,20 @@ function migrateDB() {
       changed = true;
     }
   }
+
+  // 3. 给已有 toolkits 补 toolkit_code（格式 BX-{toolkit_id}）
+  if (db.toolkits && Array.isArray(db.toolkits)) {
+    db.toolkits.forEach(k => {
+      if (!k.toolkit_code) {
+        k.toolkit_code = `BX-${k.toolkit_id}`;
+        changed = true;
+      }
+    });
+  }
+
+  // 4. 确保 toolkits 和 toolkit_items 集合存在
+  if (!db.toolkits) { db.toolkits = []; changed = true; }
+  if (!db.toolkit_items) { db.toolkit_items = []; changed = true; }
 
   if (changed) {
     fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));

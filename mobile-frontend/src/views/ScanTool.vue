@@ -36,12 +36,12 @@
 
     <!-- 手动输入区域 -->
     <div class="manual-input-section">
-      <van-cell-group inset title="手动输入工具编码">
+      <van-cell-group inset title="手动输入编码">
         <van-field
           v-model="manualCode"
           center
           clearable
-          placeholder="请输入工具编码，如 G-CFJ-1"
+          placeholder="工具编码 G-CFJ-1 或工具箱编码 BX-1"
           @keyup.enter="handleManualSubmit"
         >
           <template #button>
@@ -95,7 +95,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { showLoadingToast, closeToast, showFailToast, showSuccessToast } from 'vant'
 import { useScanner } from '@/composables/useScanner'
-import { getToolByCode } from '@/api'
+import { getToolByCode, getToolkitByCode } from '@/api'
 import { useCartStore } from '@/store/cart'
 import { useScanHistoryStore } from '@/store/scanHistory'
 import type { Tool } from '@/types'
@@ -147,13 +147,20 @@ function resumeScanAfterDelay(ms = 1500): void {
 }
 
 /**
- * 识别到工具编码后的统一处理
- * 扫码/手动输入成功 → 直接加入领用篮，不弹确认窗
+ * 识别到编码后的统一处理
+ * - 以 BX- 开头 → 工具箱编码，批量加入领用篮
+ * - 其他 → 工具编码，单件加入领用篮
  */
 async function onCodeDetected(code: string): Promise<void> {
   if (!code.trim()) return
 
   showLoadingToast({ message: '查询中...', forbidClick: true, duration: 0 })
+
+  // 判断是否为工具箱编码（BX- 开头）
+  if (code.trim().toUpperCase().startsWith('BX-')) {
+    await handleToolkitCode(code.trim())
+    return
+  }
 
   try {
     const tool = await getToolByCode(code.trim())
@@ -194,6 +201,76 @@ async function onCodeDetected(code: string): Promise<void> {
   } catch (err: any) {
     closeToast()
     const msg = err?.response?.data?.message || '查询失败，请确认编码是否正确'
+    showFailToast(msg)
+    resumeScanAfterDelay()
+  }
+}
+
+/**
+ * 处理工具箱编码（BX- 开头）
+ * 获取工具箱详情，将可用状态的工具批量加入领用篮
+ */
+async function handleToolkitCode(code: string): Promise<void> {
+  try {
+    const kitDetail = await getToolkitByCode(code)
+    closeToast()
+
+    const allTools: Tool[] = kitDetail.tools || []
+    const toolkitName: string = kitDetail.toolkit_name || '未知工具箱'
+    const totalCount: number = allTools.length
+
+    if (totalCount === 0) {
+      showFailToast(`工具箱"${toolkitName}"内没有工具`)
+      resumeScanAfterDelay()
+      return
+    }
+
+    // 分类：可用 vs 不可用
+    const availableTools = allTools.filter(t => t.status === 'available')
+    const unavailableTools = allTools.filter(t => t.status !== 'available')
+
+    // 将可用工具批量加入领用篮
+    let addedCount = 0
+    for (const tool of availableTools) {
+      cartStore.addItem({
+        tool_id: tool.tool_id,
+        tool_name: tool.tool_name,
+        tool_code: tool.tool_code,
+        warehouse: tool.warehouse || '',
+        image_url: tool.image_url || ''
+      })
+
+      // 记录扫码历史
+      scanHistoryStore.addRecord({
+        tool_id: tool.tool_id,
+        tool_code: tool.tool_code,
+        tool_name: tool.tool_name,
+        status: 'available'
+      })
+
+      addedCount++
+    }
+
+    // 更新扫码统计
+    scanCount.value += addedCount
+    lastScannedName.value = toolkitName
+
+    // 构造提示信息
+    let msg = `识别到工具箱: ${toolkitName}，包含 ${totalCount} 件工具`
+    if (addedCount > 0) {
+      msg += `，已加入 ${addedCount} 件`
+    }
+    if (unavailableTools.length > 0) {
+      const unavailableNames = unavailableTools.map(t => `${t.tool_name}(${statusLabel(t.status)})`).join('、')
+      msg += `\n不可用跳过: ${unavailableNames}`
+    }
+
+    showSuccessToast({ message: msg, duration: 3000 })
+
+    resumeScanAfterDelay(2500)
+  } catch (err: any) {
+    closeToast()
+    const msg = err?.response?.data?.message || '查询工具箱失败，请确认编码是否正确'
     showFailToast(msg)
     resumeScanAfterDelay()
   }

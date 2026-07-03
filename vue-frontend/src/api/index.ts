@@ -142,7 +142,7 @@ export const getToolkits = () =>
 export const getToolkitDetail = (id: number) =>
   request.get<any>(`/toolkits/${id}`).then(r => r.data)
 
-export const createToolkit = (data: { toolkit_name: string; description?: string }) =>
+export const createToolkit = (data: { toolkit_name: string; description?: string; toolkit_code?: string }) =>
   request.post('/toolkits', data).then(r => r.data)
 
 export const updateToolkit = (id: number, data: any) =>
@@ -211,5 +211,9 @@ export const resetPassword = (userId: number, newPassword: string) =>
 // Barcode — 按 tool_code 查询
 export const getToolByCode = (code: string) =>
   request.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
+
+// Barcode — 按 toolkit_code 查询工具箱详情
+export const getToolkitByCode = (code: string) =>
+  request.get(`/toolkits/code/${encodeURIComponent(code)}`).then(r => r.data)
 
 export default request
