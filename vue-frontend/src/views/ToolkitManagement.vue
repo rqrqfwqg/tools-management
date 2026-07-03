@@ -83,6 +83,7 @@
         <template #default="{ row }">
           <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
           <el-button size="small" @click="openAddTools(row)">添加工具</el-button>
+          <el-button size="small" type="success" @click="openKitBarcodeDialog(row)">条形码</el-button>
           <el-button size="small" type="danger" @click="handleDeleteKit(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -131,11 +132,29 @@
         <el-button type="primary" @click="handleAddTools" :loading="saving">确认添加</el-button>
       </template>
     </el-dialog>
+
+    <!-- 工具箱条形码对话框 -->
+    <el-dialog v-model="kitBarcodeVisible" title="工具箱条形码" width="420px">
+      <div v-if="barcodeKit" style="text-align:center">
+        <p style="margin-bottom:8px">
+          <strong>{{ barcodeKit.toolkit_name }}</strong>
+          <span style="color:#909399;margin-left:8px">{{ barcodeKit.toolkit_code }}</span>
+        </p>
+        <svg id="kit-single-barcode"></svg>
+        <p style="margin-top:8px;color:#909399;font-size:13px">
+          {{ barcodeKit.tool_count }} 件工具
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="kitBarcodeVisible = false">关闭</el-button>
+        <el-button type="primary" @click="printKitBarcode">打印条形码</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive, nextTick } from 'vue'
 import {
   getToolkits, getToolkitDetail, getTools,
   createToolkit, updateToolkit, deleteToolkit,
@@ -310,6 +329,83 @@ function formatDate(d: string) {
 
 const statusType = (s: string) => ({ available: 'success', borrowed: 'warning', maintenance: 'info', scrapped: 'danger' }[s] || 'info')
 const statusText = (s: string) => ({ available: '可用', borrowed: '借出', maintenance: '维修', scrapped: '报废' }[s] || s)
+
+// ===== 工具箱条形码 =====
+const kitBarcodeVisible = ref(false)
+const barcodeKit = ref<any>(null)
+let JsBarcodeMod: any = null
+
+async function openKitBarcodeDialog(row: any) {
+  barcodeKit.value = row
+  kitBarcodeVisible.value = true
+  await nextTick()
+  if (!JsBarcodeMod) {
+    const mod = await import('jsbarcode')
+    JsBarcodeMod = mod.default || mod
+  }
+  const svgEl = document.getElementById('kit-single-barcode')
+  if (svgEl) {
+    svgEl.innerHTML = ''
+    try {
+      JsBarcodeMod(svgEl, row.toolkit_code, {
+        format: 'CODE128',
+        width: 2,
+        height: 80,
+        displayValue: true,
+        fontSize: 16,
+        margin: 10
+      })
+    } catch (e) {
+      console.warn('工具箱条形码渲染失败', e)
+    }
+  }
+}
+
+function printKitBarcode() {
+  const svgEl = document.getElementById('kit-single-barcode')
+  if (!svgEl || !barcodeKit.value) return
+  const svgHtml = svgEl.outerHTML
+  const kit = barcodeKit.value
+  const win = window.open('', '_blank', 'width=800,height=600')
+  if (!win) {
+    ElMessage.warning('弹窗被拦截，请允许弹窗后重试')
+    return
+  }
+  win.document.write(`<!DOCTYPE html><html><head><title>条形码 - ${kit.toolkit_code}</title>
+    <style>
+      @page { size: A4; margin: 15mm; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 40mm;
+        min-height: 100vh;
+        font-family: 'Microsoft YaHei', sans-serif;
+      }
+      .label {
+        text-align: center;
+        width: 120mm;
+        border: 1px solid #ccc;
+        padding: 10mm 8mm;
+        border-radius: 4mm;
+      }
+      .name { font-size: 18px; font-weight: bold; margin-bottom: 6px; }
+      .code { font-size: 15px; color: #333; margin-bottom: 8px; font-family: 'Courier New', monospace; }
+      .label svg { max-width: 100%; height: auto; }
+      .info { font-size: 13px; color: #999; margin-top: 8px; }
+    </style></head><body>
+    <div class="label">
+      <div class="name">${kit.toolkit_name}</div>
+      <div class="code">${kit.toolkit_code}</div>
+      ${svgHtml}
+      <div class="info">${kit.tool_count} 件工具</div>
+    </div>
+    </body></html>`)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print() }, 300)
+}
 
 onMounted(loadAll)
 </script>
