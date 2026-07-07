@@ -2,7 +2,8 @@
  * useScanner — html5-qrcode 扫码封装
  *
  * 封装摄像头扫码逻辑，支持：
- * - Code128 条形码识别
+ * - Code128 条形码识别（启用原生 BarcodeDetector 提升弱光识别）
+ * - 闪光灯（手电筒）开关
  * - 扫码成功自动停止
  * - 手动输入降级
  * - 权限错误友好提示
@@ -16,6 +17,8 @@ export interface ScannerOptions {
   elementId?: string
   /** 扫码框尺寸 */
   qrbox?: { width: number; height: number }
+  /** 扫码帧率（默认 15，越高越灵敏但更耗电） */
+  fps?: number
   /** 扫码成功回调 */
   onSuccess?: (code: string) => void
   /** 扫码失败回调 */
@@ -25,7 +28,8 @@ export interface ScannerOptions {
 export function useScanner(options: ScannerOptions = {}) {
   const {
     elementId = 'scanner-viewport',
-    qrbox = { width: 250, height: 100 },
+    qrbox = { width: 280, height: 120 },
+    fps = 15,
     onSuccess,
     onError
   } = options
@@ -35,6 +39,10 @@ export function useScanner(options: ScannerOptions = {}) {
   const lastCode = ref('')
   /** 当前环境是否支持摄像头扫码 */
   const cameraSupported = ref(true)
+  /** 设备摄像头是否支持闪光灯（手电筒） */
+  const torchSupported = ref(false)
+  /** 闪光灯当前开关状态（用户意图，跨扫码保留） */
+  const torchOn = ref(false)
 
   let scanner: Html5Qrcode | null = null
 
@@ -98,6 +106,40 @@ export function useScanner(options: ScannerOptions = {}) {
 
     // 彻底清理 DOM 中的残留 video/canvas
     cleanDomContainer()
+    // 注意：物理闪光灯随轨道销毁自动熄灭，但【不重置】torchOn / torchSupported：
+    // - torchSupported 是设备属性，多次扫码间不会变化，保留避免按钮闪烁消失
+    // - torchOn 是用户意图，连续扫码场景需在下一次 start 后重新应用，保持常亮
+  }
+
+  /**
+   * 检测当前摄像头轨道是否支持闪光灯（torch 能力）
+   * 必须在扫描运行中调用（getRunningTrackCapabilities 依赖 running track）
+   */
+  function detectTorchSupport(): void {
+    if (!scanner) return
+    try {
+      const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities
+      torchSupported.value = !!(caps && 'torch' in caps)
+    } catch {
+      torchSupported.value = false
+    }
+  }
+
+  /**
+   * 切换闪光灯开关
+   * 通过 html5-qrcode 公开 API applyVideoConstraints({ advanced: [{ torch }] }) 控制
+   */
+  async function toggleTorch(): Promise<void> {
+    if (!scanner || !torchSupported.value) return
+    const next = !torchOn.value
+    try {
+      // torch 是浏览器摄像头轨道的原生扩展能力，TS 类型库未收录，需断言
+      await scanner.applyVideoConstraints({ advanced: [{ torch: next }] } as any)
+      torchOn.value = next
+    } catch {
+      // 设备不支持或应用失败，回退到关闭状态
+      torchOn.value = false
+    }
   }
 
   /**
@@ -129,16 +171,24 @@ export function useScanner(options: ScannerOptions = {}) {
 
       // 每次都创建全新实例
       scanner = new Html5Qrcode(elementId, {
-        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
+        // 启用手机原生 BarcodeDetector API（Android Chrome 支持），
+        // 弱光识别能力与速度大幅增强；不支持时自动回退 ZXing
+        useBarCodeDetectorIfSupported: true,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.CODE_39
+        ],
         verbose: false
       })
 
       scanning.value = true
 
       await scanner.start(
-        { facingMode },
+        // 提高摄像头采集分辨率，弱光下画质更好、更易识别
+        { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
         {
-          fps: 10,
+          fps,
           qrbox
         },
         (decodedText: string) => {
@@ -154,6 +204,17 @@ export function useScanner(options: ScannerOptions = {}) {
           // 每帧扫描尝试（空回调，忽略未识别帧）
         }
       )
+
+      // start 成功后再检测闪光灯支持情况
+      detectTorchSupport()
+      // 若用户此前已开启闪光灯（连续扫码场景），重新打开以保持常亮
+      if (torchOn.value) {
+        try {
+          await scanner.applyVideoConstraints({ advanced: [{ torch: true }] } as any)
+        } catch {
+          torchOn.value = false
+        }
+      }
     } catch (err: any) {
       scanning.value = false
       const msg: string = err?.message || String(err)
@@ -195,8 +256,11 @@ export function useScanner(options: ScannerOptions = {}) {
     error,
     lastCode,
     cameraSupported,
+    torchSupported,
+    torchOn,
     startScanning,
     stopScanning,
+    toggleTorch,
     destroy
   }
 }

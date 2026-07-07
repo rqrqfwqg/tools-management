@@ -22,6 +22,17 @@
         <p class="scan-hint">将条形码对准扫描框</p>
       </div>
 
+      <!-- 闪光灯开关（仅设备支持且正在扫码时显示） -->
+      <van-button
+        v-if="scanning && torchSupported"
+        class="torch-btn"
+        :class="{ 'torch-on': torchOn }"
+        round
+        size="small"
+        icon="bulb-o"
+        @click="toggleTorch"
+      />
+
       <div v-if="error && !scanning" class="scan-error">
         <van-icon name="warning-o" size="40" color="#ee0a24" />
         <p>{{ error }}</p>
@@ -115,12 +126,15 @@ const {
   scanning,
   error,
   cameraSupported,
+  torchSupported,
+  torchOn,
+  toggleTorch,
   startScanning,
   stopScanning,
   destroy
 } = useScanner({
   elementId: 'scanner-viewport',
-  qrbox: { width: 250, height: 100 },
+  qrbox: { width: 280, height: 120 },
   onSuccess: (code: string) => {
     onCodeDetected(code)
   },
@@ -359,6 +373,33 @@ onUnmounted(() => {
   bottom: 20%;
   color: rgba(255, 255, 255, 0.7);
   font-size: 14px;
+}
+
+/* 闪光灯按钮：右上角圆形悬浮 */
+.torch-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+}
+
+.torch-btn :deep(.van-icon) {
+  color: #fff;
+}
+
+.torch-btn.torch-on {
+  background: #ffd21e;
+  color: #323233;
+}
+
+.torch-btn.torch-on :deep(.van-icon) {
+  color: #323233;
 }
 
 @keyframes scanMove {
