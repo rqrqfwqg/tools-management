@@ -185,11 +185,17 @@ export function useScanner(options: ScannerOptions = {}) {
       scanning.value = true
 
       await scanner.start(
-        // 提高摄像头采集分辨率，弱光下画质更好、更易识别
-        { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        // cameraIdOrConfig 传对象时只允许恰好 1 个 key（facingMode 或 deviceId）
+        { facingMode },
         {
           fps,
-          qrbox
+          qrbox,
+          // 分辨率通过 videoConstraints 设置（库会优先以它作为 getUserMedia 的 video 约束）
+          videoConstraints: {
+            facingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
         },
         (decodedText: string) => {
           // 成功识别
