@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-header">
       <div class="logo-icon">🔧</div>
-      <h1>T3GTC 工器具管理</h1>
+      <h1>T3GTC 物料管理</h1>
       <p>请使用手机号登录</p>
     </div>
 

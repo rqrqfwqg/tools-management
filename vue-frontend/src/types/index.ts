@@ -52,9 +52,13 @@ export interface Tool {
 
 export interface OrderItem {
   item_id: number
-  tool_id: number
-  tool_code: string
-  tool_name: string
+  tool_id?: number
+  tool_code?: string
+  tool_name?: string
+  item_type?: string
+  spare_id?: number
+  spare_code?: string
+  spare_name?: string
   item_status: string
   return_time?: string
   condition_note?: string
@@ -76,6 +80,98 @@ export interface Order {
   items?: OrderItem[]
 }
 
+export interface SparePart {
+  spare_id: number
+  spare_code: string
+  spare_name: string
+  category_id?: number
+  category_name?: string
+  warehouse_id?: number
+  warehouse_name?: string
+  shelf_id?: number
+  shelf_name?: string
+  storage_location_id?: number
+  location_name?: string
+  storage_location?: string
+  stock_qty?: number
+  unit?: string
+  status: string
+  image_url?: string
+  description?: string
+  borrow_count?: number
+  created_at?: string
+}
+
+export interface Consumable {
+  consumable_id: number
+  consumable_code: string
+  consumable_name: string
+  category_id?: number
+  category_name?: string
+  warehouse_id?: number
+  warehouse_name?: string
+  shelf_id?: number
+  shelf_name?: string
+  storage_location_id?: number
+  location_name?: string
+  storage_location?: string
+  stock_qty: number
+  unit?: string
+  warning_qty?: number | null
+  price?: number | null
+  image_url?: string
+  description?: string
+  total_out?: number
+  created_at?: string
+}
+
+export interface MaterialCategory {
+  category_id: number
+  category_name: string
+  category_code: string
+  category_type: 'spare' | 'consumable' | 'both'
+  description: string
+}
+
+export interface StockMovement {
+  movement_id: number
+  item_type: string
+  item_id?: number
+  item_code?: string
+  item_name?: string
+  movement_type: string
+  qty: number
+  operator_id?: number
+  operator_name?: string
+  order_id?: number | null
+  scan_code?: string
+  remark?: string
+  created_at?: string
+}
+
+export interface InventoryCheckItem {
+  item_type: 'spare' | 'consumable' | 'tool'
+  item_id: number
+  item_code: string
+  item_name: string
+  system_qty: number
+  actual_qty: number
+  diff: number
+}
+
+export interface InventoryCheck {
+  check_id: number
+  check_no: string
+  warehouse_id: number
+  warehouse_name?: string
+  status: string
+  operator_id?: number
+  operator_name?: string
+  items?: InventoryCheckItem[]
+  started_at?: string
+  completed_at?: string
+}
+
 export interface Role {
   role_id: number
   role_name: string
@@ -92,6 +188,12 @@ export interface DashboardStats {
   tools_borrowed: number
   tools_maintenance: number
   tools_scrapped: number
+  spare_total: number
+  spare_available: number
+  spare_borrowed: number
+  consumable_total: number
+  consumable_total_qty: number
+  consumable_low_stock: number
   orders_total: number
   orders_pending: number
   orders_approved: number

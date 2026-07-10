@@ -49,14 +49,30 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 物料统计 -->
+    <h3 style="margin:24px 0 8px;color:#606266">物料</h3>
+    <el-row :gutter="16">
+      <el-col :span="6" v-for="stat in materialStats" :key="stat.label">
+        <el-card shadow="hover" class="stat-card" @click="goTo(stat.route)">
+          <div class="stat-icon" :style="{ background: stat.bg }">
+            <el-icon :size="28" :color="stat.color"><component :is="stat.icon" /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" :style="{ color: stat.color }">{{ stat.value }}</div>
+            <div class="stat-label">{{ stat.label }}</div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDashboard } from '@/api'
-import { Box, CircleCheck, Van, SetUp, List, Clock, CircleClose, Refresh, User } from '@element-plus/icons-vue'
+import { getDashboard, getSpareParts, getConsumables, getInventoryChecks } from '@/api'
+import { Box, CircleCheck, Van, SetUp, List, Clock, CircleClose, Refresh, User, Goods, Warning } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
@@ -76,6 +92,13 @@ const orderStats = ref([
 
 const userTotal = ref(0)
 
+const materialStats = ref([
+  { label: '备件总数', value: 0, icon: Goods, color: '#409EFF', bg: '#e6f1fc', route: '/spare-parts' },
+  { label: '消耗品种类', value: 0, icon: Box, color: '#67C23A', bg: '#e6f7e6', route: '/consumables' },
+  { label: '待盘库数', value: 0, icon: List, color: '#E6A23C', bg: '#fdf3e0', route: '/inventory-checks' },
+  { label: '低库存消耗品', value: 0, icon: Warning, color: '#F56C6C', bg: '#fde6e6', route: '/consumables' },
+])
+
 onMounted(async () => {
   try {
     const data = await getDashboard()
@@ -90,6 +113,23 @@ onMounted(async () => {
     userTotal.value = data.users_total
   } catch (e: any) {
     console.error('加载仪表盘数据失败', e)
+  }
+
+  // 物料统计（独立计数，简单求和）
+  try {
+    const [spares, consumables, checks] = await Promise.all([
+      getSpareParts(),
+      getConsumables(),
+      getInventoryChecks()
+    ])
+    materialStats.value[0].value = spares.length
+    materialStats.value[1].value = consumables.length
+    materialStats.value[2].value = (checks || []).filter((c: any) => c.status === 'pending').length
+    materialStats.value[3].value = (consumables || []).filter(
+      (c: any) => c.warning_qty != null && c.stock_qty <= c.warning_qty
+    ).length
+  } catch (e: any) {
+    console.error('加载物料统计失败', e)
   }
 })
 

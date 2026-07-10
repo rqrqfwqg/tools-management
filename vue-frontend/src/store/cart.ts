@@ -2,30 +2,41 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Tool } from '@/types'
 
+export interface CartItem extends Tool {
+  quantity: number
+  item_type?: 'tool' | 'spare'
+  spare_id?: number
+  spare_code?: string
+  spare_name?: string
+}
+
 export const useCartStore = defineStore('cart', () => {
-  const items = ref<Array<Tool & { quantity: number }>>([])
+  const items = ref<CartItem[]>([])
 
   const totalItems = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 
-  const addToCart = (tool: Tool) => {
-    const tid = Number(tool.tool_id)
-    const existing = items.value.find(item => Number(item.tool_id) === tid)
-    if (existing) return // 已存在则跳过，每个工具唯一
-    items.value.push({ ...tool, quantity: 1, tool_id: tid })
+  // 生成唯一键：工具用 tool_id，备件用 spare_id
+  const keyOf = (item: any) => item.item_type === 'spare' ? `spare-${item.spare_id}` : `tool-${item.tool_id}`
+
+  const addToCart = (item: any) => {
+    const key = keyOf(item)
+    const existing = items.value.find(i => keyOf(i) === key)
+    if (existing) return // 已存在则跳过
+    items.value.push({ ...item, quantity: 1, item_type: item.item_type || 'tool' })
   }
 
-  const removeFromCart = (toolId: number) => {
-    const index = items.value.findIndex(item => item.tool_id === toolId)
+  const removeFromCart = (key: string) => {
+    const index = items.value.findIndex(item => keyOf(item) === key)
     if (index > -1) {
       items.value.splice(index, 1)
     }
   }
 
-  const updateQuantity = (toolId: number, quantity: number) => {
-    const item = items.value.find(item => item.tool_id === toolId)
+  const updateQuantity = (key: string, quantity: number) => {
+    const item = items.value.find(i => keyOf(i) === key)
     if (item) {
       if (quantity <= 0) {
-        removeFromCart(toolId)
+        removeFromCart(key)
       } else {
         item.quantity = quantity
       }
@@ -36,8 +47,8 @@ export const useCartStore = defineStore('cart', () => {
     items.value = []
   }
 
-  const isInCart = (toolId: number) => {
-    return items.value.some(item => item.tool_id === toolId)
+  const isInCart = (key: string) => {
+    return items.value.some(item => keyOf(item) === key)
   }
 
   return {
@@ -47,6 +58,7 @@ export const useCartStore = defineStore('cart', () => {
     removeFromCart,
     updateQuantity,
     clearCart,
-    isInCart
+    isInCart,
+    keyOf
   }
 })

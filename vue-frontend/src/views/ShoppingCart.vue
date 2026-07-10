@@ -9,9 +9,9 @@
       </el-button>
     </div>
 
-    <div v-else>
+      <div v-else>
       <el-table :data="cartStore.items" border style="margin-top: 15px;">
-        <el-table-column label="工具图片" width="100">
+        <el-table-column label="图片" width="100">
           <template #default="{row}">
             <el-image
               v-if="row.image_url"
@@ -25,14 +25,26 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="tool_code" label="编码" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="tool_name" label="名称" min-width="120" show-overflow-tooltip />
+        <el-table-column label="类型" width="80">
+          <template #default="{row}">
+            <el-tag :type="row.item_type === 'spare' ? 'warning' : 'info'" size="small">
+              {{ row.item_type === 'spare' ? '备件' : '工具' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="编码" min-width="100" show-overflow-tooltip>
+          <template #default="{row}">{{ row.spare_code || row.tool_code }}</template>
+        </el-table-column>
+        <el-table-column label="名称" min-width="120" show-overflow-tooltip>
+          <template #default="{row}">{{ row.spare_name || row.tool_name }}</template>
+        </el-table-column>
         <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />
         <el-table-column prop="storage_location" label="位置" min-width="100" show-overflow-tooltip />
 
         <el-table-column label="操作" min-width="100">
           <template #default="{row}">
-            <el-button size="small" type="danger" @click="handleRemove(row.tool_id)">
+            <el-button size="small" type="danger" @click="handleRemove(cartStore.keyOf(row))">
               移除
             </el-button>
           </template>
@@ -134,7 +146,7 @@ const getImageUrl = (path: string) => {
   return path
 }
 
-const handleRemove = (toolId: number) => {
+const handleRemove = (toolId: string) => {
   cartStore.removeFromCart(toolId)
   ElMessage.success('已从购物车移除')
 }
@@ -176,7 +188,8 @@ const handleSubmitOrder = async () => {
   submitting.value = true
   try {
     const orderData = {
-      tool_ids: cartStore.items.map(item => item.tool_id),
+      tool_ids: cartStore.items.filter(i => i.item_type !== 'spare').map(i => i.tool_id),
+      spare_ids: cartStore.items.filter(i => i.item_type === 'spare').map(i => i.spare_id),
       warehouse: checkoutForm.warehouse,
       scene: checkoutForm.scene,
       expected_return: checkoutForm.expected_return

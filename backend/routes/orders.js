@@ -19,12 +19,17 @@ const validate = (req, res, next) => {
 router.get('/orders', authenticate, (req, res) => {
   const db = readDB();
   const orders = db.orders || [];
-  // 为每个 item 补充 image_url
+  // 为每个 item 补充 image_url（工具与备件分别取图）
   const enriched = orders.map(o => ({
     ...o,
     items: (o.items || []).map(item => {
-      const tool = db.tools.find(t => t.tool_id === item.tool_id);
-      return { ...item, image_url: tool?.image_url || '' };
+      let imageUrl = '';
+      if (item.item_type === 'spare') {
+        imageUrl = (db.spare_parts || []).find(s => s.spare_id === item.spare_id)?.image_url || '';
+      } else {
+        imageUrl = (db.tools || []).find(t => t.tool_id === item.tool_id)?.image_url || '';
+      }
+      return { ...item, image_url: imageUrl };
     })
   }));
   if (req.user.role !== 'admin' && req.user.role !== 'team_leader') {
@@ -37,10 +42,11 @@ router.get('/orders', authenticate, (req, res) => {
 // 创建订单
 router.post('/orders', authenticate, [
   body('tool_ids').optional().isArray(),
+  body('spare_ids').optional().isArray(),
   body('toolkit').optional().isString(),
   validate
 ], (req, res) => {
-  const { tool_ids, toolkit, warehouse, scene, expected_return, purpose } = req.body;
+  const { tool_ids, spare_ids, toolkit, warehouse, scene, expected_return, purpose } = req.body;
   const db = readDB();
   const user = db.users.find(u => u.user_id === req.user.user_id);
   if (!user) return res.status(404).json({ message: '用户不存在' });
@@ -63,7 +69,10 @@ router.post('/orders', authenticate, [
     resolvedIds = [...new Set([...resolvedIds, ...kitIds])];
   }
 
-  if (resolvedIds.length === 0) return res.status(400).json({ message: '请选择至少要领用的工具' });
+  // 解析备件（item_type='spare'）
+  const resolvedSpareIds = spare_ids || [];
+  const allResolved = [...resolvedIds, ...resolvedSpareIds];
+  if (allResolved.length === 0) return res.status(400).json({ message: '请选择至少要领用的工具或备件' });
 
   // 检查工具可用性
   const unavailableTools = [];
@@ -72,21 +81,38 @@ router.post('/orders', authenticate, [
     if (!tool) unavailableTools.push(`工具ID ${toolId} 不存在`);
     else if (tool.status !== 'available') unavailableTools.push(`${tool.tool_name} 当前状态为${tool.status}，不可领用`);
   }
+  // 检查备件可用性
+  for (const spareId of resolvedSpareIds) {
+    const sp = (db.spare_parts || []).find(s => s.spare_id === spareId);
+    if (!sp) unavailableTools.push(`备件ID ${spareId} 不存在`);
+    else if (sp.status !== 'available') unavailableTools.push(`备件${sp.spare_name} 当前状态为${sp.status}，不可领用`);
+  }
   if (unavailableTools.length > 0) {
     return res.status(400).json({ message: unavailableTools.join('；') });
   }
 
   const orderNo = `ORD${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
   let itemCounter = Date.now();
-  const items = resolvedIds.map(toolId => {
+  const items = [];
+  for (const toolId of resolvedIds) {
     const tool = db.tools.find(t => t.tool_id === toolId);
     const randomPart = crypto.randomBytes(3).readUIntBE(0, 3);
-    return {
+    items.push({
       item_id: (itemCounter++ << 12) | (randomPart & 0xFFF),
       tool_id: toolId, tool_code: tool.tool_code, tool_name: tool.tool_name,
       item_status: 'reserved'
-    };
-  });
+    });
+  }
+  for (const spareId of resolvedSpareIds) {
+    const sp = (db.spare_parts || []).find(s => s.spare_id === spareId);
+    const randomPart = crypto.randomBytes(3).readUIntBE(0, 3);
+    items.push({
+      item_id: (itemCounter++ << 12) | (randomPart & 0xFFF),
+      item_type: 'spare',
+      spare_id: spareId, spare_code: sp.spare_code, spare_name: sp.spare_name,
+      item_status: 'reserved'
+    });
+  }
 
   const newOrder = {
     order_id: nextId(db.orders, 'order_id'),
@@ -107,6 +133,10 @@ router.post('/orders', authenticate, [
   for (const toolId of resolvedIds) {
     const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
     if (toolIndex > -1) db.tools[toolIndex].status = 'reserved';
+  }
+  for (const spareId of resolvedSpareIds) {
+    const spIndex = (db.spare_parts || []).findIndex(s => s.spare_id === spareId);
+    if (spIndex > -1) db.spare_parts[spIndex].status = 'reserved';
   }
 
   db.orders.push(newOrder);
@@ -151,10 +181,18 @@ router.post('/orders/:id/approve', authenticate, requireApprover, (req, res) => 
 
   db.orders[orderIndex].status = 'borrowed';
   for (const item of db.orders[orderIndex].items) {
-    const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
-    if (toolIndex > -1) {
-      db.tools[toolIndex].status = 'borrowed';
-      db.tools[toolIndex].borrow_count = (db.tools[toolIndex].borrow_count || 0) + 1;
+    if (item.item_type === 'spare') {
+      const idx = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+      if (idx > -1) {
+        db.spare_parts[idx].status = 'borrowed';
+        db.spare_parts[idx].borrow_count = (db.spare_parts[idx].borrow_count || 0) + 1;
+      }
+    } else {
+      const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (toolIndex > -1) {
+        db.tools[toolIndex].status = 'borrowed';
+        db.tools[toolIndex].borrow_count = (db.tools[toolIndex].borrow_count || 0) + 1;
+      }
     }
     item.item_status = 'borrowed';
   }
@@ -171,8 +209,13 @@ router.post('/orders/:id/reject', authenticate, requireApprover, (req, res) => {
   if (db.orders[orderIndex].status !== 'pending') return res.status(400).json({ message: '只能拒绝待审核的订单' });
 
   for (const item of db.orders[orderIndex].items) {
-    const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
-    if (toolIndex > -1) db.tools[toolIndex].status = 'available';
+    if (item.item_type === 'spare') {
+      const idx = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+      if (idx > -1) db.spare_parts[idx].status = 'available';
+    } else {
+      const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (toolIndex > -1) db.tools[toolIndex].status = 'available';
+    }
   }
   db.orders[orderIndex].status = 'rejected';
   writeDB(db);
@@ -201,8 +244,13 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
   }
 
   for (const item of order.items) {
-    const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
-    if (toolIndex > -1) db.tools[toolIndex].status = 'available';
+    if (item.item_type === 'spare') {
+      const idx = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+      if (idx > -1) db.spare_parts[idx].status = 'available';
+    } else {
+      const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (toolIndex > -1) db.tools[toolIndex].status = 'available';
+    }
     item.item_status = 'returned';
   }
   db.orders[orderIndex].status = 'returned';
@@ -219,9 +267,11 @@ router.get('/orders/:id/checklist', authenticate, (req, res) => {
   if (!order) return res.status(404).json({ message: '订单不存在' });
 
   const items = (order.items || []).map(item => ({
-    tool_id: item.tool_id,
-    tool_code: item.tool_code,
-    tool_name: item.tool_name,
+    tool_id: item.tool_id ?? item.spare_id,
+    item_type: item.item_type || 'tool',
+    item_code: item.tool_code || item.spare_code,
+    tool_code: item.tool_code || item.spare_code,
+    tool_name: item.tool_name || item.spare_name,
     checked: !!item.checked,
     checked_at: item.checked_at || null,
     checked_by: item.checked_by || null
@@ -242,8 +292,8 @@ router.post('/orders/:id/checklist', authenticate, (req, res) => {
   const order = db.orders[orderIndex];
   if (order.status !== 'borrowed') return res.status(400).json({ message: '只有借出中的订单才能清点' });
 
-  const item = order.items.find(i => i.tool_id === tool_id);
-  if (!item) return res.status(404).json({ message: '工具不在该工单中' });
+  const item = order.items.find(i => (i.tool_id ?? i.spare_id) === tool_id);
+  if (!item) return res.status(404).json({ message: '物料不在该工单中' });
 
   item.checked = !!checked;
   item.checked_at = checked ? nowCST() : null;
@@ -293,24 +343,39 @@ router.put('/orders/:id/status', authenticate, (req, res) => {
     if (req.user.role !== 'admin' && req.user.role !== 'team_leader') return res.status(403).json({ message: '无审批权限' });
     db.orders[idx].status = 'borrowed';
     for (const item of db.orders[idx].items) {
-      const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
-      if (ti > -1) { db.tools[ti].status = 'borrowed'; db.tools[ti].borrow_count = (db.tools[ti].borrow_count || 0) + 1; }
+      if (item.item_type === 'spare') {
+        const ti = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+        if (ti > -1) { db.spare_parts[ti].status = 'borrowed'; db.spare_parts[ti].borrow_count = (db.spare_parts[ti].borrow_count || 0) + 1; }
+      } else {
+        const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+        if (ti > -1) { db.tools[ti].status = 'borrowed'; db.tools[ti].borrow_count = (db.tools[ti].borrow_count || 0) + 1; }
+      }
       item.item_status = 'borrowed';
     }
   } else if (status === 'rejected') {
     if (order.status !== 'pending') return res.status(400).json({ message: '只能拒绝待审核的订单' });
     if (req.user.role !== 'admin' && req.user.role !== 'team_leader') return res.status(403).json({ message: '无审批权限' });
     for (const item of order.items) {
-      const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
-      if (ti > -1) db.tools[ti].status = 'available';
+      if (item.item_type === 'spare') {
+        const ti = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+        if (ti > -1) db.spare_parts[ti].status = 'available';
+      } else {
+        const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+        if (ti > -1) db.tools[ti].status = 'available';
+      }
     }
     db.orders[idx].status = 'rejected';
   } else if (status === 'cancelled') {
     if (order.status !== 'pending') return res.status(400).json({ message: '只能取消待审核的订单' });
     if (req.user.role !== 'admin' && order.borrower_id !== req.user.user_id) return res.status(403).json({ message: '只能取消自己的订单' });
     for (const item of order.items) {
-      const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
-      if (ti > -1) db.tools[ti].status = 'available';
+      if (item.item_type === 'spare') {
+        const ti = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+        if (ti > -1) db.spare_parts[ti].status = 'available';
+      } else {
+        const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+        if (ti > -1) db.tools[ti].status = 'available';
+      }
     }
     db.orders[idx].status = 'cancelled';
   }

@@ -47,6 +47,18 @@ const routes: RouteRecordRaw[] = [
     name: 'Scan',
     component: () => import('@/views/ScanTool.vue'),
     meta: { title: '扫码' }
+  },
+  {
+    path: '/spare-parts',
+    name: 'SpareParts',
+    component: () => import('@/views/SparePartList.vue'),
+    meta: { title: '备件' }
+  },
+  {
+    path: '/consumables',
+    name: 'Consumables',
+    component: () => import('@/views/ConsumableList.vue'),
+    meta: { title: '消耗品' }
   }
 ]
 

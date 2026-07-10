@@ -3,6 +3,11 @@
     <!-- 操作栏 -->
     <div class="barcode-toolbar no-print">
       <div class="toolbar-left">
+        <el-radio-group v-model="mode" @change="doFilter">
+          <el-radio-button label="工具" value="tools" />
+          <el-radio-button label="备件" value="spare" />
+          <el-radio-button label="消耗品" value="consumable" />
+        </el-radio-group>
         <el-select
           v-model="warehouseFilter"
           placeholder="全部仓库"
@@ -27,7 +32,7 @@
         >
           <el-option label="全部分类" value="" />
           <el-option
-            v-for="cat in categories"
+            v-for="cat in categoryOptions"
             :key="cat.category_name"
             :label="cat.category_name"
             :value="cat.category_name"
@@ -42,7 +47,7 @@
         />
       </div>
       <div class="toolbar-right">
-        <span class="tool-count">共 {{ filteredTools.length }} 件</span>
+        <span class="tool-count">共 {{ filteredItems.length }} 件</span>
         <el-button type="primary" @click="handlePrint">
           <el-icon style="margin-right:4px"><Printer /></el-icon>
           打印条形码
@@ -51,23 +56,23 @@
     </div>
 
     <!-- 条形码网格 -->
-    <div v-if="filteredTools.length === 0" class="empty-hint">
-      <el-empty description="暂无匹配工具" />
+    <div v-if="filteredItems.length === 0" class="empty-hint">
+      <el-empty description="暂无匹配数据" />
     </div>
     <div v-else class="barcode-grid" ref="gridRef">
       <div
-        v-for="tool in filteredTools"
-        :key="tool.tool_id"
+        v-for="item in filteredItems"
+        :key="item.mode + '-' + item.id"
         class="barcode-cell"
       >
         <div class="barcode-svg-wrapper">
-          <svg :id="`barcode-${tool.tool_id}`" class="barcode-svg"></svg>
+          <svg :id="`barcode-${item.mode}-${item.id}`" class="barcode-svg"></svg>
         </div>
         <div class="barcode-info">
-          <div class="barcode-code">{{ tool.tool_code }}</div>
-          <div class="barcode-name">{{ tool.tool_name }}</div>
-          <div class="barcode-location" v-if="tool.shelf_name || tool.location_name">
-            {{ tool.shelf_name }}{{ tool.location_name ? ' ' + tool.location_name : '' }}
+          <div class="barcode-code">{{ item.code }}</div>
+          <div class="barcode-name">{{ item.name }}</div>
+          <div class="barcode-location" v-if="item.shelf_name || item.location_name">
+            {{ item.shelf_name }}{{ item.location_name ? ' ' + item.location_name : '' }}
           </div>
         </div>
       </div>
@@ -76,44 +81,74 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { Printer } from '@element-plus/icons-vue'
-import { getTools, getWarehouses, getCategories } from '@/api'
-import type { Tool } from '@/types'
+import { getTools, getWarehouses, getCategories, getMaterialCategories, getSpareParts, getConsumables } from '@/api'
 
 // ============ 数据 ============
-const allTools = ref<Tool[]>([])
+const mode = ref<'tools' | 'spare' | 'consumable'>('tools')
+const allTools = ref<any[]>([])
+const allSpares = ref<any[]>([])
+const allConsumables = ref<any[]>([])
 const warehouses = ref<{ warehouse_name: string }[]>([])
-const categories = ref<{ category_name: string }[]>([])
+const toolCategories = ref<{ category_name: string }[]>([])
+const materialCategories = ref<{ category_name: string }[]>([])
 
 const warehouseFilter = ref('')
 const categoryFilter = ref('')
 const keyword = ref('')
-const filteredTools = ref<Tool[]>([])
+const filteredItems = ref<any[]>([])
 const gridRef = ref<HTMLElement | null>(null)
+
+const categoryOptions = computed(() =>
+  mode.value === 'tools' ? toolCategories.value : materialCategories.value
+)
+
+// 将不同数据源统一为 { id, mode, code, name, warehouse, shelf_name, location_name }
+function normalize() {
+  const tools = allTools.value.map((t: any) => ({
+    id: t.tool_id, mode: 'tools', code: t.tool_code, name: t.tool_name,
+    warehouse: t.warehouse || '', shelf_name: t.shelf_name || '', location_name: t.location_name || ''
+  }))
+  const spares = allSpares.value.map((s: any) => ({
+    id: s.spare_id, mode: 'spare', code: s.spare_code, name: s.spare_name,
+    warehouse: s.warehouse_name || '', shelf_name: s.shelf_name || '', location_name: s.location_name || ''
+  }))
+  const consumables = allConsumables.value.map((c: any) => ({
+    id: c.consumable_id, mode: 'consumable', code: c.consumable_code, name: c.consumable_name,
+    warehouse: c.warehouse_name || '', shelf_name: c.shelf_name || '', location_name: c.location_name || ''
+  }))
+  if (mode.value === 'spare') return spares
+  if (mode.value === 'consumable') return consumables
+  return tools
+}
 
 // ============ 筛选 ============
 function doFilter() {
-  let result = [...allTools.value]
+  let result = normalize()
 
   if (warehouseFilter.value) {
     result = result.filter(t => t.warehouse === warehouseFilter.value)
   }
   if (categoryFilter.value) {
-    result = result.filter(t => t.category_name === categoryFilter.value)
+    // 分类信息未纳入统一结构，按原集合过滤后重新归一化
+    if (mode.value === 'tools') {
+      const ids = allTools.value.filter((t: any) => t.category_name === categoryFilter.value).map((t: any) => t.tool_id)
+      result = result.filter(t => ids.includes(t.id))
+    } else if (mode.value === 'spare') {
+      const ids = allSpares.value.filter((s: any) => s.category_name === categoryFilter.value).map((s: any) => s.spare_id)
+      result = result.filter(t => ids.includes(t.id))
+    } else {
+      const ids = allConsumables.value.filter((c: any) => c.category_name === categoryFilter.value).map((c: any) => c.consumable_id)
+      result = result.filter(t => ids.includes(t.id))
+    }
   }
   if (keyword.value.trim()) {
     const kw = keyword.value.trim().toLowerCase()
-    result = result.filter(
-      t =>
-        t.tool_name.toLowerCase().includes(kw) ||
-        t.tool_code.toLowerCase().includes(kw)
-    )
+    result = result.filter(t => t.name.toLowerCase().includes(kw) || t.code.toLowerCase().includes(kw))
   }
 
-  filteredTools.value = result
-
-  // 数据变更后重新渲染条形码
+  filteredItems.value = result
   nextTick(() => renderAllBarcodes())
 }
 
@@ -129,13 +164,12 @@ async function loadJsBarcode() {
 
 function renderAllBarcodes() {
   if (!JsBarcodeModule) return
-  for (const tool of filteredTools.value) {
-    const svgEl = document.getElementById(`barcode-${tool.tool_id}`)
+  for (const item of filteredItems.value) {
+    const svgEl = document.getElementById(`barcode-${item.mode}-${item.id}`)
     if (!svgEl) continue
-    // 已渲染过则跳过（防止重复渲染撕裂）
     if (svgEl.children.length > 0) continue
     try {
-      JsBarcodeModule(svgEl, tool.tool_code, {
+      JsBarcodeModule(svgEl, item.code, {
         format: 'CODE128',
         width: 2,
         height: 60,
@@ -144,7 +178,7 @@ function renderAllBarcodes() {
         margin: 10
       })
     } catch (e) {
-      console.warn(`条形码渲染失败: ${tool.tool_code}`, e)
+      console.warn(`条形码渲染失败: ${item.code}`, e)
     }
   }
 }
@@ -157,23 +191,30 @@ function handlePrint() {
 // ============ 加载 ============
 onMounted(async () => {
   try {
-    const [tools, whs, cats] = await Promise.all([
+    const [tools, whs, cats, mcats, spares, consumables] = await Promise.all([
       getTools(),
       getWarehouses(),
-      getCategories()
+      getCategories(),
+      getMaterialCategories(),
+      getSpareParts(),
+      getConsumables()
     ])
     allTools.value = tools
     warehouses.value = whs
-    categories.value = cats
+    toolCategories.value = cats
+    materialCategories.value = mcats
+    allSpares.value = spares
+    allConsumables.value = consumables
 
-    // 加载 JsBarcode 并首次渲染
     await loadJsBarcode()
-
     doFilter()
   } catch (e) {
     console.error('加载条形码数据失败', e)
   }
 })
+
+// 切换模式时清空原分类筛选
+watch(mode, () => { categoryFilter.value = '' })
 </script>
 
 <style scoped>
@@ -195,7 +236,7 @@ onMounted(async () => {
   padding: 12px 16px;
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow:0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .toolbar-left {
@@ -250,7 +291,7 @@ onMounted(async () => {
   background: #fff;
   border-radius: 8px;
   padding: 16px 12px 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow:0 1px 4px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -300,7 +341,6 @@ onMounted(async () => {
 <!-- ===== 全局打印样式 ===== -->
 <style>
 @media print {
-  /* 隐藏侧边栏、顶栏、工具栏 */
   .no-print,
   .el-menu,
   .el-header,
@@ -313,7 +353,6 @@ onMounted(async () => {
     display: none !important;
   }
 
-  /* 页面背景 */
   body {
     background: #fff !important;
     -webkit-print-color-adjust: exact;
@@ -325,7 +364,6 @@ onMounted(async () => {
     background: #fff !important;
   }
 
-  /* A4 适配：5列网格 */
   .barcode-grid {
     display: grid !important;
     grid-template-columns: repeat(5, 1fr) !important;

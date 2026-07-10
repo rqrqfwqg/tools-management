@@ -2,10 +2,12 @@
   <div class="page-container">
     <div class="page-title">工器具管理</div>
 
-    <!-- 工具 / 工具箱 切换 -->
+    <!-- 工具 / 工具箱 / 备件 / 消耗品 切换 -->
     <van-tabs v-model:active="viewMode" class="mode-tabs">
       <van-tab title="工具" name="tools" />
       <van-tab title="工具箱" name="kits" />
+      <van-tab title="备件" name="spare" />
+      <van-tab title="消耗品" name="consumable" />
     </van-tabs>
 
     <!-- 工具箱视图 -->
@@ -398,14 +400,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useCartStore } from '@/store/cart'
 import { useAuthStore } from '@/store/auth'
 import { getTools, getWarehouses, getShelves, getLocations, getToolkits, uploadToolImage, updateTool } from '@/api'
 import { showToast, showSuccessToast, showFailToast } from 'vant'
 
 const route = useRoute()
+const router = useRouter()
 const cartStore = useCartStore()
 const authStore = useAuthStore()
 
@@ -746,6 +749,12 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载工具列表失败', e)
   }
+})
+
+// 备件 / 消耗品 子入口：跳转到独立物料页
+watch(viewMode, (val: string) => {
+  if (val === 'spare') router.push('/spare-parts')
+  else if (val === 'consumable') router.push('/consumables')
 })
 </script>
 

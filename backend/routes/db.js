@@ -57,10 +57,51 @@ function initDB() {
         { category_id: 1, category_name: '电动工具', category_code: 'ELECTRIC', description: '', require_approval: false },
         { category_id: 2, category_name: '手动工具', category_code: 'MANUAL', description: '', require_approval: false }
       ],
-      orders: []
+      orders: [],
+      // ===== 物料管理 v3.0.0 新增 5 张表（空表初始化） =====
+      spare_parts: [],
+      consumables: [],
+      material_categories: [
+        { category_id: 1, category_name: '通用备件', category_code: 'BJ-ALL', category_type: 'spare', description: '备件默认分类' },
+        { category_id: 2, category_name: '通用消耗品', category_code: 'XH-ALL', category_type: 'consumable', description: '消耗品默认分类' },
+        { category_id: 3, category_name: '通用物料', category_code: 'ALL', category_type: 'both', description: '备件与消耗品通用' }
+      ],
+      stock_movements: [],
+      inventory_checks: []
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initialDB, null, 2));
   }
+}
+
+// 幂等迁移：为已存在的 db.json 补齐 v3.0.0 新增的 5 张表（不影响既有数据）
+function migrateDB() {
+  if (!fs.existsSync(DB_PATH)) return; // 不存在则交由 initDB 全量初始化
+  const db = readDB();
+  let changed = false;
+  const newTables = {
+    spare_parts: [],
+    consumables: [],
+    material_categories: [
+      { category_id: 1, category_name: '通用备件', category_code: 'BJ-ALL', category_type: 'spare', description: '备件默认分类' },
+      { category_id: 2, category_name: '通用消耗品', category_code: 'XH-ALL', category_type: 'consumable', description: '消耗品默认分类' },
+      { category_id: 3, category_name: '通用物料', category_code: 'ALL', category_type: 'both', description: '备件与消耗品通用' }
+    ],
+    stock_movements: [],
+    inventory_checks: []
+  };
+  for (const key of Object.keys(newTables)) {
+    if (!Array.isArray(db[key])) {
+      db[key] = newTables[key];
+      changed = true;
+    }
+  }
+  // 兼容：material_categories 旧数据若没有 category_type 字段则补默认
+  if (Array.isArray(db.material_categories)) {
+    for (const c of db.material_categories) {
+      if (!c.category_type) { c.category_type = 'both'; changed = true; }
+    }
+  }
+  if (changed) writeDB(db);
 }
 
 // 读取数据库
@@ -109,4 +150,4 @@ function nowCST() {
   return `${y}-${M}-${d}T${h}:${m}:${s}.${ms}+08:00`;
 }
 
-module.exports = { initDB, readDB, writeDB, nextId, nowCST, DB_PATH };
+module.exports = { initDB, migrateDB, readDB, writeDB, nextId, nowCST, DB_PATH };

@@ -1,7 +1,7 @@
 <template>
   <el-container style="height:100vh">
     <el-aside width="200px" style="background:#304156">
-      <div class="logo">工器具管理系统</div>
+      <div class="logo">物料管理系统</div>
       <el-menu
         :default-active="route.path"
         router
@@ -36,8 +36,19 @@
         </el-sub-menu>
         <el-menu-item index="/tools">
           <el-icon><Box /></el-icon>
-          <span>工器具管理</span>
+          <span>工器具</span>
         </el-menu-item>
+        <el-sub-menu index="material">
+          <template #title>
+            <el-icon><Goods /></el-icon>
+            <span>物料管理</span>
+          </template>
+          <el-menu-item index="/spare-parts">备件管理</el-menu-item>
+          <el-menu-item index="/consumables">消耗品管理</el-menu-item>
+          <el-menu-item index="/material-categories">物料分类</el-menu-item>
+          <el-menu-item index="/stock-movements">出入库流水</el-menu-item>
+          <el-menu-item index="/inventory-checks">盘库管理</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/toolkits" v-if="authStore.hasRole(['admin'])">
           <el-icon><Suitcase /></el-icon>
           <span>工具箱管理</span>
@@ -92,7 +103,7 @@ import { useAuthStore } from '@/store/auth'
 import { useCartStore } from '@/store/cart'
 import { onMounted } from 'vue'
 import { useAutoLogout } from '@/composables/useAutoLogout'
-import { DataLine, User, OfficeBuilding, Collection, House, Box, Document, Key, ArrowDown, Lock, SwitchButton, ShoppingCart, Suitcase } from '@element-plus/icons-vue'
+import { DataLine, User, OfficeBuilding, Collection, House, Box, Document, Key, ArrowDown, Lock, SwitchButton, ShoppingCart, Suitcase, Goods } from '@element-plus/icons-vue'
 import type { ComponentSize } from 'element-plus'
 
 const router = useRouter()

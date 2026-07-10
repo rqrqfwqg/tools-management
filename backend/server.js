@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
-const { initDB, nowCST } = require('./routes/db');
+const { initDB, migrateDB, nowCST } = require('./routes/db');
 
 const app = express();
 app.set('trust proxy', 1);  // nginx 反向代理，express-rate-limit 需要此配置
@@ -93,7 +93,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: nowCST(),
-    version: '2.0.0',
+    version: '3.0.0',
     node_env: process.env.NODE_ENV || 'development'
   });
 });
@@ -104,11 +104,19 @@ app.get('/api/dashboard', require('./middleware/auth').authenticate, (req, res) 
   const db = readDB();
   const tools = db.tools || [];
   const orders = db.orders || [];
+  const spares = db.spare_parts || [];
+  const consumables = db.consumables || [];
   res.json({
     tools_total: tools.length,
     tools_available: tools.filter(t => t.status === 'available').length,
     tools_borrowed: tools.filter(t => t.status === 'borrowed').length,
     tools_maintenance: tools.filter(t => t.status === 'maintenance').length,
+    spare_total: spares.length,
+    spare_available: spares.filter(s => s.status === 'available').length,
+    spare_borrowed: spares.filter(s => s.status === 'borrowed').length,
+    consumable_total: consumables.length,
+    consumable_total_qty: consumables.reduce((sum, c) => sum + (c.stock_qty || 0), 0),
+    consumable_low_stock: consumables.filter(c => c.warning_qty != null && c.stock_qty <= c.warning_qty).length,
     orders_total: orders.length,
     orders_pending: orders.filter(o => o.status === 'pending').length,
     orders_approved: orders.filter(o => o.status === 'approved').length,
@@ -123,6 +131,7 @@ app.use('/api', require('./routes/users'));
 app.use('/api', require('./routes/tools'));
 app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/admin'));
+app.use('/api', require('./routes/materials'));
 
 // ============ Multer 错误处理（必须在全局错误处理之前） ============
 app.use((err, req, res, next) => {
@@ -165,8 +174,9 @@ app.use((req, res) => {
 
 // ============ 启动 ============
 initDB();
+migrateDB();
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`✅ 工器具管理系统后端运行在 http://127.0.0.1:${PORT}`);
+  console.log(`✅ 物料管理系统后端运行在 http://127.0.0.1:${PORT}`);
   console.log(`   环境: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   API 文档: http://localhost:${PORT}/api/health`);
 });

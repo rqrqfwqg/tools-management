@@ -80,11 +80,11 @@
         <el-table-column label="图片" width="70" align="center">
           <template #default="{row: item}">
             <el-image
-              v-if="toolImages[item.tool_id]"
-              :src="toolImages[item.tool_id]"
+              v-if="toolImages[item.tool_id ?? item.spare_id]"
+              :src="toolImages[item.tool_id ?? item.spare_id]"
               fit="cover"
               style="width:50px;height:50px;border-radius:4px"
-              :preview-src-list="[toolImages[item.tool_id]]"
+              :preview-src-list="[toolImages[item.tool_id ?? item.spare_id]]"
               preview-teleported
             />
             <div v-else style="width:50px;height:50px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;margin:0 auto">
@@ -92,8 +92,19 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="tool_code" label="工具编码" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="tool_name" label="工具名称" min-width="120" show-overflow-tooltip />
+        <el-table-column label="类型" width="70" align="center">
+          <template #default="{row: item}">
+            <el-tag :type="item.item_type === 'spare' ? 'warning' : 'info'" size="small">
+              {{ item.item_type === 'spare' ? '备件' : '工具' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="物料编码" min-width="100" show-overflow-tooltip>
+          <template #default="{row: item}">{{ item.spare_code || item.tool_code }}</template>
+        </el-table-column>
+        <el-table-column label="物料名称" min-width="120" show-overflow-tooltip>
+          <template #default="{row: item}">{{ item.spare_name || item.tool_name }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{row: item}">
             <el-tag size="small" :type="itemStatusType(item.item_status)">
@@ -122,7 +133,7 @@
         <!-- 表头区域 -->
         <div style="text-align:center;margin-bottom:8mm;">
           <div style="font-size:10px;color:#666;margin-bottom:5px;">编号：{{ printOrder?.order_no || '________________' }}</div>
-          <h1 style="font-size:24px;font-weight:bold;margin:0 0 5px;letter-spacing:4px;">工器具领用单</h1>
+          <h1 style="font-size:24px;font-weight:bold;margin:0 0 5px;letter-spacing:4px;">物料领用单</h1>
           <div style="border-bottom:2px solid #000;margin-top:8px;"></div>
         </div>
 
@@ -158,8 +169,8 @@
           <thead>
             <tr>
               <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:10%;">序号</th>
-              <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:25%;">工具编码</th>
-              <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:35%;">工具名称</th>
+              <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:25%;">物料编码</th>
+              <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:35%;">物料名称</th>
               <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:15%;">数量</th>
               <th style="padding:8px;border:1px solid #000;background:#e8e8e8;font-weight:bold;text-align:center;width:15%;">状态</th>
             </tr>
@@ -167,8 +178,8 @@
           <tbody>
             <tr v-for="(item, index) in printOrder?.items" :key="item.item_id">
               <td style="padding:6px 8px;border:1px solid #000;text-align:center;">{{ index + 1 }}</td>
-              <td style="padding:6px 8px;border:1px solid #000;text-align:center;">{{ item.tool_code }}</td>
-              <td style="padding:6px 8px;border:1px solid #000;text-align:center;">{{ item.tool_name }}</td>
+              <td style="padding:6px 8px;border:1px solid #000;text-align:center;">{{ item.spare_code || item.tool_code }}</td>
+              <td style="padding:6px 8px;border:1px solid #000;text-align:center;">{{ item.spare_name || item.tool_name }}</td>
               <td style="padding:6px 8px;border:1px solid #000;text-align:center;">1</td>
               <td style="padding:6px 8px;border:1px solid #000;text-align:center;">{{ itemStatusText(item.item_status) }}</td>
             </tr>
@@ -224,7 +235,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getOrders, approveOrder, rejectOrder, returnOrder, cancelOrder, deleteOrder, getTools } from '@/api'
+import { getOrders, approveOrder, rejectOrder, returnOrder, cancelOrder, deleteOrder, getTools, getSpareParts } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Printer } from '@element-plus/icons-vue'
 
@@ -275,6 +286,15 @@ const load = async () => {
       toolImages.value[t.tool_id] = getImageUrl(t.image_url)
     }
   })
+  // 加载备件图片映射（按 spare_id 键）
+  try {
+    const spares = await getSpareParts()
+    spares.forEach((s: any) => {
+      if (s.image_url) {
+        toolImages.value[s.spare_id] = getImageUrl(s.image_url)
+      }
+    })
+  } catch { /* 忽略 */ }
 }
 
 const formatTime = (t: string) => t ? t.replace('T', ' ').slice(0, 19) : '-'

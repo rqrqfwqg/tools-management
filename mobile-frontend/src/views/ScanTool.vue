@@ -79,6 +79,8 @@
     <ScanResultPopup
       :show="showResult"
       :tool="resultTool"
+      :spare="resultSpare"
+      :consumable="resultConsumable"
       @update:show="showResult = $event"
       @close="onResultClosed"
     />
@@ -99,6 +101,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { showLoadingToast, closeToast, showFailToast } from 'vant'
 import { useScanner } from '@/composables/useScanner'
 import { getToolByCode } from '@/api'
+import { getSpareByCode, getConsumableByCode } from '@/api/material'
 import type { Tool } from '@/types'
 import ScanResultPopup from '@/components/ScanResultPopup.vue'
 
@@ -107,6 +110,8 @@ const manualCode = ref('')
 const manualLoading = ref(false)
 const showResult = ref(false)
 const resultTool = ref<Tool | null>(null)
+const resultSpare = ref<any>(null)
+const resultConsumable = ref<any>(null)
 
 const {
   scanning,
@@ -130,7 +135,8 @@ const {
  * 识别到工具编码后的统一处理
  */
 async function onCodeDetected(code: string): Promise<void> {
-  if (!code.trim()) return
+  const raw = code.trim()
+  if (!raw) return
 
   showLoadingToast({
     message: '查询中...',
@@ -139,12 +145,23 @@ async function onCodeDetected(code: string): Promise<void> {
   })
 
   try {
-    const tool = await getToolByCode(code.trim())
-    closeToast()
-
-    // 弹出详情
-    resultTool.value = tool
-    showResult.value = true
+    // 按编码前缀分发：BJ- 备件 / XH- 消耗品 / G-、BX- 工具
+    if (raw.startsWith('BJ-')) {
+      const spare = await getSpareByCode(raw)
+      closeToast()
+      resultSpare.value = spare
+      showResult.value = true
+    } else if (raw.startsWith('XH-')) {
+      const consumable = await getConsumableByCode(raw)
+      closeToast()
+      resultConsumable.value = consumable
+      showResult.value = true
+    } else {
+      const tool = await getToolByCode(raw)
+      closeToast()
+      resultTool.value = tool
+      showResult.value = true
+    }
   } catch (err: any) {
     closeToast()
     const msg = err?.response?.data?.message || '查询失败，请确认编码是否正确'
@@ -177,6 +194,8 @@ async function handleManualSubmit(): Promise<void> {
 /** 结果弹窗关闭后 */
 function onResultClosed(): void {
   resultTool.value = null
+  resultSpare.value = null
+  resultConsumable.value = null
   // 重新开始扫描
   startScanning()
 }

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { User, Dept, Category, Tool, Order, Role, DashboardStats } from '@/types'
+import type { User, Dept, Category, Tool, Order, Role, DashboardStats, SparePart, Consumable, MaterialCategory, StockMovement, InventoryCheck } from '@/types'
 
 const request = axios.create({
   baseURL: '/api',
@@ -211,5 +211,73 @@ export const resetPassword = (userId: number, newPassword: string) =>
 // Barcode — 按 tool_code 查询
 export const getToolByCode = (code: string) =>
   request.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
+
+// ============ 物料管理 v3.0.0 ============
+
+// 物料分类
+export const getMaterialCategories = () =>
+  request.get<MaterialCategory[]>('/material-categories').then(r => r.data)
+export const createMaterialCategory = (data: any) =>
+  request.post('/material-categories', data).then(r => r.data)
+export const updateMaterialCategory = (id: number, data: any) =>
+  request.put(`/material-categories/${id}`, data).then(r => r.data)
+export const deleteMaterialCategory = (id: number) =>
+  request.delete(`/material-categories/${id}`).then(r => r.data)
+
+// 备件
+export const getSpareParts = () =>
+  request.get<SparePart[]>('/spare-parts').then(r => r.data)
+export const createSparePart = (data: any) =>
+  request.post('/spare-parts', data).then(r => r.data)
+export const updateSparePart = (id: number, data: any) =>
+  request.put(`/spare-parts/${id}`, data).then(r => r.data)
+export const deleteSparePart = (id: number) =>
+  request.delete(`/spare-parts/${id}`).then(r => r.data)
+export const getSpareByCode = (code: string) =>
+  request.get(`/spare-parts/code/${encodeURIComponent(code)}`).then(r => r.data)
+export const borrowSpareByCode = (code: string, data?: any) =>
+  request.post(`/spare-parts/code/${encodeURIComponent(code)}/borrow`, data || {}).then(r => r.data)
+export const uploadSpareImage = (id: number, formData: FormData) =>
+  request.post(`/spare-parts/${id}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data)
+
+// 消耗品
+export const getConsumables = () =>
+  request.get<Consumable[]>('/consumables').then(r => r.data)
+export const createConsumable = (data: any) =>
+  request.post('/consumables', data).then(r => r.data)
+export const updateConsumable = (id: number, data: any) =>
+  request.put(`/consumables/${id}`, data).then(r => r.data)
+export const deleteConsumable = (id: number) =>
+  request.delete(`/consumables/${id}`).then(r => r.data)
+export const getConsumableByCode = (code: string) =>
+  request.get(`/consumables/code/${encodeURIComponent(code)}`).then(r => r.data)
+export const takeConsumableByCode = (code: string, qty: number) =>
+  request.post(`/consumables/code/${encodeURIComponent(code)}/take`, { qty }).then(r => r.data)
+export const getLowStockConsumables = () =>
+  request.get<Consumable[]>('/consumables/low-stock').then(r => r.data)
+export const uploadConsumableImage = (id: number, formData: FormData) =>
+  request.post(`/consumables/${id}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data)
+
+// 出入库流水
+export const getStockMovements = (params?: any) =>
+  request.get('/stock-movements', { params }).then(r => r.data)
+export const createStockMovement = (data: any) =>
+  request.post('/stock-movements', data).then(r => r.data)
+
+// 盘库
+export const getInventoryChecks = () =>
+  request.get<InventoryCheck[]>('/inventory-checks').then(r => r.data)
+export const createInventoryCheck = (data: any) =>
+  request.post('/inventory-checks', data).then(r => r.data)
+export const getInventoryCheck = (id: number) =>
+  request.get<InventoryCheck>(`/inventory-checks/${id}`).then(r => r.data)
+export const scanInventoryCheck = (id: number, code: string, actual_qty?: number) =>
+  request.post(`/inventory-checks/${id}/scan`, { code, actual_qty }).then(r => r.data)
+export const completeInventoryCheck = (id: number) =>
+  request.post(`/inventory-checks/${id}/complete`).then(r => r.data)
 
 export default request

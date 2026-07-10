@@ -92,3 +92,97 @@ export interface ScanRecord {
   /** 扫码时状态 */
   status: string
 }
+
+// ========== 物料管理（与 PC 端 types 对齐） ==========
+
+export interface SparePart {
+  spare_id: number
+  spare_code: string
+  spare_name: string
+  category_id?: number
+  category_name?: string
+  warehouse_id?: number
+  warehouse_name?: string
+  shelf_id?: number
+  shelf_name?: string
+  storage_location_id?: number
+  location_name?: string
+  storage_location?: string
+  stock_qty?: number
+  unit?: string
+  status: string
+  image_url?: string
+  description?: string
+  borrow_count?: number
+  created_at?: string
+}
+
+export interface Consumable {
+  consumable_id: number
+  consumable_code: string
+  consumable_name: string
+  category_id?: number
+  category_name?: string
+  warehouse_id?: number
+  warehouse_name?: string
+  shelf_id?: number
+  shelf_name?: string
+  storage_location_id?: number
+  location_name?: string
+  storage_location?: string
+  stock_qty: number
+  unit?: string
+  warning_qty?: number | null
+  price?: number | null
+  image_url?: string
+  description?: string
+  total_out?: number
+  created_at?: string
+}
+
+export interface MaterialCategory {
+  category_id: number
+  category_name: string
+  category_code: string
+  category_type: 'spare' | 'consumable' | 'both'
+  description: string
+}
+
+export interface StockMovement {
+  movement_id: number
+  item_type: string
+  item_id?: number
+  item_code?: string
+  item_name?: string
+  movement_type: string
+  qty: number
+  operator_id?: number
+  operator_name?: string
+  order_id?: number | null
+  scan_code?: string
+  remark?: string
+  created_at?: string
+}
+
+export interface InventoryCheckItem {
+  item_type: 'spare' | 'consumable' | 'tool'
+  item_id: number
+  item_code: string
+  item_name: string
+  system_qty: number
+  actual_qty: number
+  diff: number
+}
+
+export interface InventoryCheck {
+  check_id: number
+  check_no: string
+  warehouse_id: number
+  warehouse_name?: string
+  status: string
+  operator_id?: number
+  operator_name?: string
+  items?: InventoryCheckItem[]
+  started_at?: string
+  completed_at?: string
+}
