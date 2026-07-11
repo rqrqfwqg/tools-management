@@ -61,7 +61,7 @@ pm2 save
 # 6. 重载 Nginx（应用新配置）
 echo ""
 echo "🌐 [6/7] 重载 Nginx..."
-nginx -t && nginx -s reload || systemctl restart nginx
+sudo nginx -t && sudo nginx -s reload || sudo systemctl restart nginx
 echo "   ✅ Nginx 已重载"
 
 # 7. 同步工具数据
