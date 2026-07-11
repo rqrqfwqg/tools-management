@@ -58,9 +58,14 @@
       <div class="result-actions">
         <van-button
           v-if="kind === 'tool' && current.status === 'available'"
-          type="primary" block round :loading="acting"
-          @click="handleBorrowTool"
-        >立即领用</van-button>
+          type="primary"
+          block
+          round
+          :loading="adding"
+          @click="handleAddToCart"
+        >
+          加入领用篮
+        </van-button>
         <van-button
           v-else-if="kind === 'tool' && current.status === 'borrowed'"
           type="warning" block round disabled
@@ -102,7 +107,6 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { borrowToolByCode } from '@/api'
 import { borrowSpareByCode, takeConsumableByCode } from '@/api/material'
 import { showSuccessToast, showFailToast } from 'vant'
 import { useCartStore } from '@/store/cart'
@@ -125,6 +129,7 @@ const emit = defineEmits<{
 const cartStore = useCartStore()
 const scanHistoryStore = useScanHistoryStore()
 const acting = ref(false)
+const adding = ref(false)
 const qty = ref('1')
 
 const kind = computed<'tool' | 'spare' | 'consumable' | null>(() => {
@@ -168,12 +173,13 @@ const statusTagType = computed<TagType>(() => {
   return map[c.status] || 'default'
 })
 
-/** 工具领用 */
-async function handleBorrowTool(): Promise<void> {
+/** 加入领用篮 */
+async function handleAddToCart(): Promise<void> {
   if (!props.tool) return
-  acting.value = true
+  adding.value = true
+
   try {
-    const result = await borrowToolByCode(props.tool.tool_code, { scene: '扫码领用' })
+    // 加入领用篮
     cartStore.addItem({
       tool_id: props.tool.tool_id,
       tool_name: props.tool.tool_name,
@@ -185,15 +191,18 @@ async function handleBorrowTool(): Promise<void> {
       tool_id: props.tool.tool_id,
       tool_code: props.tool.tool_code,
       tool_name: props.tool.tool_name,
-      status: 'reserved'
+      status: 'available'
     })
-    showSuccessToast(`领用成功! 订单号: ${result.order_no}`)
+    showSuccessToast(`已加入领用篮: ${props.tool.tool_name}`)
+
+    // 关闭弹窗
     emit('update:show', false)
     emit('close')
   } catch (err: any) {
-    showFailToast(err?.response?.data?.message || err?.message || '领用失败')
+    const msg = err?.response?.data?.message || err?.message || '加入领用篮失败'
+    showFailToast(msg)
   } finally {
-    acting.value = false
+    adding.value = false
   }
 }
 

@@ -2,10 +2,12 @@
  * useScanner — html5-qrcode 扫码封装
  *
  * 封装摄像头扫码逻辑，支持：
- * - Code128 条形码识别
+ * - Code128 条形码识别（启用原生 BarcodeDetector 提升弱光识别）
+ * - 闪光灯（手电筒）开关
  * - 扫码成功自动停止
  * - 手动输入降级
  * - 权限错误友好提示
+ * - 多次连续扫码不卡死（每次销毁实例 + 清理 DOM）
  */
 import { ref, onUnmounted } from 'vue'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
@@ -15,6 +17,8 @@ export interface ScannerOptions {
   elementId?: string
   /** 扫码框尺寸 */
   qrbox?: { width: number; height: number }
+  /** 扫码帧率（默认 15，越高越灵敏但更耗电） */
+  fps?: number
   /** 扫码成功回调 */
   onSuccess?: (code: string) => void
   /** 扫码失败回调 */
@@ -24,7 +28,8 @@ export interface ScannerOptions {
 export function useScanner(options: ScannerOptions = {}) {
   const {
     elementId = 'scanner-viewport',
-    qrbox = { width: 250, height: 100 },
+    qrbox = { width: 280, height: 120 },
+    fps = 15,
     onSuccess,
     onError
   } = options
@@ -34,6 +39,10 @@ export function useScanner(options: ScannerOptions = {}) {
   const lastCode = ref('')
   /** 当前环境是否支持摄像头扫码 */
   const cameraSupported = ref(true)
+  /** 设备摄像头是否支持闪光灯（手电筒） */
+  const torchSupported = ref(false)
+  /** 闪光灯当前开关状态（用户意图，跨扫码保留） */
+  const torchOn = ref(false)
 
   let scanner: Html5Qrcode | null = null
 
@@ -43,24 +52,94 @@ export function useScanner(options: ScannerOptions = {}) {
    */
   function checkCameraSupport(): boolean {
     if (typeof navigator === 'undefined') return false
-    // 安全上下文检查（HTTPS / localhost / file://）
     if (!window.isSecureContext) return false
-    // mediaDevices API 存在性检查
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
       return false
     }
     return true
   }
 
-  /** 初始化 Html5Qrcode 实例 */
-  function getScanner(): Html5Qrcode {
-    if (!scanner) {
-      scanner = new Html5Qrcode(elementId, {
-        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
-        verbose: false
-      })
+  /**
+   * 清理扫码容器 DOM 中的残留元素
+   * html5-qrcode 会在容器内注入 <video> 和 <canvas>，
+   * 如果不清理，新实例 start() 会失败
+   */
+  function cleanDomContainer(): void {
+    const el = document.getElementById(elementId)
+    if (el) {
+      el.innerHTML = ''
     }
-    return scanner
+  }
+
+  /**
+   * 停止扫码并彻底清理
+   *
+   * 1. scanner.stop() — 关闭摄像头流
+   * 2. scanner.clear() — 清理 UI 状态
+   * 3. scanner = null — 释放实例引用
+   * 4. 清理 DOM — 移除残留的 <video>/<canvas>
+   */
+  async function stopScanning(): Promise<void> {
+    scanning.value = false
+    if (!scanner) {
+      // 即使没有 scanner 实例，也清理一下 DOM（防御性）
+      cleanDomContainer()
+      return
+    }
+
+    const s = scanner
+    scanner = null
+
+    try {
+      if (s.isScanning) {
+        await s.stop()
+      }
+    } catch {
+      // 忽略停止错误
+    }
+
+    try {
+      s.clear()
+    } catch {
+      // 忽略清理错误
+    }
+
+    // 彻底清理 DOM 中的残留 video/canvas
+    cleanDomContainer()
+    // 注意：物理闪光灯随轨道销毁自动熄灭，但【不重置】torchOn / torchSupported：
+    // - torchSupported 是设备属性，多次扫码间不会变化，保留避免按钮闪烁消失
+    // - torchOn 是用户意图，连续扫码场景需在下一次 start 后重新应用，保持常亮
+  }
+
+  /**
+   * 检测当前摄像头轨道是否支持闪光灯（torch 能力）
+   * 必须在扫描运行中调用（getRunningTrackCapabilities 依赖 running track）
+   */
+  function detectTorchSupport(): void {
+    if (!scanner) return
+    try {
+      const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities
+      torchSupported.value = !!(caps && 'torch' in caps)
+    } catch {
+      torchSupported.value = false
+    }
+  }
+
+  /**
+   * 切换闪光灯开关
+   * 通过 html5-qrcode 公开 API applyVideoConstraints({ advanced: [{ torch }] }) 控制
+   */
+  async function toggleTorch(): Promise<void> {
+    if (!scanner || !torchSupported.value) return
+    const next = !torchOn.value
+    try {
+      // torch 是浏览器摄像头轨道的原生扩展能力，TS 类型库未收录，需断言
+      await scanner.applyVideoConstraints({ advanced: [{ torch: next }] } as any)
+      torchOn.value = next
+    } catch {
+      // 设备不支持或应用失败，回退到关闭状态
+      torchOn.value = false
+    }
   }
 
   /**
@@ -69,42 +148,85 @@ export function useScanner(options: ScannerOptions = {}) {
    * @param facingMode 摄像头方向 'environment'（后摄）| 'user'（前摄）
    */
   async function startScanning(facingMode: 'environment' | 'user' = 'environment'): Promise<void> {
-    error.value = ''
-
-    // 前置检查：环境是否支持摄像头
-    if (!checkCameraSupport()) {
-      cameraSupported.value = false
-      scanning.value = false
-      error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      onError?.(error.value)
-      return
-    }
-
-    const s = getScanner()
+    // 如果已经在扫描中，不重复启动
+    if (scanning.value) return
 
     try {
+      // 先确保上一次完全停止 + DOM 清理完毕
+      await stopScanning()
+
+      error.value = ''
+
+      // 前置检查：环境是否支持摄像头
+      if (!checkCameraSupport()) {
+        cameraSupported.value = false
+        scanning.value = false
+        error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
+        onError?.(error.value)
+        return
+      }
+
+      // 确保容器存在且干净
+      cleanDomContainer()
+
+      // 每次都创建全新实例
+      scanner = new Html5Qrcode(elementId, {
+        // 启用手机原生 BarcodeDetector API（Android Chrome 支持），
+        // 弱光识别能力与速度大幅增强；不支持时自动回退 ZXing
+        useBarCodeDetectorIfSupported: true,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.CODE_39
+        ],
+        verbose: false
+      })
+
       scanning.value = true
 
-      await s.start(
+      await scanner.start(
+        // cameraIdOrConfig 传对象时只允许恰好 1 个 key（facingMode 或 deviceId）
         { facingMode },
         {
-          fps: 10,
-          qrbox
+          fps,
+          qrbox,
+          // 分辨率通过 videoConstraints 设置（库会优先以它作为 getUserMedia 的 video 约束）
+          videoConstraints: {
+            facingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
         },
         (decodedText: string) => {
           // 成功识别
           lastCode.value = decodedText
-          onSuccess?.(decodedText)
-          // 立即停止扫描防止重复识别
-          stopScanning()
+          // 先完全停止 + 清理 DOM，再触发回调
+          // 确保回调中 restart 时一切干净
+          stopScanning().then(() => {
+            onSuccess?.(decodedText)
+          })
         },
         () => {
           // 每帧扫描尝试（空回调，忽略未识别帧）
         }
       )
+
+      // start 成功后再检测闪光灯支持情况
+      detectTorchSupport()
+      // 若用户此前已开启闪光灯（连续扫码场景），重新打开以保持常亮
+      if (torchOn.value) {
+        try {
+          await scanner.applyVideoConstraints({ advanced: [{ torch: true }] } as any)
+        } catch {
+          torchOn.value = false
+        }
+      }
     } catch (err: any) {
       scanning.value = false
       const msg: string = err?.message || String(err)
+
+      // 确保异常时也清理
+      await stopScanning()
 
       if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
         error.value = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问，或手动输入工具编码。'
@@ -115,27 +237,11 @@ export function useScanner(options: ScannerOptions = {}) {
       } else if (msg.includes('NotSecure') || msg.includes('not supported') || msg.includes('streaming not supported')) {
         cameraSupported.value = false
         error.value = '当前环境不支持摄像头扫码（需 HTTPS 访问），请使用下方手动输入工具编码。'
-      } else if (msg.includes('already')) {
-        // 已在扫描中，忽略
       } else {
         error.value = `摄像头启动失败: ${msg}`
       }
 
-      onError?.(error.value)
-    }
-  }
-
-  /**
-   * 停止扫码
-   */
-  async function stopScanning(): Promise<void> {
-    scanning.value = false
-    if (!scanner) return
-
-    try {
-      await scanner.stop()
-    } catch {
-      // 已停止或未在扫描，忽略
+      if (error.value) onError?.(error.value)
     }
   }
 
@@ -144,10 +250,6 @@ export function useScanner(options: ScannerOptions = {}) {
    */
   async function destroy(): Promise<void> {
     await stopScanning()
-    if (scanner) {
-      try { scanner.clear() } catch { /* ignore */ }
-      scanner = null
-    }
   }
 
   // 组件卸载时自动清理
@@ -160,8 +262,11 @@ export function useScanner(options: ScannerOptions = {}) {
     error,
     lastCode,
     cameraSupported,
+    torchSupported,
+    torchOn,
     startScanning,
     stopScanning,
+    toggleTorch,
     destroy
   }
 }

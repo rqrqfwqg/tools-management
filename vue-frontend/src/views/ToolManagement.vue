@@ -456,22 +456,38 @@ function printBarcode() {
   if (!svgEl || !barcodeTool.value) return
   const svgHtml = svgEl.outerHTML
   const tool = barcodeTool.value
-  const win = window.open('', '_blank', 'width=420,height=320')
+  const win = window.open('', '_blank', 'width=800,height=600')
   if (!win) {
     ElMessage.warning('弹窗被拦截，请允许弹窗后重试')
     return
   }
   win.document.write(`<!DOCTYPE html><html><head><title>条形码 - ${tool.tool_code}</title>
     <style>
-      body { margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:sans-serif; }
-      .label { text-align:center; padding:16px; }
-      .label svg { max-width:100%; }
-      .name { font-size:14px; font-weight:bold; margin-bottom:6px; }
-      .loc { font-size:11px; color:#999; margin-top:4px; }
-      @page { size: auto; margin: 5mm; }
+      @page { size: A4; margin: 15mm; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 40mm;
+        min-height: 100vh;
+        font-family: 'Microsoft YaHei', sans-serif;
+      }
+      .label {
+        text-align: center;
+        width: 120mm;
+        border: 1px solid #ccc;
+        padding: 10mm 8mm;
+        border-radius: 4mm;
+      }
+      .name { font-size: 18px; font-weight: bold; margin-bottom: 6px; }
+      .code { font-size: 15px; color: #333; margin-bottom: 8px; font-family: 'Courier New', monospace; }
+      .label svg { max-width: 100%; height: auto; }
+      .loc { font-size: 13px; color: #999; margin-top: 8px; }
     </style></head><body>
     <div class="label">
       <div class="name">${tool.tool_name}</div>
+      <div class="code">${tool.tool_code}</div>
       ${svgHtml}
       <div class="loc">${tool.shelf_name || ''} ${tool.location_name || ''}</div>
     </div>

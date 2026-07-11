@@ -74,3 +74,39 @@ html, body {
   padding: 40px 20px;
   color: #999;
 }
+
+/* ===== Toast 弹窗：白底黑字（CSS 双保险，主方案在 App.vue ConfigProvider） ===== */
+body .van-toast {
+  background: #ffffff !important;
+  color: #323233 !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12) !important;
+}
+
+body .van-toast .van-toast__text {
+  color: #323233 !important;
+}
+
+body .van-toast .van-loading__spinner {
+  color: #1989fa !important;
+}
+
+body .van-toast--success .van-icon {
+  color: #07c160 !important;
+}
+
+body .van-toast--fail .van-icon {
+  color: #ee0a24 !important;
+}
+
+/* Dialog 弹窗也统一白底 */
+body .van-dialog {
+  background: #fff !important;
+}
+
+body .van-dialog__header {
+  color: #323233 !important;
+}
+
+body .van-dialog__message {
+  color: #323233 !important;
+}

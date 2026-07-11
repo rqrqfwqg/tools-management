@@ -101,6 +101,10 @@ export const uploadToolImage = (toolId: number, formData: FormData) =>
 export const getToolByCode = (code: string) =>
   api.get(`/tools/code/${encodeURIComponent(code)}`).then(r => r.data)
 
+// Scan — 按 toolkit_code 查询工具箱详情（含内部工具列表）
+export const getToolkitByCode = (code: string) =>
+  api.get(`/toolkits/code/${encodeURIComponent(code)}`).then(r => r.data)
+
 // Scan — 按 tool_code 快速领用（单件工具）
 export const borrowToolByCode = (code: string, data?: { scene?: string; expected_return?: string; purpose?: string }) =>
   api.post(`/tools/code/${encodeURIComponent(code)}/borrow`, data || {}).then(r => r.data)

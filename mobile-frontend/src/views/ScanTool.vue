@@ -17,13 +17,22 @@
         class="scanner-viewport"
       ></div>
 
-      <!-- 扫描中动画提示 -->
       <div v-if="scanning" class="scan-overlay">
         <div class="scan-line" />
         <p class="scan-hint">将条形码对准扫描框</p>
       </div>
 
-      <!-- 错误提示 -->
+      <!-- 闪光灯开关（仅设备支持且正在扫码时显示） -->
+      <van-button
+        v-if="scanning && torchSupported"
+        class="torch-btn"
+        :class="{ 'torch-on': torchOn }"
+        round
+        size="small"
+        icon="bulb-o"
+        @click="toggleTorch"
+      />
+
       <div v-if="error && !scanning" class="scan-error">
         <van-icon name="warning-o" size="40" color="#ee0a24" />
         <p>{{ error }}</p>
@@ -33,17 +42,17 @@
     <!-- 摄像头不可用时的提示横幅 -->
     <div v-if="!cameraSupported" class="camera-unsupported-banner">
       <van-icon name="warning-o" size="24" color="#ff9800" />
-      <span>摄像头不可用，请使用手动输入</span>
+      <span>摄像头不可用（需 HTTPS 访问），请使用手动输入</span>
     </div>
 
     <!-- 手动输入区域 -->
     <div class="manual-input-section">
-      <van-cell-group inset title="手动输入工具编码">
+      <van-cell-group inset title="手动输入编码">
         <van-field
           v-model="manualCode"
           center
           clearable
-          placeholder="请输入工具编码，如 G-CFJ-1"
+          placeholder="工具编码 G-CFJ-1 或工具箱编码 BX-1"
           @keyup.enter="handleManualSubmit"
         >
           <template #button>
@@ -75,6 +84,13 @@
       </div>
     </div>
 
+    <!-- 本次扫码统计 -->
+    <div v-if="scanCount > 0" class="scan-stats">
+      <van-icon name="success" color="#07c160" />
+      <span>本次已加入领用篮 <b>{{ scanCount }}</b> 件</span>
+      <span v-if="lastScannedName" class="last-name">· {{ lastScannedName }}</span>
+    </div>
+
     <!-- 扫码结果弹窗 -->
     <ScanResultPopup
       :show="showResult"
@@ -98,12 +114,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { showLoadingToast, closeToast, showFailToast } from 'vant'
+import { showLoadingToast, closeToast, showFailToast, showSuccessToast } from 'vant'
 import { useScanner } from '@/composables/useScanner'
-import { getToolByCode } from '@/api'
+import { getToolByCode, getToolkitByCode } from '@/api'
 import { getSpareByCode, getConsumableByCode } from '@/api/material'
+import { useCartStore } from '@/store/cart'
+import { useScanHistoryStore } from '@/store/scanHistory'
 import type { Tool } from '@/types'
-import ScanResultPopup from '@/components/ScanResultPopup.vue'
 
 const active = ref(2)
 const manualCode = ref('')
@@ -113,16 +130,26 @@ const resultTool = ref<Tool | null>(null)
 const resultSpare = ref<any>(null)
 const resultConsumable = ref<any>(null)
 
+/** 本次扫码领用统计 */
+const scanCount = ref(0)
+const lastScannedName = ref('')
+
+const cartStore = useCartStore()
+const scanHistoryStore = useScanHistoryStore()
+
 const {
   scanning,
   error,
   cameraSupported,
+  torchSupported,
+  torchOn,
+  toggleTorch,
   startScanning,
   stopScanning,
   destroy
 } = useScanner({
   elementId: 'scanner-viewport',
-  qrbox: { width: 250, height: 100 },
+  qrbox: { width: 280, height: 120 },
   onSuccess: (code: string) => {
     onCodeDetected(code)
   },
@@ -131,21 +158,42 @@ const {
   }
 })
 
+/** 工具状态文案 */
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    available: '可用',
+    borrowed: '已借出',
+    reserved: '已预留',
+    maintenance: '维修中',
+    scrapped: '已报废'
+  }
+  return map[status] || status
+}
+
+/** 延迟后自动恢复扫码 */
+function resumeScanAfterDelay(ms = 1500): void {
+  setTimeout(() => startScanning(), ms)
+}
+
 /**
- * 识别到工具编码后的统一处理
+ * 识别到编码后的统一处理
+ * - 以 BX- 开头 → 工具箱编码，批量加入领用篮
+ * - 其他 → 工具编码，单件加入领用篮
  */
 async function onCodeDetected(code: string): Promise<void> {
   const raw = code.trim()
   if (!raw) return
 
-  showLoadingToast({
-    message: '查询中...',
-    forbidClick: true,
-    duration: 0
-  })
+  showLoadingToast({ message: '查询中...', forbidClick: true, duration: 0 })
+
+  // 判断是否为工具箱编码（BX- 开头）
+  if (code.trim().toUpperCase().startsWith('BX-')) {
+    await handleToolkitCode(code.trim())
+    return
+  }
 
   try {
-    // 按编码前缀分发：BJ- 备件 / XH- 消耗品 / G-、BX- 工具
+    // 按编码前缀分发：BJ- 备件 / XH- 消耗品 -> 弹窗确认；G- 工具 -> 直接加入领用篮
     if (raw.startsWith('BJ-')) {
       const spare = await getSpareByCode(raw)
       closeToast()
@@ -157,18 +205,117 @@ async function onCodeDetected(code: string): Promise<void> {
       resultConsumable.value = consumable
       showResult.value = true
     } else {
-      const tool = await getToolByCode(raw)
+      const tool = await getToolByCode(code.trim())
       closeToast()
-      resultTool.value = tool
-      showResult.value = true
+
+      // 不可用的工具直接提示
+      if (tool.status !== 'available') {
+        showFailToast(`${tool.tool_name} 当前${statusLabel(tool.status)}，无法领用`)
+        resumeScanAfterDelay()
+        return
+      }
+
+      // 加入领用篮
+      cartStore.addItem({
+        tool_id: tool.tool_id,
+        tool_name: tool.tool_name,
+        tool_code: tool.tool_code,
+        warehouse: tool.warehouse || '',
+        image_url: tool.image_url || ''
+      })
+
+      // 记录扫码历史
+      scanHistoryStore.addRecord({
+        tool_id: tool.tool_id,
+        tool_code: tool.tool_code,
+        tool_name: tool.tool_name,
+        status: 'available'
+      })
+
+      // 更新统计
+      scanCount.value++
+      lastScannedName.value = tool.tool_name
+
+      showSuccessToast(`已加入领用篮: ${tool.tool_name}`)
+
+      // 1.5 秒后自动恢复扫码，连续扫下一件
+      resumeScanAfterDelay()
     }
   } catch (err: any) {
     closeToast()
     const msg = err?.response?.data?.message || '查询失败，请确认编码是否正确'
     showFailToast(msg)
-    // 查询失败时重新开始扫描
-    await stopScanning()
-    await startScanning()
+    resumeScanAfterDelay()
+  }
+}
+
+/**
+ * 处理工具箱编码（BX- 开头）
+ * 获取工具箱详情，将可用状态的工具批量加入领用篮
+ */
+async function handleToolkitCode(code: string): Promise<void> {
+  try {
+    const kitDetail = await getToolkitByCode(code)
+    closeToast()
+
+    const allTools: Tool[] = kitDetail.tools || []
+    const toolkitName: string = kitDetail.toolkit_name || '未知工具箱'
+    const totalCount: number = allTools.length
+
+    if (totalCount === 0) {
+      showFailToast(`工具箱"${toolkitName}"内没有工具`)
+      resumeScanAfterDelay()
+      return
+    }
+
+    // 分类：可用 vs 不可用
+    const availableTools = allTools.filter(t => t.status === 'available')
+    const unavailableTools = allTools.filter(t => t.status !== 'available')
+
+    // 将可用工具批量加入领用篮
+    let addedCount = 0
+    for (const tool of availableTools) {
+      cartStore.addItem({
+        tool_id: tool.tool_id,
+        tool_name: tool.tool_name,
+        tool_code: tool.tool_code,
+        warehouse: tool.warehouse || '',
+        image_url: tool.image_url || ''
+      })
+
+      // 记录扫码历史
+      scanHistoryStore.addRecord({
+        tool_id: tool.tool_id,
+        tool_code: tool.tool_code,
+        tool_name: tool.tool_name,
+        status: 'available'
+      })
+
+      addedCount++
+    }
+
+    // 更新扫码统计
+    scanCount.value += addedCount
+    lastScannedName.value = toolkitName
+
+    // 构造提示信息
+    let msg = `识别到工具箱: ${toolkitName}，包含 ${totalCount} 件工具`
+    if (addedCount > 0) {
+      msg += `，已加入 ${addedCount} 件`
+    }
+    if (unavailableTools.length > 0) {
+      const unavailableNames = unavailableTools.map(t => `${t.tool_name}(${statusLabel(t.status)})`).join('、')
+      msg += `\n不可用跳过: ${unavailableNames}`
+    }
+
+    showSuccessToast({ message: msg, duration: 3000 })
+
+    resumeScanAfterDelay(2500)
+  } catch (err: any) {
+    closeToast()
+    const msg = err?.response?.data?.message || '查询工具箱失败，请确认编码是否正确'
+    showFailToast(msg)
+    resumeScanAfterDelay()
   }
 }
 
@@ -179,14 +326,12 @@ async function handleManualSubmit(): Promise<void> {
 
   manualLoading.value = true
 
-  // 停止摄像头扫描
-  await stopScanning()
-
   try {
     await onCodeDetected(code)
     manualCode.value = ''
-    manualLoading.value = false
   } catch {
+    // 错误已在 onCodeDetected 中处理
+  } finally {
     manualLoading.value = false
   }
 }
@@ -199,6 +344,7 @@ function onResultClosed(): void {
   // 重新开始扫描
   startScanning()
 }
+
 
 /** 重新扫码 */
 async function retryScan(): Promise<void> {
@@ -268,6 +414,33 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* 闪光灯按钮：右上角圆形悬浮 */
+.torch-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+}
+
+.torch-btn :deep(.van-icon) {
+  color: #fff;
+}
+
+.torch-btn.torch-on {
+  background: #ffd21e;
+  color: #323233;
+}
+
+.torch-btn.torch-on :deep(.van-icon) {
+  color: #323233;
+}
+
 @keyframes scanMove {
   0%, 100% { top: 35%; }
   50% { top: 55%; }
@@ -314,6 +487,26 @@ onUnmounted(() => {
 
 .manual-actions {
   padding: 12px 16px;
+}
+
+/* 扫码统计 */
+.scan-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: #f0fff3;
+  color: #07c160;
+  font-size: 13px;
+}
+
+.scan-stats b {
+  font-size: 16px;
+}
+
+.scan-stats .last-name {
+  color: #969799;
+  font-size: 12px;
 }
 
 /* ===== dark mode 适配 ===== */

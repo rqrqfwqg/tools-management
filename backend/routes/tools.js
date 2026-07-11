@@ -29,7 +29,7 @@ router.get('/tools', authenticate, (req, res) => {
   const locations = db.storage_locations || [];
 
   // 注入 toolkit_name / toolkit_seq / shelf_name / location_name
-  const enriched = tools.map(tool => {
+  let enriched = tools.map(tool => {
     const shelf = shelves.find(s => s.shelf_id === tool.shelf_id);
     const loc = locations.find(l => l.location_id === tool.storage_location_id);
     const result = {
@@ -48,6 +48,20 @@ router.get('/tools', authenticate, (req, res) => {
     return result;
   });
 
+  // 部门权限过滤：非 admin/material_manager 只看本部门 + 共享仓库的工具
+  if (req.user.role !== 'admin' && req.user.role !== 'material_manager') {
+    const currentUser = db.users.find(u => u.user_id === req.user.user_id);
+    const userDeptId = currentUser?.dept_id;
+    const warehouses = db.warehouses || [];
+    const allowedWarehouseIds = new Set(
+      warehouses
+        .filter(w => w.dept_id === null || w.dept_id === undefined || w.dept_id === userDeptId)
+        .map(w => w.warehouse_id)
+    );
+    // 工具没有 warehouse_id 或 warehouse_id 在允许列表内才显示
+    enriched = enriched.filter(t => !t.warehouse_id || allowedWarehouseIds.has(t.warehouse_id));
+  }
+
   enriched.sort((a, b) => (b.borrow_count || 0) - (a.borrow_count || 0));
   res.json(enriched);
 });
@@ -64,6 +78,27 @@ router.get('/toolkits', authenticate, (req, res) => {
     tool_count: items.filter(i => i.toolkit_id === k.toolkit_id).length
   }));
   res.json(result);
+});
+
+// 按 toolkit_code 查询工具箱详情（含内部工具列表）
+router.get('/toolkits/code/:code', authenticate, (req, res) => {
+  const code = decodeURIComponent(req.params.code);
+  const db = readDB();
+  const toolkit = (db.toolkits || []).find(k => k.toolkit_code === code);
+  if (!toolkit) {
+    return res.status(404).json({ message: `未找到编码为 "${code}" 的工具箱` });
+  }
+
+  const items = (db.toolkit_items || [])
+    .filter(i => i.toolkit_id === toolkit.toolkit_id)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+  const tools = items.map(item => {
+    const tool = (db.tools || []).find(t => t.tool_id === item.tool_id);
+    return tool ? { ...tool, toolkit_seq: item.sort_order } : null;
+  }).filter(Boolean);
+
+  res.json({ ...toolkit, tools, tool_count: tools.length });
 });
 
 // 获取单个工具箱详情（含内部工具列表）
@@ -87,16 +122,24 @@ router.get('/toolkits/:id', authenticate, (req, res) => {
 
 // 创建工具箱
 router.post('/toolkits', authenticate, requireMaterialManager, (req, res) => {
-  const { toolkit_name, description } = req.body;
+  const { toolkit_name, description, toolkit_code } = req.body;
   if (!toolkit_name) return res.status(400).json({ message: '工具箱名称不能为空' });
   const db = readDB();
   if ((db.toolkits || []).find(k => k.toolkit_name === toolkit_name)) {
     return res.status(400).json({ message: '工具箱名称已存在' });
   }
+  const newId = nextId(db.toolkits || [], 'toolkit_id');
+  // 自动生成 toolkit_code：如果用户提供了就用用户提供的，否则用 BX-{id} 格式
+  const code = toolkit_code || `BX-${newId}`;
+  // 检查 toolkit_code 唯一性
+  if ((db.toolkits || []).find(k => k.toolkit_code === code)) {
+    return res.status(400).json({ message: '工具箱编码已存在' });
+  }
   const newKit = {
-    toolkit_id: nextId(db.toolkits || [], 'toolkit_id'),
+    toolkit_id: newId,
     toolkit_name,
     description: description || '',
+    toolkit_code: code,
     created_at: nowCST()
   };
   if (!db.toolkits) db.toolkits = [];
@@ -108,12 +151,19 @@ router.post('/toolkits', authenticate, requireMaterialManager, (req, res) => {
 // 更新工具箱
 router.put('/toolkits/:id', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
-  const { toolkit_name, description } = req.body;
+  const { toolkit_name, description, toolkit_code } = req.body;
   const db = readDB();
   const idx = (db.toolkits || []).findIndex(k => k.toolkit_id === id);
   if (idx === -1) return res.status(404).json({ message: '工具箱不存在' });
   if (toolkit_name) db.toolkits[idx].toolkit_name = toolkit_name;
   if (description !== undefined) db.toolkits[idx].description = description;
+  // 支持修改 toolkit_code，需唯一性检查
+  if (toolkit_code !== undefined) {
+    if ((db.toolkits || []).find(k => k.toolkit_code === toolkit_code && k.toolkit_id !== id)) {
+      return res.status(400).json({ message: '工具箱编码已存在' });
+    }
+    db.toolkits[idx].toolkit_code = toolkit_code;
+  }
   writeDB(db);
   res.json(db.toolkits[idx]);
 });
@@ -520,6 +570,14 @@ router.post('/tools/code/:code/borrow', authenticate, (req, res) => {
   }
   if (tool.status !== 'available') {
     return res.status(400).json({ message: `工具"${tool.tool_name}"当前状态为"${tool.status}"，不可领用` });
+  }
+
+  // 部门权限校验：非 admin 用户只能借本部门 + 共享仓库的工具
+  if (req.user.role !== 'admin') {
+    const warehouse = (db.warehouses || []).find(w => w.warehouse_id === tool.warehouse_id);
+    if (warehouse && warehouse.dept_id !== null && warehouse.dept_id !== undefined && warehouse.dept_id !== user.dept_id) {
+      return res.status(403).json({ message: `工具"${tool.tool_name}"属于其他部门仓库，无权领用` });
+    }
   }
 
   // 生成订单号
