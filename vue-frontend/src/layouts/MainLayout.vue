@@ -21,23 +21,33 @@
           <el-icon><OfficeBuilding /></el-icon>
           <span>部门管理</span>
         </el-menu-item>
-        <el-menu-item index="/categories" v-if="authStore.hasRole(['admin'])">
-          <el-icon><Collection /></el-icon>
-          <span>工具分类</span>
-        </el-menu-item>
-        <el-sub-menu index="warehouse" v-if="authStore.hasRole(['admin'])">
+        <el-sub-menu index="tools">
           <template #title>
-            <el-icon><House /></el-icon>
-            <span>仓库管理</span>
+            <el-icon><Box /></el-icon>
+            <span>工具管理</span>
           </template>
-          <el-menu-item index="/warehouses">仓库</el-menu-item>
-          <el-menu-item index="/shelves">货架</el-menu-item>
-          <el-menu-item index="/locations">货位</el-menu-item>
+          <el-menu-item index="/tools">
+            <el-icon><Box /></el-icon>
+            <span>工器具</span>
+          </el-menu-item>
+          <el-menu-item index="/categories" v-if="authStore.hasRole(['admin'])">
+            <el-icon><Collection /></el-icon>
+            <span>工具分类</span>
+          </el-menu-item>
+          <el-menu-item index="/toolkits" v-if="authStore.hasRole(['admin'])">
+            <el-icon><Suitcase /></el-icon>
+            <span>工具箱管理</span>
+          </el-menu-item>
+          <el-sub-menu index="warehouse" v-if="authStore.hasRole(['admin'])">
+            <template #title>
+              <el-icon><House /></el-icon>
+              <span>仓库管理</span>
+            </template>
+            <el-menu-item index="/warehouses">仓库</el-menu-item>
+            <el-menu-item index="/shelves">货架</el-menu-item>
+            <el-menu-item index="/locations">货位</el-menu-item>
+          </el-sub-menu>
         </el-sub-menu>
-        <el-menu-item index="/tools">
-          <el-icon><Box /></el-icon>
-          <span>工器具</span>
-        </el-menu-item>
         <el-sub-menu index="material">
           <template #title>
             <el-icon><Goods /></el-icon>
@@ -49,10 +59,6 @@
           <el-menu-item index="/stock-movements">出入库流水</el-menu-item>
           <el-menu-item index="/inventory-checks">盘库管理</el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/toolkits" v-if="authStore.hasRole(['admin'])">
-          <el-icon><Suitcase /></el-icon>
-          <span>工具箱管理</span>
-        </el-menu-item>
         <el-menu-item index="/orders">
           <el-icon><Document /></el-icon>
           <span>领用管理</span>
