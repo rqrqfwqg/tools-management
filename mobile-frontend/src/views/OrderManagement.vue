@@ -37,19 +37,19 @@
           <div v-if="showActions(order)" style="margin-top:8px;display:flex;gap:8px">
             <van-button
               v-if="order.status === 'pending' && isApprover"
-              size="small" type="success" @click.stop="approve(order)"
+              type="success" size="small" @click.stop="approve(order)"
             >批准</van-button>
             <van-button
               v-if="order.status === 'pending' && isApprover"
-              size="small" type="danger" @click.stop="reject(order)"
+              type="danger" size="small" @click.stop="reject(order)"
             >拒绝</van-button>
             <van-button
               v-if="(order.status === 'borrowed' || order.status === 'approved')"
-              size="small" type="primary" @click.stop="returnOrder(order)"
+              type="primary" size="small" @click.stop="returnOrder(order)"
             >归还</van-button>
             <van-button
               v-if="order.status === 'pending' || order.status === 'approved'"
-              size="small" plain type="default" @click.stop="cancelOrder(order)"
+              plain type="default" size="small" @click.stop="cancelOrder(order)"
             >取消</van-button>
           </div>
         </div>
@@ -100,7 +100,7 @@
                 <td>{{ item.tool_code }}</td>
                 <td>{{ item.tool_name }}</td>
                 <td>
-                  <van-tag :type="itemStatusType(item.item_status)" size="small">
+                  <van-tag :type="itemStatusType(item.item_status)">
                     {{ itemStatusLabel(item.item_status) }}
                   </van-tag>
                 </td>
@@ -117,6 +117,7 @@
     <van-tabbar v-model="active" route active-color="#1989fa" inactive-color="#999" safe-area-inset-bottom>
       <van-tabbar-item icon="home-o" to="/dashboard">首页</van-tabbar-item>
       <van-tabbar-item icon="orders-o" to="/tools">工具</van-tabbar-item>
+      <van-tabbar-item icon="apps-o" to="/material-center">物料</van-tabbar-item>
       <van-tabbar-item icon="description" to="/orders">工单</van-tabbar-item>
       <van-tabbar-item icon="contact" to="/profile">我的</van-tabbar-item>
     </van-tabbar>

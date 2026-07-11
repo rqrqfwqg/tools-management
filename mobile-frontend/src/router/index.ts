@@ -59,6 +59,30 @@ const routes: RouteRecordRaw[] = [
     name: 'Consumables',
     component: () => import('@/views/ConsumableList.vue'),
     meta: { title: '消耗品' }
+  },
+  {
+    path: '/material-center',
+    name: 'MaterialCenter',
+    component: () => import('@/views/MaterialCenter.vue'),
+    meta: { title: '物料中心' }
+  },
+  {
+    path: '/inventory',
+    name: 'Inventory',
+    component: () => import('@/views/Inventory.vue'),
+    meta: { title: '盘点' }
+  },
+  {
+    path: '/stock-movements',
+    name: 'StockMovements',
+    component: () => import('@/views/StockMovement.vue'),
+    meta: { title: '出入库流水' }
+  },
+  {
+    path: '/material-dispense',
+    name: 'MaterialDispense',
+    component: () => import('@/views/MaterialDispense.vue'),
+    meta: { title: '物料领用' }
   }
 ]
 
