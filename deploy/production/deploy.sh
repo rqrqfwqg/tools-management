@@ -41,14 +41,14 @@ npm install --production
 echo ""
 echo "🔨 [3/7] 构建 PC 前端..."
 cd "$APP_DIR/vue-frontend"
-npm install
+npm install --include=dev
 npm run build
 
 # 4. 构建移动前端
 echo ""
 echo "🔨 [4/7] 构建移动前端..."
 cd "$APP_DIR/mobile-frontend"
-npm install
+npm install --include=dev
 npm run build:prod
 
 # 5. 重启后端

@@ -58,14 +58,14 @@ echo ""
 # -------- 第4步：安装前端依赖并构建 --------
 echo "[4/6] 安装 PC 前端依赖并构建..."
 cd /opt/tools-management/vue-frontend
-npm install
+npm install --include=dev
 npm run build
 echo "✅ PC 前端构建完成"
 
 echo ""
 echo "[5/6] 安装移动端依赖并构建..."
 cd /opt/tools-management/mobile-frontend
-npm install
+npm install --include=dev
 npm run build:prod
 echo "✅ 移动端构建完成"
 echo ""
