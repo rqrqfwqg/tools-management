@@ -31,7 +31,7 @@
           <template v-else>
             <van-field
               v-model="item.actualInput"
-              type="digit"
+              type="number"
               label="实盘数量"
               :border="false"
               placeholder="请输入实数"
@@ -96,8 +96,8 @@ onMounted(() => {
 
 function currentActual(item: ScanItem): number {
   if (item.item_type === 'spare') return item.checked ? 1 : 0
-  const n = parseInt(item.actualInput || '0', 10)
-  return isNaN(n) ? 0 : n
+  const n = parseFloat(item.actualInput || '0')
+  return isNaN(n) || n < 0 ? 0 : n
 }
 
 async function submitItem(item: ScanItem): Promise<void> {
