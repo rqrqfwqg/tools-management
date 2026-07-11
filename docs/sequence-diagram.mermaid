@@ -1,58 +1,83 @@
+%% 4.1 盘点全流程（P0-2）
 sequenceDiagram
-    actor User as 用户 (手机)
-    participant TM as ToolManagement.vue
-    participant Router as Vue Router
-    participant ST as ScanTool.vue
-    participant US as useScanner
-    participant Cam as 手机摄像头
-    participant API as api/index.ts
-    participant BE as Backend
-    participant Popup as ScanResultPopup
-    participant SH as ScanHistoryStore
-
-    User->>TM: 点击扫码按钮 (FAB)
-    TM->>Router: router.push('/scan')
-    Router->>ST: 渲染全屏扫码页
-    ST->>US: useScanner().start('scanner-container', callback)
-    US->>Cam: 请求 getUserMedia({ video: { facingMode: 'environment' } })
-    
-    alt 权限被拒
-        Cam-->>US: NotAllowedError
-        US-->>ST: error = '摄像头权限被拒'
-        ST-->>User: 显示权限引导 + 手动输入 tool_code 兜底
-    else 非 HTTPS
-        US-->>ST: error = '需HTTPS环境'
-        ST-->>User: 显示手动输入框
-    else 权限通过
-        Cam-->>US: MediaStream
-        US-->>ST: cameraReady = true
-        ST-->>User: 全屏扫码取景框
-
-        User->>Cam: 对准条形码
-        Cam->>US: 持续解析视频帧
-        US->>US: 识别到 Code128 → decodedText = 'TL-001'
-        US->>ST: onScanSuccess('TL-001')
-        ST->>US: stopScan()
-        ST->>API: getToolByCode('TL-001')
-        API->>BE: GET /api/tools/code/TL-001
-        BE-->>API: { tool: {...} }
-        API-->>ST: tool 数据
-        ST->>Popup: 显示弹窗 (tool详情 + 领用按钮)
-        Popup-->>User: 工具名称、位置、状态
-        
-        opt 领用
-            User->>Popup: 点击"立即领用"
-            Popup->>API: borrowTool('TL-001', userId)
-            API->>BE: POST /api/tools/TL-001/borrow
-            BE-->>API: { success: true, order_id: '...' }
-            API-->>Popup: 领用成功
-            Popup->>SH: addHistory({ tool_code, action: 'borrowed' })
-            Popup-->>User: 成功提示 + 订单号
-        end
-        
-        opt 关闭
-            User->>Popup: 关闭弹窗
-            Popup->>ST: 恢复扫码
-            ST->>US: startScan()
-        end
+    actor U as 用户
+    participant MC as MaterialCenter
+    participant INV as Inventory.vue
+    participant IC as InventoryCreate
+    participant BAPI as BaseAPI
+    participant IAPI as MaterialAPI
+    participant IS as InventoryScan
+    participant IR as InventoryResult
+    U->>MC: 点击「盘点」tile
+    MC->>INV: router.push('/inventory')
+    INV->>INV: state='create'
+    IC->>BAPI: getWarehouses()
+    BAPI-->>IC: Warehouse[]
+    U->>IC: 选仓库 + 开始盘点
+    IC->>IAPI: createInventoryCheck({warehouse_id, operator})
+    IAPI-->>IC: InventoryCheck{items[]}  // 应盘清单(actual=0)
+    IC-->>INV: check 上抛
+    INV->>INV: state='scan' (应盘Y=items.length)
+    loop 逐项录入
+        U->>IS: 扫码/输编码 或 点列表项
+        IS->>IS: 前缀解析(BJ-/XH-)定位 item
+        U->>IS: 备件 switch 0/1 | 消耗品 digit
+        IS->>IAPI: scanInventoryCheck(check_id, code, actual_qty)
+        IAPI-->>IS: {item:{actual_qty,diff}}
+        IS-->>IS: 标记已录入, N++, Toast(P1-3)
     end
+    U->>IS: 点击「完成盘库」
+    IS->>INV: 触发完成
+    INV->>IAPI: completeInventoryCheck(check_id)
+    IAPI-->>INV: {check{items[],diff}}  // 落账+调整流水
+    INV->>INV: state='result'
+    IR->>IR: 渲染 items, diff≠0 高亮(P1-1)
+    IR-->>U: 差异汇总 + 返回物料中心
+
+%% 4.2 独立领用全流程（P0-4，复用 ScanResultPopup）
+sequenceDiagram
+    actor U as 用户
+    participant MC as MaterialCenter
+    participant MD as MaterialDispense
+    participant API as MaterialAPI
+    participant POP as ScanResultPopup
+    U->>MC: 点「物料领用」或直接进 /material-dispense
+    MC->>MD: router.push('/material-dispense')
+    MD->>API: getSpareParts()/getConsumables() (按 tab)
+    API-->>MD: SparePart[]/Consumable[]
+    MD->>MD: 渲染 MaterialCard + 低库存标签(P1-2)
+    U->>MD: 搜索 + 点卡片
+    MD->>MD: openDetail(item) 设 selectedSpare/Consumable
+    MD->>POP: <ScanResultPopup :spare/:consumable :show="true"/>
+    alt 备件
+        U->>POP: 点「扫码领用(生成工单)」
+        POP->>API: borrowSpareByCode(code,{scene})
+        API-->>POP: {order_no}
+        POP-->>U: Toast 工单号
+    else 消耗品
+        U->>POP: 输数量 + 「确认直领」
+        POP->>API: takeConsumableByCode(code, qty)
+        API-->>POP: {message}
+        POP-->>U: Toast 成功
+    end
+    POP->>MD: @close → 关弹窗 + 可选刷新列表
+
+%% 4.3 出入库列表流程（P0-3 + P1-4，前端过滤）
+sequenceDiagram
+    actor U as 用户
+    participant MC as MaterialCenter
+    participant SM as StockMovement
+    participant SF as StockFilter
+    participant API as MaterialAPI
+    participant SC as StockCell
+    U->>MC: 点击「出入库」tile
+    MC->>SM: router.push('/stock-movements')
+    SM->>API: getStockMovements({limit:200})
+    API-->>SM: {total, data: StockMovement[]}
+    SM->>SC: 每项渲染(中文映射 P1-4)
+    U->>SF: 选 入库/出库/盘盈/盘亏
+    SF->>SM: emitFilter(key)
+    SM->>SM: 客户端按 movement_type 过滤 data  // 后端无此过滤
+    SM->>SC: 重渲染过滤后列表
+    U->>SM: 下拉刷新
+    SM->>API: getStockMovements() 重新拉取

@@ -1,102 +1,30 @@
 classDiagram
-    %% ========== 数据模型 ==========
-    class Tool {
-        +string id
-        +string tool_code
-        +string name
-        +string category
-        +string warehouse_id
-        +string shelf_name
-        +string location_name
-        +string status
-        +string barcode_svg?
-    }
+    direction LR
+    class MaterialCenter { +van-grid 4 tile +跳转各路由 }
+    class MaterialDispense { +van-tabs 备件/消耗品 +search +openDetail(item) }
+    class MaterialCard { +render(spare|consumable) +showLowStockTag() }
+    class Inventory { +state: create|scan|result +check: InventoryCheck }
+    class InventoryCreate { +warehouses: Warehouse[] +createCheck() }
+    class InventoryScan { +items: InventoryCheckItem[] +submitItem(code, actual_qty) }
+    class InventoryResult { +showDiff() }
+    class StockMovement { +list: StockMovement[] +filterType +load() }
+    class StockFilter { +options: movement_type[] +emitFilter() }
+    class StockCell { +render(movement) }
+    class ScanResultPopup { <<复用 不改>> +handleBorrowSpare() +handleTakeConsumable() }
+    class MaterialAPI { <<@/api/material>> +createInventoryCheck() +scanInventoryCheck() +completeInventoryCheck() +getStockMovements() +getSpareParts()/getConsumables() +borrowSpareByCode()/takeConsumableByCode() }
+    class BaseAPI { <<@/api>> +getWarehouses() }
 
-    class ScanHistory {
-        +string id
-        +string tool_code
-        +string tool_name
-        +number scanned_at
-        +string action
-    }
-
-    %% ========== API 接口 ==========
-    class ToolsAPI {
-        +getTools(params: ToolQueryParams): Promise~Tool[]~
-        +getToolByCode(code: string): Promise~Tool~
-        +borrowTool(code: string, userId: string): Promise~BorrowResult~
-    }
-
-    class ToolQueryParams {
-        +string? warehouse_id
-        +string? category
-        +string? keyword
-    }
-
-    class BorrowResult {
-        +boolean success
-        +string message
-        +string? order_id
-    }
-
-    %% ========== PC 端组件 ==========
-    class BarcodeList {
-        -Tool[] tools
-        -boolean loading
-        -ToolQueryParams filters
-        +fetchTools() Promise~void~
-        +generateBarcode(code) string
-        +printBarcodes() void
-        +applyFilters() void
-    }
-
-    %% ========== 手机端组件 ==========
-    class ScanTool {
-        -boolean scanning
-        -boolean cameraReady
-        -string? lastError
-        +startScan() void
-        +stopScan() void
-        +onScanSuccess(decodedText) void
-        +onScanFailure(error) void
-    }
-
-    class ScanResultPopup {
-        -boolean visible
-        -Tool? tool
-        -boolean borrowing
-        +onBorrow() Promise~void~
-        +onClose() void
-    }
-
-    class ToolManagement {
-        +onScanClick() void
-    }
-
-    class useScanner {
-        -Html5Qrcode scannerInstance
-        +start(elementId: string, onResult: callback): Promise~void~
-        +stop(): Promise~void~
-        +isSupported(): boolean
-    }
-
-    class ScanHistoryStore {
-        -ScanHistory[] histories
-        +addHistory(entry: ScanHistory): void
-        +getHistories(): ScanHistory[]
-        +clearHistories(): void
-    }
-
-    %% ========== 关系 ==========
-    ToolsAPI ..> Tool : returns
-    ToolsAPI ..> ToolQueryParams : uses
-    ToolsAPI ..> BorrowResult : returns
-    BarcodeList --> ToolsAPI : calls
-    BarcodeList --> Tool : renders
-    ScanTool --> useScanner : uses
-    ScanTool --> ToolsAPI : calls
-    ScanResultPopup --> Tool : displays
-    ScanResultPopup --> ToolsAPI : calls
-    ScanResultPopup --> ScanHistoryStore : writes
-    ToolManagement --> ScanTool : navigates
-    ScanHistoryStore --> ScanHistory : stores
+    MaterialDispense ..> MaterialCard : 用
+    MaterialDispense ..> ScanResultPopup : 复用领用
+    MaterialDispense ..> MaterialAPI : getSpareParts/getConsumables
+    Inventory ..> InventoryCreate : 态1
+    Inventory ..> InventoryScan : 态2
+    Inventory ..> InventoryResult : 态3
+    InventoryCreate ..> MaterialAPI : createInventoryCheck
+    InventoryCreate ..> BaseAPI : getWarehouses
+    InventoryScan ..> MaterialAPI : scanInventoryCheck
+    Inventory ..> MaterialAPI : completeInventoryCheck
+    StockMovement ..> StockFilter : 筛选
+    StockMovement ..> StockCell : 列表项
+    StockMovement ..> MaterialAPI : getStockMovements
+    ScanResultPopup ..> MaterialAPI : borrow/take
