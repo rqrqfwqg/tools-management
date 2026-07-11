@@ -12,6 +12,21 @@
 
     <!-- 扫码视口（仅摄像头可用时显示） -->
     <div v-if="cameraSupported" class="scanner-container">
+      <!-- 暗光提示横幅（非阻断，可忽略，不遮挡扫码框与手电筒按钮） -->
+      <div
+        v-if="scanning && lowLightState.isDark && !lowLightState.ignored"
+        class="dark-banner"
+      >
+        <van-icon name="warning-o" color="#ffd21e" />
+        <span class="dark-banner__text">环境过暗，建议开启闪光灯</span>
+        <van-button
+          class="dark-banner__ignore"
+          size="mini"
+          plain
+          @click="lowLightState.setIgnored(true)"
+        >忽略</van-button>
+      </div>
+
       <div
         id="scanner-viewport"
         class="scanner-viewport"
@@ -32,6 +47,12 @@
         icon="bulb-o"
         @click="toggleTorch"
       />
+
+      <!-- 弱光增强状态条（补光开启时显示，可选 P1-3，非阻断） -->
+      <div v-if="scanning && torchOn" class="low-light-status">
+        <van-icon name="bulb-o" color="#ffd21e" />
+        <span>弱光增强中 · 补光已开启</span>
+      </div>
 
       <div v-if="error && !scanning" class="scan-error">
         <van-icon name="warning-o" size="40" color="#ee0a24" />
@@ -147,10 +168,18 @@ const {
   toggleTorch,
   startScanning,
   stopScanning,
-  destroy
+  destroy,
+  lowLightState
 } = useScanner({
   elementId: 'scanner-viewport',
   qrbox: { width: 280, height: 120 },
+  // 弱光增强配置：阈值 40、扫码框自适应；exposureBoost/isoBoost 不传，
+  // 由 useScanner 依据设备能力自动推导（exposure≈max*0.7，iso≈400 封顶 800）
+  lowLight: {
+    darkThreshold: 40,
+    qrboxAuto: true,
+    autoTorchStrategy: 'manual'
+  },
   onSuccess: (code: string) => {
     onCodeDetected(code)
   },
@@ -440,6 +469,52 @@ onUnmounted(() => {
 
 .torch-btn.torch-on :deep(.van-icon) {
   color: #323233;
+}
+
+/* ===== 暗光提示横幅（顶部，非阻断，可忽略） ===== */
+.dark-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9; /* 低于手电筒按钮(z-index:10)，避免遮挡其点击 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  /* 右侧留出空间，避开右上角手电筒按钮 */
+  padding-right: 56px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 13px;
+}
+
+.dark-banner__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dark-banner__ignore {
+  flex-shrink: 0;
+}
+
+/* ===== 弱光增强状态条（底部，非阻断） ===== */
+.low-light-status {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffd21e;
+  font-size: 12px;
+  border-radius: 16px;
+  pointer-events: none;
 }
 
 @keyframes scanMove {
