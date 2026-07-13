@@ -67,6 +67,24 @@
         <span class="tool-count">
           共 {{ filteredCount }} 件 · {{ pageCount }} 页
         </span>
+        <span class="tool-count selected-count">已选 {{ selectedCountInMode }} 项</span>
+        <el-button size="small" @click="selectAllInMode">全选</el-button>
+        <el-button size="small" @click="clearAllInMode">取消全选</el-button>
+        <el-select
+          v-model="shelfSelect"
+          placeholder="按货架批量选"
+          clearable
+          size="small"
+          style="width: 160px"
+          @change="selectByShelf"
+        >
+          <el-option
+            v-for="opt in shelfOptionsInMode"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          />
+        </el-select>
         <el-button type="primary" @click="handlePrint">
           <el-icon style="margin-right:4px"><Printer /></el-icon>
           打印条形码
@@ -78,8 +96,13 @@
     <div v-if="mode === 'tool' && filteredTools.length === 0" class="empty-hint">
       <el-empty description="暂无匹配工具" />
     </div>
-    <div v-if="mode === 'tool' && filteredTools.length > 0" class="barcode-grid">
+    <div v-if="mode === 'tool' && filteredTools.length > 0" class="barcode-grid" :key="`grid-${mode}`">
       <div v-for="tool in filteredTools" :key="tool.tool_id" class="barcode-cell">
+        <el-checkbox
+          class="cell-check"
+          :model-value="isSelected(currentType, tool.tool_id)"
+          @change="toggleSelect(currentType, tool.tool_id)"
+        />
         <div class="barcode-svg-wrapper">
           <svg :id="`barcode-tool-${tool.tool_id}`" class="barcode-svg"></svg>
         </div>
@@ -97,8 +120,13 @@
     <div v-if="mode === 'toolkit' && filteredToolkits.length === 0" class="empty-hint">
       <el-empty description="暂无匹配工具箱" />
     </div>
-    <div v-if="mode === 'toolkit' && filteredToolkits.length > 0" class="barcode-grid toolkit-grid">
+    <div v-if="mode === 'toolkit' && filteredToolkits.length > 0" class="barcode-grid toolkit-grid" :key="`grid-${mode}`">
       <div v-for="kit in filteredToolkits" :key="kit.toolkit_id" class="barcode-cell toolkit-cell">
+        <el-checkbox
+          class="cell-check"
+          :model-value="isSelected(currentType, kit.toolkit_id)"
+          @change="toggleSelect(currentType, kit.toolkit_id)"
+        />
         <div class="barcode-svg-wrapper">
           <svg :id="`barcode-toolkit-${kit.toolkit_id}`" class="barcode-svg"></svg>
         </div>
@@ -114,8 +142,13 @@
     <div v-if="mode === 'spare' && filteredSpares.length === 0" class="empty-hint">
       <el-empty description="暂无匹配备件" />
     </div>
-    <div v-if="mode === 'spare' && filteredSpares.length > 0" class="barcode-grid">
+    <div v-if="mode === 'spare' && filteredSpares.length > 0" class="barcode-grid" :key="`grid-${mode}`">
       <div v-for="s in filteredSpares" :key="s.spare_id" class="barcode-cell">
+        <el-checkbox
+          class="cell-check"
+          :model-value="isSelected(currentType, s.spare_id)"
+          @change="toggleSelect(currentType, s.spare_id)"
+        />
         <div class="barcode-svg-wrapper">
           <svg :id="`barcode-spare-${s.spare_id}`" class="barcode-svg"></svg>
         </div>
@@ -133,8 +166,13 @@
     <div v-if="mode === 'consumable' && filteredConsumables.length === 0" class="empty-hint">
       <el-empty description="暂无匹配消耗品" />
     </div>
-    <div v-if="mode === 'consumable' && filteredConsumables.length > 0" class="barcode-grid">
+    <div v-if="mode === 'consumable' && filteredConsumables.length > 0" class="barcode-grid" :key="`grid-${mode}`">
       <div v-for="c in filteredConsumables" :key="c.consumable_id" class="barcode-cell">
+        <el-checkbox
+          class="cell-check"
+          :model-value="isSelected(currentType, c.consumable_id)"
+          @change="toggleSelect(currentType, c.consumable_id)"
+        />
         <div class="barcode-svg-wrapper">
           <svg :id="`barcode-consumable-${c.consumable_id}`" class="barcode-svg"></svg>
         </div>
@@ -167,6 +205,9 @@ import type { Tool } from '@/types'
 
 // ============ 模式切换 ============
 const mode = ref<'tool' | 'toolkit' | 'spare' | 'consumable'>('tool')
+
+// 当前模式（用于模板中复选框 / 选择逻辑的 type 键）
+const currentType = computed(() => mode.value)
 
 // ============ 数据 ============
 const allTools = ref<Tool[]>([])
@@ -212,6 +253,117 @@ const pageCount = computed(() =>
   Math.max(1, Math.ceil(filteredCount.value / (PAGE_SIZE[mode.value] || 24)))
 )
 
+// ============ 条形码可选打印：选中状态 ============
+// 选中键集合，键格式：`${type}:${id}`
+const selectedKeys = ref<Set<string>>(new Set())
+
+// 由于 Vue 对 Set 的响应式：每次变更后必须重新赋值触发更新
+function selKey(type: string, id: string | number): string {
+  return `${type}:${id}`
+}
+
+// 当前模式下可见（已筛选）的列表
+function itemsInMode(): any[] {
+  switch (mode.value) {
+    case 'tool': return filteredTools.value
+    case 'toolkit': return filteredToolkits.value
+    case 'spare': return filteredSpares.value
+    case 'consumable': return filteredConsumables.value
+    default: return []
+  }
+}
+
+// 取当前模式下某条目的 id 字段
+function getIdOf(item: any): string {
+  switch (mode.value) {
+    case 'tool': return String(item.tool_id)
+    case 'toolkit': return String(item.toolkit_id)
+    case 'spare': return String(item.spare_id)
+    case 'consumable': return String(item.consumable_id)
+    default: return ''
+  }
+}
+
+// 取某条目的货架名（备件/消耗品/工具用 shelf_name 或 location_name）
+function getShelfOf(item: any): string {
+  return item?.shelf_name || item?.location_name || ''
+}
+
+function isSelected(type: string, id: string | number): boolean {
+  return selectedKeys.value.has(selKey(type, id))
+}
+
+// 存在则删、否则加，然后重赋值触发响应式
+function toggleSelect(type: string, id: string | number) {
+  const key = selKey(type, id)
+  const next = new Set(selectedKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  selectedKeys.value = next
+}
+
+// 对当前 mode 的 filtered 列表全选
+function selectAllInMode() {
+  const next = new Set(selectedKeys.value)
+  for (const item of itemsInMode()) {
+    next.add(selKey(currentType.value, getIdOf(item)))
+  }
+  selectedKeys.value = next
+}
+
+// 对当前 mode 的 filtered 列表全清
+function clearAllInMode() {
+  const next = new Set(selectedKeys.value)
+  for (const item of itemsInMode()) {
+    next.delete(selKey(currentType.value, getIdOf(item)))
+  }
+  selectedKeys.value = next
+}
+
+// 把当前 mode filtered 列表中指定货架（shelf_name 或 location_name）的项加入选中
+function selectByShelf(shelf: string) {
+  if (!shelf) return
+  const next = new Set(selectedKeys.value)
+  for (const item of itemsInMode()) {
+    if (getShelfOf(item) === shelf) {
+      next.add(selKey(currentType.value, getIdOf(item)))
+    }
+  }
+  selectedKeys.value = next
+  shelfSelect.value = '' // 选中后重置下拉，便于连续按货架批量选
+}
+
+// 当前模式按货架批量选所用的去重货架名
+const shelfOptionsInMode = computed(() => {
+  const set = new Set<string>()
+  for (const item of itemsInMode()) {
+    const s = getShelfOf(item)
+    if (s) set.add(s)
+  }
+  return Array.from(set).map(s => ({ label: s, value: s }))
+})
+
+// 当前模式已选中数量
+const selectedCountInMode = computed(() => {
+  let count = 0
+  for (const item of itemsInMode()) {
+    if (isSelected(currentType.value, getIdOf(item))) count++
+  }
+  return count
+})
+
+// 按货架批量选下拉框的绑定值
+const shelfSelect = ref('')
+
+// 默认行为：可见即默认选中（只加不删，保留用户手动取消的项）
+function ensureAllVisibleSelected() {
+  const next = new Set(selectedKeys.value)
+  for (const item of itemsInMode()) {
+    next.add(selKey(currentType.value, getIdOf(item)))
+  }
+  selectedKeys.value = next
+}
+
 // ============ 筛选 ============
 function doFilter() {
   switch (mode.value) {
@@ -220,7 +372,11 @@ function doFilter() {
     case 'spare': filterSpares(); break
     case 'consumable': filterConsumables(); break
   }
-  nextTick(() => renderAllBarcodes())
+  nextTick(() => {
+    renderAllBarcodes()
+    // 默认把当前模式所有可见项加入选中，兼容旧的「打印全部」习惯
+    ensureAllVisibleSelected()
+  })
 }
 
 function filterTools() {
@@ -293,7 +449,10 @@ async function loadJsBarcode() {
 function renderBarcode(id: string, code: string, fontSize = 12) {
   const svgEl = document.getElementById(id)
   if (!svgEl) return
-  if (svgEl.children.length > 0) return
+  // 绘制前先清空 SVG，保证 SVG 永远反映「当前」code，杜绝模式切换/筛选时的串码残留
+  while (svgEl.firstChild) {
+    svgEl.removeChild(svgEl.firstChild)
+  }
   try {
     JsBarcodeModule(svgEl, code, {
       format: 'CODE128',
@@ -331,6 +490,11 @@ function renderAllBarcodes() {
 
 // ============ 打印 ============
 function handlePrint() {
+  // 当前模式未勾选任何项时，给出提示并不弹窗
+  if (selectedCountInMode.value === 0) {
+    ElMessage.warning('请先勾选要打印的条形码')
+    return
+  }
   switch (mode.value) {
     case 'tool': handlePrintTools(); break
     case 'toolkit': handlePrintToolkits(); break
@@ -417,40 +581,46 @@ ${pagesHtml}
 }
 
 function handlePrintTools() {
-  const items = filteredTools.value.map(t => ({
-    code: t.tool_code,
-    name: t.tool_name,
-    loc: t.shelf_name || t.location_name
-      ? `${t.shelf_name || ''}${t.location_name ? ' ' + t.location_name : ''}`
-      : ''
-  }))
+  const items = filteredTools.value
+    .filter(t => isSelected('tool', t.tool_id))
+    .map(t => ({
+      code: t.tool_code,
+      name: t.tool_name,
+      loc: t.shelf_name || t.location_name
+        ? `${t.shelf_name || ''}${t.location_name ? ' ' + t.location_name : ''}`
+        : ''
+    }))
   buildPrintHtml(`工具条形码打印 - 共 ${items.length} 件 ${pageCount.value} 页`, items)
 }
 
 function handlePrintSpares() {
-  const items = filteredSpares.value.map(s => ({
-    code: s.spare_code,
-    name: s.spare_name,
-    loc: s.shelf_name || s.location_name
-      ? `${s.shelf_name || ''}${s.location_name ? ' ' + s.location_name : ''}`
-      : ''
-  }))
+  const items = filteredSpares.value
+    .filter(s => isSelected('spare', s.spare_id))
+    .map(s => ({
+      code: s.spare_code,
+      name: s.spare_name,
+      loc: s.shelf_name || s.location_name
+        ? `${s.shelf_name || ''}${s.location_name ? ' ' + s.location_name : ''}`
+        : ''
+    }))
   buildPrintHtml(`备件条形码打印 - 共 ${items.length} 件 ${pageCount.value} 页`, items)
 }
 
 function handlePrintConsumables() {
-  const items = filteredConsumables.value.map(c => ({
-    code: c.consumable_code,
-    name: c.consumable_name,
-    loc: c.shelf_name || c.location_name
-      ? `${c.shelf_name || ''}${c.location_name ? ' ' + c.location_name : ''}`
-      : ''
-  }))
+  const items = filteredConsumables.value
+    .filter(c => isSelected('consumable', c.consumable_id))
+    .map(c => ({
+      code: c.consumable_code,
+      name: c.consumable_name,
+      loc: c.shelf_name || c.location_name
+        ? `${c.shelf_name || ''}${c.location_name ? ' ' + c.location_name : ''}`
+        : ''
+    }))
   buildPrintHtml(`消耗品条形码打印 - 共 ${items.length} 件 ${pageCount.value} 页`, items)
 }
 
 function handlePrintToolkits() {
-  const toolkits = filteredToolkits.value
+  const toolkits = filteredToolkits.value.filter(k => isSelected('toolkit', k.toolkit_id))
   if (toolkits.length === 0) return
 
   const ITEMS_PER_PAGE = 10 // 2列×5行
@@ -552,6 +722,8 @@ onMounted(async () => {
     // 加载 JsBarcode 并首次渲染
     await loadJsBarcode()
     doFilter()
+    // 首次加载后确保当前模式可见项默认选中
+    ensureAllVisibleSelected()
   } catch (e) {
     console.error('加载条形码数据失败', e)
   }
@@ -599,11 +771,17 @@ watch(mode, () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .tool-count {
   font-size: 14px;
   color: #909399;
+}
+
+.selected-count {
+  color: #409eff;
+  font-weight: 600;
 }
 
 /* ===== 空状态 ===== */
@@ -656,6 +834,13 @@ watch(mode, () => {
   flex-direction: column;
   align-items: center;
   page-break-inside: avoid;
+}
+
+/* 单元格左上角的选择性打印复选框 */
+.cell-check {
+  align-self: flex-start;
+  height: 22px;
+  margin-bottom: 8px;
 }
 
 /* 工具箱卡片稍大 */
