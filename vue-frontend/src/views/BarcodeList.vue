@@ -257,6 +257,10 @@ const pageCount = computed(() =>
 // 选中键集合，键格式：`${type}:${id}`
 const selectedKeys = ref<Set<string>>(new Set())
 
+// 记录用户「主动取消」的键；被记入此集合的项在后续自动全选（筛选/模式切换后）
+// 时不会被重新勾回，直到用户显式选中（全选 / 按货架选 / 手动勾选）。
+const explicitlyUnselected = ref<Set<string>>(new Set())
+
 // 由于 Vue 对 Set 的响应式：每次变更后必须重新赋值触发更新
 function selKey(type: string, id: string | number): string {
   return `${type}:${id}`
@@ -293,43 +297,68 @@ function isSelected(type: string, id: string | number): boolean {
   return selectedKeys.value.has(selKey(type, id))
 }
 
-// 存在则删、否则加，然后重赋值触发响应式
+// 切换某条目的勾选状态：
+// - 若当前已选中 → 取消选中，并把该键记入 explicitlyUnselected（主动取消）
+// - 若当前未选中 → 选中，并从 explicitlyUnselected 移除（主动选中）
+// 每次变更后均重新赋值以触发响应式
 function toggleSelect(type: string, id: string | number) {
   const key = selKey(type, id)
-  const next = new Set(selectedKeys.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
-  selectedKeys.value = next
+  const sel = new Set(selectedKeys.value)
+  const un = new Set(explicitlyUnselected.value)
+  if (sel.has(key)) {
+    sel.delete(key)
+    un.add(key)
+  } else {
+    sel.add(key)
+    un.delete(key)
+  }
+  selectedKeys.value = sel
+  explicitlyUnselected.value = un
 }
 
-// 对当前 mode 的 filtered 列表全选
+// 对当前 mode 的 filtered 列表全选；同时把这些键从 explicitlyUnselected 移除
+// （因为它们现在是「显式选中」，不应再被视为主动取消）
 function selectAllInMode() {
   const next = new Set(selectedKeys.value)
+  const un = new Set(explicitlyUnselected.value)
   for (const item of itemsInMode()) {
-    next.add(selKey(currentType.value, getIdOf(item)))
+    const key = selKey(currentType.value, getIdOf(item))
+    next.add(key)
+    un.delete(key)
   }
   selectedKeys.value = next
+  explicitlyUnselected.value = un
 }
 
-// 对当前 mode 的 filtered 列表全清
+// 对当前 mode 的 filtered 列表全清；同时把这些键加入 explicitlyUnselected，
+// 之后 ensureAllVisibleSelected 不会再把它们自动勾回
 function clearAllInMode() {
   const next = new Set(selectedKeys.value)
+  const un = new Set(explicitlyUnselected.value)
   for (const item of itemsInMode()) {
-    next.delete(selKey(currentType.value, getIdOf(item)))
+    const key = selKey(currentType.value, getIdOf(item))
+    next.delete(key)
+    un.add(key)
   }
   selectedKeys.value = next
+  explicitlyUnselected.value = un
 }
 
-// 把当前 mode filtered 列表中指定货架（shelf_name 或 location_name）的项加入选中
+// 把当前 mode filtered 列表中指定货架（shelf_name 或 location_name）的项加入选中，
+// 并从 explicitlyUnselected 移除这些键（显式选中）
 function selectByShelf(shelf: string) {
   if (!shelf) return
   const next = new Set(selectedKeys.value)
+  const un = new Set(explicitlyUnselected.value)
   for (const item of itemsInMode()) {
     if (getShelfOf(item) === shelf) {
-      next.add(selKey(currentType.value, getIdOf(item)))
+      const key = selKey(currentType.value, getIdOf(item))
+      next.add(key)
+      un.delete(key)
     }
   }
   selectedKeys.value = next
+  explicitlyUnselected.value = un
   shelfSelect.value = '' // 选中后重置下拉，便于连续按货架批量选
 }
 
@@ -355,11 +384,15 @@ const selectedCountInMode = computed(() => {
 // 按货架批量选下拉框的绑定值
 const shelfSelect = ref('')
 
-// 默认行为：可见即默认选中（只加不删，保留用户手动取消的项）
+// 默认行为：可见即默认选中，但跳过被用户「主动取消」的键（explicitlyUnselected）。
+// 不动 explicitlyUnselected 集合本身，仅决定 selectedKeys 是否补齐该项。
 function ensureAllVisibleSelected() {
   const next = new Set(selectedKeys.value)
   for (const item of itemsInMode()) {
-    next.add(selKey(currentType.value, getIdOf(item)))
+    const key = selKey(currentType.value, getIdOf(item))
+    if (!explicitlyUnselected.value.has(key)) {
+      next.add(key)
+    }
   }
   selectedKeys.value = next
 }
@@ -432,7 +465,13 @@ function filterConsumables() {
 }
 
 function onModeChange() {
-  // 切换模式时重新筛选并渲染
+  // 切换模式时先同步清空筛选条件（warehouse/category/keyword/kitKeyword），
+  // 再重新筛选并渲染。这样 doFilter 一定在筛选已清空后执行，避免读到旧模式的旧值
+  // （watch(mode) 的清空属于 pre-flush 回调，会在同步 change 事件之后才执行，作为兜底）。
+  warehouseFilter.value = ''
+  categoryFilter.value = ''
+  keyword.value = ''
+  kitKeyword.value = ''
   doFilter()
 }
 
