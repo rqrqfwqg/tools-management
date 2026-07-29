@@ -25,7 +25,7 @@
         <el-option v-for="l in locationFilterOptions" :key="l.location_id" :label="l.location_name || l.location_code" :value="l.location_name || l.location_code" />
       </el-select>
     </div>
-    <el-table :data="filteredList" border style="margin-top:0">
+    <el-table :data="filteredList" border style="margin-top:0" :row-class-name="lowStockRowClass">
       <el-table-column label="图片" width="80">
         <template #default="{row}">
           <el-image v-if="row.image_url" :src="getImageUrl(row.image_url)" fit="cover" style="width:50px;height:50px;border-radius:4px" :preview-src-list="[getImageUrl(row.image_url)]" preview-teleported />
@@ -36,6 +36,13 @@
       <el-table-column prop="spare_code" label="编码" min-width="100" show-overflow-tooltip />
       <el-table-column prop="spare_name" label="名称" min-width="120" show-overflow-tooltip />
       <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />
+      <el-table-column prop="model" label="型号" min-width="100" show-overflow-tooltip />
+      <el-table-column label="最低库存" min-width="110">
+        <template #default="{row}">
+          <span>{{ row.warning_qty != null ? row.warning_qty : '-' }}</span>
+          <el-tag v-if="row.is_low_stock" type="warning" size="small" style="margin-left:6px">库存预警</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="90">
         <template #default="{row}"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
       </el-table-column>
@@ -77,6 +84,7 @@
             <el-option v-for="l in filteredLocations" :key="l.location_id" :label="`${l.location_code} - ${l.location_name}`" :value="l.location_id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="型号"><el-input v-model="form.model" placeholder="如 iPhone-13（同型号备件可设最低库存）" /></el-form-item>
         <el-form-item label="单位"><el-input v-model="form.unit" placeholder="如 件" /></el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width:100%">
@@ -85,6 +93,9 @@
             <el-option label="借出" value="borrowed" />
             <el-option label="维修" value="maintenance" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="最低库存">
+          <el-input-number v-model="form.warning_qty" :min="0" :controls="true" :precision="0" :value-on-clear="null" placeholder="留空表示不设" style="width:100%" />
         </el-form-item>
         <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
       </el-form>
@@ -190,7 +201,7 @@ const loadLocations = async () => { locations.value = await getStorageLocations(
 
 const openDialog = (row?: any) => {
   if (row) form.value = { ...row }
-  else form.value = { status: 'available', unit: '件', warehouse_id: undefined, shelf_id: undefined, storage_location_id: undefined, description: '' }
+  else form.value = { status: 'available', unit: '件', model: '', warehouse_id: undefined, shelf_id: undefined, storage_location_id: undefined, description: '' }
   dialogVisible.value = true
 }
 
@@ -225,6 +236,9 @@ const handleUpload = async () => {
 
 const statusType = (s: string) => ({ available: 'success', reserved: 'info', borrowed: 'warning', maintenance: 'danger' }[s] || 'info')
 const statusText = (s: string) => ({ available: '可用', reserved: '预留', borrowed: '借出', maintenance: '维修' }[s] || s)
+
+// 低库存行高亮 class（按后端 is_low_stock 衍生字段）
+const lowStockRowClass = ({ row }: any): string => (row.is_low_stock ? 'low-stock-row' : '')
 
 const cartStore = useCartStore()
 const handleAddToCart = (spare: any) => {
@@ -274,3 +288,10 @@ async function exportExcel() {
 
 onMounted(() => { load(); loadCategories(); loadWarehouses(); loadShelves(); loadLocations() })
 </script>
+
+<style scoped>
+/* 低库存备件行：与消耗品预警风格一致的浅橙底色 */
+:deep(.low-stock-row) td.el-table__cell {
+  background-color: #fdf6ec !important;
+}
+</style>

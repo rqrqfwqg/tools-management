@@ -42,6 +42,8 @@
           <van-cell title="备件名称" :value="detailSpare.spare_name" />
           <van-cell title="备件编码" :value="detailSpare.spare_code" />
           <van-cell title="分类" :value="detailSpare.category_name || '-'" />
+          <van-cell title="型号" :value="detailSpare.model || '-'" />
+          <van-cell title="最低库存" :value="detailSpare.warning_qty != null ? `${detailSpare.warning_qty} 件` : '未设置'" />
           <van-cell title="状态">
             <template #value>
               <van-tag :type="statusTagType(detailSpare.status)" size="medium">{{ statusLabel(detailSpare.status) }}</van-tag>
@@ -107,6 +109,7 @@ const statusTagType = (s: string): any => {
 }
 const cardDesc = (sp: any) => {
   const parts: string[] = []
+  if (sp.model) parts.push(`型号:${sp.model}`)
   if (sp.category_name) parts.push(sp.category_name)
   if (sp.warehouse_name) parts.push(sp.warehouse_name)
   if (sp.shelf_name) parts.push(sp.shelf_name)

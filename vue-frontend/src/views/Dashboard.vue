@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDashboard, getSpareParts, getConsumables, getInventoryChecks } from '@/api'
+import { getDashboard, getSpareParts, getConsumables, getInventoryChecks, getLowStockSpareParts } from '@/api'
 import { Box, CircleCheck, Van, SetUp, List, Clock, CircleClose, Refresh, User, Goods, Warning } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -97,6 +97,7 @@ const materialStats = ref([
   { label: '消耗品种类', value: 0, icon: Box, color: '#67C23A', bg: '#e6f7e6', route: '/consumables' },
   { label: '待盘库数', value: 0, icon: List, color: '#E6A23C', bg: '#fdf3e0', route: '/inventory-checks' },
   { label: '低库存消耗品', value: 0, icon: Warning, color: '#F56C6C', bg: '#fde6e6', route: '/consumables' },
+  { label: '低库存备件', value: 0, icon: Warning, color: '#F56C6C', bg: '#fde6e6', route: '/spare-parts' },
 ])
 
 onMounted(async () => {
@@ -128,6 +129,13 @@ onMounted(async () => {
     materialStats.value[3].value = (consumables || []).filter(
       (c: any) => c.warning_qty != null && c.stock_qty <= c.warning_qty
     ).length
+    // 低库存备件（按型号聚合，直接取低库存型号数量）
+    try {
+      const lowStockSpares = await getLowStockSpareParts()
+      materialStats.value[4].value = (lowStockSpares || []).length
+    } catch (e: any) {
+      console.error('加载低库存备件失败', e)
+    }
   } catch (e: any) {
     console.error('加载物料统计失败', e)
   }

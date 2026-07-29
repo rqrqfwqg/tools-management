@@ -45,10 +45,17 @@ const stockText = computed<string>(() => {
   return `${q} ${unit || ''}`.trim()
 })
 
-// 低库存判定：warning_qty 非空 且 当前库存 <= 预警值（与 ScanResultPopup 内部逻辑一致）
+// 低库存判定：
+// - 备件(spare)：优先使用后端衍生字段 is_low_stock（按型号聚合判定），避免旧数据因无 warning_qty 而恒不触发
+// - 消耗品(consumable)：回退原逻辑 warning_qty 非空 且 库存 <= 预警值
 const lowStock = computed<boolean>(() => {
   const c = current.value
   if (!c) return false
+  if (props.spare) {
+    if (c.is_low_stock != null) return !!c.is_low_stock
+    // 兜底：直接按该件预警值判断
+    return c.warning_qty != null && c.stock_qty != null && c.stock_qty <= c.warning_qty
+  }
   return c.warning_qty != null && c.stock_qty != null && c.stock_qty <= c.warning_qty
 })
 </script>

@@ -1,30 +1,65 @@
-classDiagram
-    direction LR
-    class MaterialCenter { +van-grid 4 tile +跳转各路由 }
-    class MaterialDispense { +van-tabs 备件/消耗品 +search +openDetail(item) }
-    class MaterialCard { +render(spare|consumable) +showLowStockTag() }
-    class Inventory { +state: create|scan|result +check: InventoryCheck }
-    class InventoryCreate { +warehouses: Warehouse[] +createCheck() }
-    class InventoryScan { +items: InventoryCheckItem[] +submitItem(code, actual_qty) }
-    class InventoryResult { +showDiff() }
-    class StockMovement { +list: StockMovement[] +filterType +load() }
-    class StockFilter { +options: movement_type[] +emitFilter() }
-    class StockCell { +render(movement) }
-    class ScanResultPopup { <<复用 不改>> +handleBorrowSpare() +handleTakeConsumable() }
-    class MaterialAPI { <<@/api/material>> +createInventoryCheck() +scanInventoryCheck() +completeInventoryCheck() +getStockMovements() +getSpareParts()/getConsumables() +borrowSpareByCode()/takeConsumableByCode() }
-    class BaseAPI { <<@/api>> +getWarehouses() }
+%% 增量需求：物料最低库存设置（备件补齐）—— 类/组件关系图
+%% 架构师：高见远（Bob）
 
-    MaterialDispense ..> MaterialCard : 用
-    MaterialDispense ..> ScanResultPopup : 复用领用
-    MaterialDispense ..> MaterialAPI : getSpareParts/getConsumables
-    Inventory ..> InventoryCreate : 态1
-    Inventory ..> InventoryScan : 态2
-    Inventory ..> InventoryResult : 态3
-    InventoryCreate ..> MaterialAPI : createInventoryCheck
-    InventoryCreate ..> BaseAPI : getWarehouses
-    InventoryScan ..> MaterialAPI : scanInventoryCheck
-    Inventory ..> MaterialAPI : completeInventoryCheck
-    StockMovement ..> StockFilter : 筛选
-    StockMovement ..> StockCell : 列表项
-    StockMovement ..> MaterialAPI : getStockMovements
-    ScanResultPopup ..> MaterialAPI : borrow/take
+classDiagram
+    class SparePartRecord {
+        +number spare_id
+        +string spare_code
+        +string spare_name
+        +string status
+        +string model
+        +number|null warning_qty
+        +number stock_qty = 1
+        +string category_name
+        +string warehouse_name
+        +string shelf_name
+        +string location_name
+    }
+    class SparePartListItem {
+        <<derived from SparePartRecord>>
+        +number model_available_count
+        +number|null model_warning_qty
+        +boolean is_low_stock
+    }
+    class SpareLowStockModel {
+        +string model
+        +number available_count
+        +number|null warning_qty
+        +number[] spare_ids
+    }
+    class LowStockService {
+        <<pure function>>
+        +computeSpareLowStock(spareParts) Map~spare_id,object~
+    }
+    class MaterialsRouter {
+        +GET /spare-parts
+        +POST /spare-parts
+        +PUT /spare-parts/:id
+        +GET /spare-parts/low-stock
+        +GET /consumables/low-stock
+    }
+    class SparePartManagementView {
+        +renderTable()
+        +openDialog()
+        +handleSave()
+    }
+    class DashboardView {
+        +mergeLowStock()
+    }
+    class SparePartListView {
+        +cardDesc()
+        +openDetail()
+    }
+    class MaterialCard {
+        +lowStock computed
+    }
+
+    SparePartRecord <|-- SparePartListItem
+    MaterialsRouter ..> LowStockService : uses
+    LowStockService ..> SparePartRecord : reads model/status/warning_qty
+    MaterialsRouter ..> SparePartListItem : returns enriched
+    MaterialsRouter ..> SpareLowStockModel : returns aggregate
+    SparePartManagementView ..> SparePartListItem : displays is_low_stock + highlight
+    DashboardView ..> SpareLowStockModel : counts via getLowStockSpares
+    SparePartListView ..> SparePartListItem : displays model/warning/is_low_stock
+    MaterialCard ..> SparePartListItem : reads is_low_stock

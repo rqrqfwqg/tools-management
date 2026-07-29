@@ -96,6 +96,58 @@ function writeMovement(db, m) {
   return movement;
 }
 
+// ============ 备件低库存纯函数（按型号聚合，供列表衍生字段与 low-stock 路由复用） ============
+
+/**
+ * 按型号(model)聚合备件的可用数量与预警值（纯函数）。
+ * 忽略未设置型号（model===''）的项，避免旧 lone 项误报低库存。
+ * 同一型号的预警值取同组首件值（warning_qty）。
+ * @param {Array} spareParts 备件完整记录数组
+ * @returns {Map<string, {model:string, available_count:number, warning_qty:(number|null)}>}
+ */
+function buildSpareModelMap(spareParts) {
+  const map = new Map();
+  for (const sp of (spareParts || [])) {
+    const model = sp.model || '';
+    if (model === '') continue; // 忽略未设置型号的项
+    if (!map.has(model)) {
+      map.set(model, {
+        model,
+        available_count: 0,
+        warning_qty: sp.warning_qty != null ? Number(sp.warning_qty) : null
+      });
+    }
+    if (sp.status === 'available') map.get(model).available_count += 1;
+  }
+  return map;
+}
+
+/**
+ * 计算低库存备件型号（纯函数）。
+ * 每个已设 warning_qty（!=null）且 model!=='' 的型号，若其可用件数低于预警值则判定为低库存。
+ * @param {Array} spareParts 备件完整记录数组
+ * @returns {Array<{model:string, available_count:number, warning_qty:number, spare_ids:number[]}>}
+ */
+function computeSpareLowStock(spareParts) {
+  const map = buildSpareModelMap(spareParts);
+  const result = [];
+  for (const [model, agg] of map.entries()) {
+    if (agg.warning_qty == null) continue; // 该型号未设置最低库存
+    const spare_ids = (spareParts || [])
+      .filter(s => (s.model || '') === model && s.status === 'available')
+      .map(s => s.spare_id);
+    if (agg.available_count < agg.warning_qty) {
+      result.push({
+        model,
+        available_count: agg.available_count,
+        warning_qty: agg.warning_qty,
+        spare_ids
+      });
+    }
+  }
+  return result;
+}
+
 // ============ 物料分类 ============
 router.get('/material-categories', authenticate, (req, res) => {
   res.json(readDB().material_categories || []);
@@ -168,14 +220,26 @@ router.get('/spare-parts', authenticate, (req, res) => {
   const warehouses = db.warehouses || [];
   const shelves = db.shelves || [];
   const locations = db.storage_locations || [];
-  const enriched = (db.spare_parts || []).map(sp => ({
-    ...sp,
-    category_name: categories.find(c => c.category_id === sp.category_id)?.category_name || '',
-    warehouse_name: warehouses.find(w => w.warehouse_id === sp.warehouse_id)?.warehouse_name || '',
-    shelf_name: shelves.find(s => s.shelf_id === sp.shelf_id)?.shelf_name || '',
-    location_name: locations.find(l => l.location_id === sp.storage_location_id)?.location_name ||
-      locations.find(l => l.location_id === sp.storage_location_id)?.location_code || ''
-  }));
+  // 预计算各型号可用数量与预警值，供每个列表项附加衍生字段
+  const modelMap = buildSpareModelMap(db.spare_parts || []);
+  const enriched = (db.spare_parts || []).map(sp => {
+    const model = sp.model || '';
+    const modelAgg = model !== '' ? modelMap.get(model) : null;
+    const model_available_count = modelAgg ? modelAgg.available_count : null;
+    const model_warning_qty = modelAgg ? modelAgg.warning_qty : null;
+    const is_low_stock = model !== '' && model_warning_qty != null && model_available_count < model_warning_qty;
+    return {
+      ...sp,
+      category_name: categories.find(c => c.category_id === sp.category_id)?.category_name || '',
+      warehouse_name: warehouses.find(w => w.warehouse_id === sp.warehouse_id)?.warehouse_name || '',
+      shelf_name: shelves.find(s => s.shelf_id === sp.shelf_id)?.shelf_name || '',
+      location_name: locations.find(l => l.location_id === sp.storage_location_id)?.location_name ||
+        locations.find(l => l.location_id === sp.storage_location_id)?.location_code || '',
+      model_available_count,
+      model_warning_qty,
+      is_low_stock
+    };
+  });
   res.json(enriched);
 });
 
@@ -184,11 +248,8 @@ router.post('/spare-parts', authenticate, requireMaterialManager, [
   body('spare_name').notEmpty().withMessage('备件名称不能为空'),
   validate
 ], (req, res) => {
-  const { spare_code, spare_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, status, description } = req.body;
+  const { spare_code, spare_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, status, description, model, warning_qty } = req.body;
   const db = readDB();
-  if ((db.spare_parts || []).find(s => s.spare_code === spare_code)) {
-    return res.status(400).json({ message: '备件编码已存在' });
-  }
   const warehouse = db.warehouses.find(w => w.warehouse_id === warehouse_id);
   const shelf = db.shelves.find(s => s.shelf_id === shelf_id);
   const location = db.storage_locations.find(l => l.location_id === storage_location_id);
@@ -210,6 +271,8 @@ router.post('/spare-parts', authenticate, requireMaterialManager, [
     stock_qty: 1,
     unit: unit || '件',
     status: status || 'available',
+    model: model || '',
+    warning_qty: warning_qty != null && warning_qty !== '' ? Number(warning_qty) : null,
     image_url: '', description: description || '',
     borrow_count: 0, created_at: nowCST()
   };
@@ -221,7 +284,7 @@ router.post('/spare-parts', authenticate, requireMaterialManager, [
 
 router.put('/spare-parts/:id', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
-  const { spare_code, spare_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, status, description, image_url } = req.body;
+  const { spare_code, spare_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, status, description, image_url, model, warning_qty } = req.body;
   const db = readDB();
   const idx = (db.spare_parts || []).findIndex(s => s.spare_id === id);
   if (idx === -1) return res.status(404).json({ message: '备件不存在' });
@@ -242,7 +305,11 @@ router.put('/spare-parts/:id', authenticate, requireMaterialManager, (req, res) 
     unit: unit !== undefined ? unit : db.spare_parts[idx].unit,
     status: status || db.spare_parts[idx].status,
     description: description !== undefined ? description : db.spare_parts[idx].description,
-    image_url: image_url !== undefined ? image_url : db.spare_parts[idx].image_url
+    image_url: image_url !== undefined ? image_url : db.spare_parts[idx].image_url,
+    model: model !== undefined ? (model || '') : db.spare_parts[idx].model,
+    warning_qty: warning_qty !== undefined
+      ? (warning_qty != null && warning_qty !== '' ? Number(warning_qty) : null)
+      : db.spare_parts[idx].warning_qty
   };
   writeDB(db);
   res.json(db.spare_parts[idx]);
@@ -507,6 +574,12 @@ router.get('/consumables/low-stock', authenticate, (req, res) => {
   res.json(list);
 });
 
+// 低库存备件（按型号聚合，纯数组、无信封，镜像消耗品 low-stock）
+router.get('/spare-parts/low-stock', authenticate, (req, res) => {
+  const db = readDB();
+  res.json(computeSpareLowStock(db.spare_parts || []));
+});
+
 router.post('/consumables/:id/upload-image', authenticate, requireMaterialManager, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: '请选择要上传的图片' });
@@ -757,3 +830,7 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
 });
 
 module.exports = router;
+
+// 为单元测试安全追加纯函数导出（无副作用、不影响路由注册，仅为便于单测调用）
+module.exports.computeSpareLowStock = computeSpareLowStock;
+module.exports.buildSpareModelMap = buildSpareModelMap;

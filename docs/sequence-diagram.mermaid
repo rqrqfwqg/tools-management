@@ -1,83 +1,58 @@
-%% 4.1 盘点全流程（P0-2）
-sequenceDiagram
-    actor U as 用户
-    participant MC as MaterialCenter
-    participant INV as Inventory.vue
-    participant IC as InventoryCreate
-    participant BAPI as BaseAPI
-    participant IAPI as MaterialAPI
-    participant IS as InventoryScan
-    participant IR as InventoryResult
-    U->>MC: 点击「盘点」tile
-    MC->>INV: router.push('/inventory')
-    INV->>INV: state='create'
-    IC->>BAPI: getWarehouses()
-    BAPI-->>IC: Warehouse[]
-    U->>IC: 选仓库 + 开始盘点
-    IC->>IAPI: createInventoryCheck({warehouse_id, operator})
-    IAPI-->>IC: InventoryCheck{items[]}  // 应盘清单(actual=0)
-    IC-->>INV: check 上抛
-    INV->>INV: state='scan' (应盘Y=items.length)
-    loop 逐项录入
-        U->>IS: 扫码/输编码 或 点列表项
-        IS->>IS: 前缀解析(BJ-/XH-)定位 item
-        U->>IS: 备件 switch 0/1 | 消耗品 digit
-        IS->>IAPI: scanInventoryCheck(check_id, code, actual_qty)
-        IAPI-->>IS: {item:{actual_qty,diff}}
-        IS-->>IS: 标记已录入, N++, Toast(P1-3)
-    end
-    U->>IS: 点击「完成盘库」
-    IS->>INV: 触发完成
-    INV->>IAPI: completeInventoryCheck(check_id)
-    IAPI-->>INV: {check{items[],diff}}  // 落账+调整流水
-    INV->>INV: state='result'
-    IR->>IR: 渲染 items, diff≠0 高亮(P1-1)
-    IR-->>U: 差异汇总 + 返回物料中心
+%% 增量需求：物料最低库存设置（备件补齐）—— 程序调用流程时序图
+%% 架构师：高见远（Bob）
 
-%% 4.2 独立领用全流程（P0-4，复用 ScanResultPopup）
+%% ============ 流程一：新增备件（带型号 + 最低库存）→ 保存 ============
 sequenceDiagram
-    actor U as 用户
-    participant MC as MaterialCenter
-    participant MD as MaterialDispense
-    participant API as MaterialAPI
-    participant POP as ScanResultPopup
-    U->>MC: 点「物料领用」或直接进 /material-dispense
-    MC->>MD: router.push('/material-dispense')
-    MD->>API: getSpareParts()/getConsumables() (按 tab)
-    API-->>MD: SparePart[]/Consumable[]
-    MD->>MD: 渲染 MaterialCard + 低库存标签(P1-2)
-    U->>MD: 搜索 + 点卡片
-    MD->>MD: openDetail(item) 设 selectedSpare/Consumable
-    MD->>POP: <ScanResultPopup :spare/:consumable :show="true"/>
-    alt 备件
-        U->>POP: 点「扫码领用(生成工单)」
-        POP->>API: borrowSpareByCode(code,{scene})
-        API-->>POP: {order_no}
-        POP-->>U: Toast 工单号
-    else 消耗品
-        U->>POP: 输数量 + 「确认直领」
-        POP->>API: takeConsumableByCode(code, qty)
-        API-->>POP: {message}
-        POP-->>U: Toast 成功
-    end
-    POP->>MD: @close → 关弹窗 + 可选刷新列表
+    actor Admin
+    participant FE as SparePartManagement.vue
+    participant API as createSparePart (api)
+    participant BE as POST /spare-parts
+    participant DB as db.json
+    Admin->>FE: 填写 名称/编码/型号/最低库存/...
+    FE->>API: createSparePart(form)
+    API->>BE: POST /spare-parts {spare_code, model, warning_qty, ...}
+    Note over BE: 仅校验 spare_code 必填<br/>(全局唯一校验已放开 Q3)
+    BE->>DB: push newSpare{model, warning_qty}
+    DB-->>BE: ok
+    BE-->>API: 200 newSpare
+    API-->>FE: newSpare
+    FE->>FE: load() 刷新列表
+    FE->>API: getSpareParts()
+    API->>BE: GET /spare-parts
+    BE->>BE: computeSpareLowStock(spareParts)
+    BE-->>API: enriched list (含 is_low_stock)
+    API-->>FE: list
+    FE->>FE: 渲染表格 + 低库存行高亮
 
-%% 4.3 出入库列表流程（P0-3 + P1-4，前端过滤）
+%% ============ 流程二：列表加载 → 后端算 is_low_stock → 前端高亮 ============
 sequenceDiagram
-    actor U as 用户
-    participant MC as MaterialCenter
-    participant SM as StockMovement
-    participant SF as StockFilter
-    participant API as MaterialAPI
-    participant SC as StockCell
-    U->>MC: 点击「出入库」tile
-    MC->>SM: router.push('/stock-movements')
-    SM->>API: getStockMovements({limit:200})
-    API-->>SM: {total, data: StockMovement[]}
-    SM->>SC: 每项渲染(中文映射 P1-4)
-    U->>SF: 选 入库/出库/盘盈/盘亏
-    SF->>SM: emitFilter(key)
-    SM->>SM: 客户端按 movement_type 过滤 data  // 后端无此过滤
-    SM->>SC: 重渲染过滤后列表
-    U->>SM: 下拉刷新
-    SM->>API: getStockMovements() 重新拉取
+    participant FE as SparePartManagement.vue
+    participant API as getSpareParts
+    participant BE as GET /spare-parts
+    participant LS as computeSpareLowStock
+    FE->>API: getSpareParts()
+    API->>BE: GET /spare-parts
+    BE->>BE: 读取全部 spare_parts
+    BE->>LS: computeSpareLowStock(all)
+    LS-->>BE: {spare_id:{model_available_count,model_warning_qty,is_low_stock}}
+    BE-->>API: enriched list
+    API-->>FE: list
+    FE->>FE: el-table :row-class-name<br/>row.is_low_stock ? 'low-stock' : ''
+    FE->>FE: 显示 型号/最低库存 列
+
+%% ============ 流程三：Dashboard → 分别调两类 low-stock → 合并计数 ============
+sequenceDiagram
+    participant FE as Dashboard.vue
+    participant API as api/index.ts
+    participant BEc as GET /consumables/low-stock
+    participant BEs as GET /spare-parts/low-stock
+    FE->>API: getConsumables()  // 既有
+    API->>BEc: GET /consumables/low-stock
+    BEc-->>API: consumable[] 低库存
+    API-->>FE: 前端过滤得 consumableLowCount
+    FE->>API: getLowStockSpares()  // 新增
+    API->>BEs: GET /spare-parts/low-stock
+    BEs-->>API: SpareLowStockModel[] 低库存型号
+    API-->>FE: spareLowCount = length
+    FE->>FE: 低库存预警 = consumableLowCount + spareLowCount
+    FE->>FE: 渲染「低库存预警」卡片
