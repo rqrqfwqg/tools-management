@@ -24,8 +24,8 @@ api.interceptors.response.use(
 )
 
 // Auth
-export const login = (phone: string, password: string) =>
-  api.post('/auth/login', { phone, password }).then(r => r.data)
+export const login = (phone: string) =>
+  api.post('/auth/login', { phone }).then(r => r.data)
 
 // Users
 export const getUsers = () => api.get('/users').then(r => r.data)

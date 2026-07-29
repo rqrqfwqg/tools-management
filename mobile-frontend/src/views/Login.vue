@@ -17,18 +17,7 @@
           left-icon="phone-o"
           autocomplete="tel"
         />
-        <van-field
-          v-model="password"
-          type="password"
-          placeholder="请输入密码"
-          :rules="[{ required: true, message: '请输入密码' }]"
-          left-icon="lock"
-          autocomplete="current-password"
-        />
       </van-cell-group>
-      <div style="margin: 8px 16px 0">
-        <van-checkbox v-model="rememberMe" shape="square">记住密码</van-checkbox>
-      </div>
       <div style="margin: 16px">
         <van-button round block type="primary" native-type="submit" :loading="loading">
           登录
@@ -50,8 +39,6 @@ const REMEMBER_KEY = 'saved_credentials'
 const router = useRouter()
 const authStore = useAuthStore()
 const phone = ref('')
-const password = ref('')
-const rememberMe = ref(false)
 const loading = ref(false)
 
 onMounted(() => {
@@ -60,8 +47,6 @@ onMounted(() => {
     if (saved) {
       const cred = JSON.parse(saved)
       phone.value = cred.phone || ''
-      password.value = cred.password || ''
-      rememberMe.value = true
     }
   } catch {
     // ignore
@@ -69,27 +54,20 @@ onMounted(() => {
 })
 
 async function handleLogin() {
-  if (!phone.value || !password.value) return
+  if (!phone.value) return
   loading.value = true
   try {
-    const res = await login(phone.value, password.value)
+    const res = await login(phone.value)
     authStore.setToken(res.access_token)
     authStore.setUser(res.user)
 
-    // 记住密码
-    if (rememberMe.value) {
-      localStorage.setItem(REMEMBER_KEY, JSON.stringify({
-        phone: phone.value,
-        password: password.value
-      }))
-    } else {
-      localStorage.removeItem(REMEMBER_KEY)
-    }
+    // 记住手机号，便于下次自动填充
+    localStorage.setItem(REMEMBER_KEY, JSON.stringify({ phone: phone.value }))
 
     showToast('登录成功')
     router.push('/dashboard')
   } catch (e: any) {
-    showToast(e.response?.data?.message || '登录失败，请检查手机号或密码')
+    showToast(e.response?.data?.message || '登录失败，请检查手机号')
   } finally {
     loading.value = false
   }

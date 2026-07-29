@@ -26,23 +26,24 @@ const validate = (req, res, next) => {
   next();
 };
 
-// 登录（支持 username/phone + form-urlencoded/JSON 双格式）
-router.post('/auth/login', loginLimiter, [
-  body('password').notEmpty().withMessage('密码不能为空'),
-  validate
-], (req, res) => {
-  const identifier = req.body.username || req.body.phone;
-  const { password } = req.body;
+// 登录（手机号免密直登，兼容 username；支持 form-urlencoded/JSON 双格式）
+router.post('/auth/login', loginLimiter, [validate], (req, res) => {
+  const identifier = req.body.phone || req.body.username;
 
   if (!identifier) {
-    return res.status(400).json({ message: '请填写用户名或手机号' });
+    return res.status(400).json({ message: '请填写手机号' });
   }
 
   const db = readDB();
   const user = db.users.find(u => u.phone === identifier || u.username === identifier);
 
-  if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ message: '用户名或密码错误' });
+  // 同手机号多账户歧义防护：避免登错人
+  if (db.users.filter(u => u.phone === identifier).length > 1) {
+    return res.status(403).json({ message: '该手机号关联多个账户，请联系管理员' });
+  }
+
+  if (!user) {
+    return res.status(401).json({ message: '用户名或手机号错误' });
   }
 
   if (!user.is_active) {

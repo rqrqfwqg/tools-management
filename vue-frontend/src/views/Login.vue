@@ -9,12 +9,6 @@
           <el-input v-model="form.phone" placeholder="手机号" prefix-icon="Iphone" maxlength="11" autocomplete="tel" />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" show-password autocomplete="current-password" />
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="rememberMe">记住密码</el-checkbox>
-        </el-form-item>
-        <el-form-item>
           <el-button type="primary" style="width:100%" @click="handleLogin" :loading="loading">登录</el-button>
         </el-form-item>
         <div style="color:red; font-size:12px; min-height:20px">{{ errorMsg }}</div>
@@ -34,9 +28,8 @@ const router = useRouter()
 const loading = ref(false)
 const errorMsg = ref('')
 const formRef = ref()
-const rememberMe = ref(false)
 
-const form = reactive({ phone: '', password: '' })
+const form = reactive({ phone: '' })
 
 onMounted(() => {
   try {
@@ -44,8 +37,6 @@ onMounted(() => {
     if (saved) {
       const cred = JSON.parse(saved)
       form.phone = cred.phone || ''
-      form.password = cred.password || ''
-      rememberMe.value = true
     }
   } catch {
     // ignore
@@ -56,8 +47,8 @@ const handleLogin = async () => {
   console.log('=== 登录按钮被点击 ===')
   errorMsg.value = ''
 
-  if (!form.phone || !form.password) {
-    errorMsg.value = '请输入手机号和密码'
+  if (!form.phone) {
+    errorMsg.value = '请输入手机号'
     return
   }
 
@@ -68,7 +59,7 @@ const handleLogin = async () => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: form.phone, password: form.password })
+      body: JSON.stringify({ phone: form.phone })
     })
 
     console.log('登录响应状态:', res.status)
@@ -86,15 +77,8 @@ const handleLogin = async () => {
       console.log('登录成功，保存 token')
       localStorage.setItem('token', data.access_token)
 
-      // 记住密码
-      if (rememberMe.value) {
-        localStorage.setItem(REMEMBER_KEY, JSON.stringify({
-          phone: form.phone,
-          password: form.password
-        }))
-      } else {
-        localStorage.removeItem(REMEMBER_KEY)
-      }
+      // 记住手机号，便于下次自动填充
+      localStorage.setItem(REMEMBER_KEY, JSON.stringify({ phone: form.phone }))
 
       ElMessage.success('登录成功')
       setTimeout(() => {
