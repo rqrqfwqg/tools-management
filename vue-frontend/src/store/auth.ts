@@ -1,21 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { login as apiLogin, getUserInfo } from '@/api'
+import { getUserInfo } from '@/api'
 import type { User } from '@/types'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(localStorage.getItem('token') || '')
   const user = ref<User | null>(null)
   const role = ref<string>('')
-
-  const login = async (username: string, password: string) => {
-    const res = await apiLogin(username, password)
-    token.value = res.access_token
-    localStorage.setItem('token', res.access_token)
-    // res.user 直接包含用户信息
-    user.value = res.user
-    role.value = res.user.role
-  }
 
   const fetchUserInfo = async () => {
     try {
@@ -40,5 +31,5 @@ export const useAuthStore = defineStore('auth', () => {
     return requiredRoles.includes(role.value)
   }
 
-  return { token, user, role, login, fetchUserInfo, logout, hasRole }
+  return { token, user, role, fetchUserInfo, logout, hasRole }
 })

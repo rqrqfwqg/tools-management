@@ -32,6 +32,12 @@ router.post('/users', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ message: '用户名已存在' });
   }
 
+  // 手机号唯一校验（可选但需唯一）
+  const phoneTrim = phone ? String(phone).trim() : '';
+  if (phoneTrim && db.users.some(u => (u.phone || '').trim() === phoneTrim)) {
+    return res.status(400).json({ message: '手机号已存在' });
+  }
+
   const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
   const newUser = {
     user_id: nextId(db.users, 'user_id'),
@@ -60,6 +66,11 @@ router.put('/users/:id', authenticate, requireAdmin, (req, res) => {
   const db = readDB();
   const idx = db.users.findIndex(u => u.user_id === userId);
   if (idx === -1) return res.status(404).json({ message: '用户不存在' });
+
+  const phoneTrim = phone ? String(phone).trim() : '';
+  if (phoneTrim && db.users.some(u => u.user_id !== userId && (u.phone || '').trim() === phoneTrim)) {
+    return res.status(400).json({ message: '手机号已存在' });
+  }
 
   const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
   db.users[idx] = {

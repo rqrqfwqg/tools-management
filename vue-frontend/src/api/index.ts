@@ -32,12 +32,6 @@ request.interceptors.response.use(
 )
 
 // Auth
-export const login = (username: string, password: string) => {
-  return request.post('/auth/login', `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-  }).then(r => r.data)
-}
-
 export const getUserInfo = () =>
   request.get('/auth/me').then(r => r.data)
 
@@ -241,6 +235,9 @@ export const uploadSpareImage = (id: number, formData: FormData) =>
   request.post(`/spare-parts/${id}/upload-image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data)
+// 低库存备件（按型号聚合，返回纯数组，元素含 model/available_count/warning_qty/spare_ids）
+export const getLowStockSpareParts = () =>
+  request.get('/spare-parts/low-stock').then(r => r.data)
 
 // 消耗品
 export const getConsumables = () =>
