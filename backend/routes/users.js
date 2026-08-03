@@ -19,7 +19,10 @@ router.get('/users', authenticate, requireAdmin, (req, res) => {
 
 // 创建用户
 router.post('/users', authenticate, requireAdmin, (req, res) => {
-  const { username, password, real_name, dept_id, role, is_active, phone } = req.body;
+  // 防御性加固：无论客户端是否误传 user_id，都显式剥离，强制后端自行生成自增 ID，
+  // 杜绝“写死 ID”或脏数据污染导致 user_id 变为 NaN/重复。
+  const { user_id, ...rest } = req.body;
+  const { username, password, real_name, dept_id, role, is_active, phone } = rest;
 
   if (!username?.trim()) return res.status(400).json({ message: '用户名不能为空' });
   if (!real_name?.trim()) return res.status(400).json({ message: '真实姓名不能为空' });
@@ -40,7 +43,7 @@ router.post('/users', authenticate, requireAdmin, (req, res) => {
 
   const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
   const newUser = {
-    user_id: nextId(db.users, 'user_id'),
+    user_id: Number(nextId(db.users, 'user_id')),
     username: username.trim(),
     password: bcrypt.hashSync(userPassword, 10),
     real_name, dept_id,

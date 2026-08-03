@@ -52,7 +52,7 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="tool_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="tool_code" label="编码" min-width="100" show-overflow-tooltip />
       <el-table-column prop="tool_name" label="名称" min-width="120" show-overflow-tooltip />
       <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />

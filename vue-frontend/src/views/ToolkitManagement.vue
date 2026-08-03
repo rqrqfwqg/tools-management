@@ -63,7 +63,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column prop="toolkit_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="toolkit_name" label="工具箱名称" show-overflow-tooltip />
       <el-table-column prop="toolkit_code" label="条形码编码" min-width="110">
         <template #default="{ row }">

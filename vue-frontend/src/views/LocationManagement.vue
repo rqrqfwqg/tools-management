@@ -16,7 +16,7 @@
       </el-select>
     </div>
     <el-table :data="filteredList" border style="margin-top:0">
-      <el-table-column prop="location_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="location_code" label="编码" min-width="80" show-overflow-tooltip />
       <el-table-column prop="location_name" label="名称" show-overflow-tooltip />
       <el-table-column label="所属货架" min-width="100" show-overflow-tooltip>

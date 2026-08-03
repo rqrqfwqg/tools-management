@@ -6,7 +6,7 @@
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
     </div>
     <el-table :data="filteredList" border style="margin-top:0">
-      <el-table-column prop="category_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="category_name" label="分类名称" show-overflow-tooltip />
       <el-table-column prop="category_code" label="分类编码" min-width="100" show-overflow-tooltip />
       <el-table-column prop="description" label="描述" show-overflow-tooltip />

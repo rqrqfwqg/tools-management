@@ -16,7 +16,7 @@
       </el-select>
     </div>
     <el-table :data="filteredList" border style="margin-top:0">
-      <el-table-column prop="user_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="username" label="用户名" show-overflow-tooltip />
       <el-table-column prop="real_name" label="姓名" show-overflow-tooltip />
       <el-table-column prop="dept_name" label="部门" show-overflow-tooltip />

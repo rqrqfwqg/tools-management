@@ -6,7 +6,7 @@
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
     </div>
     <el-table :data="filteredList" border style="margin-top:0">
-      <el-table-column prop="dept_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="dept_name" label="部门名称" show-overflow-tooltip />
       <el-table-column prop="dept_code" label="部门编码" min-width="100" show-overflow-tooltip />
       <el-table-column prop="description" label="描述" show-overflow-tooltip />

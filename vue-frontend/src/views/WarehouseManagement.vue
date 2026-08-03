@@ -14,7 +14,7 @@
       </el-select>
     </div>
     <el-table :data="filteredList" border style="margin-top:0">
-      <el-table-column prop="warehouse_id" label="ID" width="60" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="warehouse_code" label="编码" min-width="100" show-overflow-tooltip />
       <el-table-column prop="warehouse_name" label="名称" show-overflow-tooltip />
       <el-table-column prop="description" label="描述" show-overflow-tooltip />
