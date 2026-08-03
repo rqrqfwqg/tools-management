@@ -9,8 +9,11 @@
       <el-select v-model="categoryFilter" placeholder="全部分类" clearable style="width:140px">
         <el-option v-for="c in categories" :key="c.category_id" :label="c.category_name" :value="c.category_name" />
       </el-select>
-      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:140px">
+      <el-select v-model="warehouseFilter" placeholder="全部仓库" clearable style="width:140px" @change="onWarehouseFilterChange">
         <el-option v-for="w in warehouses" :key="w.warehouse_id" :label="w.warehouse_name" :value="w.warehouse_name" />
+      </el-select>
+      <el-select v-model="shelfFilter" placeholder="全部货架" clearable style="width:140px" @change="onShelfFilterChange">
+        <el-option v-for="s in shelfFilterOptions" :key="s.shelf_id" :label="s.shelf_name" :value="s.shelf_name" />
       </el-select>
       <el-button type="warning" plain @click="openDirectTakeDialog">扫码直领</el-button>
     </div>
@@ -157,6 +160,7 @@ const uploadRef = ref()
 const keyword = ref('')
 const categoryFilter = ref('')
 const warehouseFilter = ref('')
+const shelfFilter = ref('')
 const form = ref<any>({})
 
 // 扫码直领
@@ -171,6 +175,7 @@ const takeSubmitting = ref(false)
 const filteredList = computed(() => list.value.filter(t => {
   if (categoryFilter.value && t.category_name !== categoryFilter.value) return false
   if (warehouseFilter.value && t.warehouse_name !== warehouseFilter.value) return false
+  if (shelfFilter.value) { const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value); if (s && t.shelf_id !== s.shelf_id) return false }
   if (keyword.value) {
     const kw = keyword.value.toLowerCase()
     if (!t.consumable_name?.toLowerCase().includes(kw) && !t.consumable_code?.toLowerCase().includes(kw)) return false
@@ -180,6 +185,13 @@ const filteredList = computed(() => list.value.filter(t => {
 
 const filteredShelves = computed(() => !form.value.warehouse_id ? [] : shelves.value.filter(s => s.warehouse_id === form.value.warehouse_id))
 const filteredLocations = computed(() => !form.value.shelf_id ? [] : locations.value.filter(l => l.shelf_id === form.value.shelf_id))
+const shelfFilterOptions = computed(() => {
+  if (!warehouseFilter.value) return shelves.value
+  const w = warehouses.value.find(ww => ww.warehouse_name === warehouseFilter.value)
+  return w ? shelves.value.filter(s => s.warehouse_id === w.warehouse_id) : shelves.value
+})
+const onWarehouseFilterChange = () => { shelfFilter.value = '' }
+const onShelfFilterChange = () => {}
 const onWarehouseChange = () => { form.value.shelf_id = undefined; form.value.storage_location_id = undefined }
 const onShelfChange = () => { form.value.storage_location_id = undefined }
 
@@ -193,7 +205,7 @@ const statusText = (row: any) => {
 }
 
 const load = async () => { list.value = await getConsumables() }
-const loadCategories = async () => { categories.value = await getMaterialCategories() }
+const loadCategories = async () => { categories.value = await getMaterialCategories({ category_type: 'consumable' }) }
 const loadWarehouses = async () => { warehouses.value = await getWarehouses() }
 const loadShelves = async () => { shelves.value = await getShelves() }
 const loadLocations = async () => { locations.value = await getStorageLocations() }

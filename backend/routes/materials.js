@@ -150,7 +150,10 @@ function computeSpareLowStock(spareParts) {
 
 // ============ 物料分类 ============
 router.get('/material-categories', authenticate, (req, res) => {
-  res.json(readDB().material_categories || []);
+  let cats = readDB().material_categories || [];
+  const t = req.query.category_type;
+  if (t) cats = cats.filter(c => c.category_type === t || c.category_type === 'both');
+  res.json(cats);
 });
 
 router.post('/material-categories', authenticate, requireMaterialManager, [

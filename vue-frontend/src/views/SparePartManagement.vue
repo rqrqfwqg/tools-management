@@ -194,7 +194,7 @@ const onWarehouseChange = () => { form.value.shelf_id = undefined; form.value.st
 const onShelfChange = () => { form.value.storage_location_id = undefined }
 
 const load = async () => { list.value = await getSpareParts() }
-const loadCategories = async () => { categories.value = await getMaterialCategories() }
+const loadCategories = async () => { categories.value = await getMaterialCategories({ category_type: 'spare' }) }
 const loadWarehouses = async () => { warehouses.value = await getWarehouses() }
 const loadShelves = async () => { shelves.value = await getShelves() }
 const loadLocations = async () => { locations.value = await getStorageLocations() }

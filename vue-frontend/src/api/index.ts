@@ -209,8 +209,8 @@ export const getToolByCode = (code: string) =>
 // ============ 物料管理 v3.0.0 ============
 
 // 物料分类
-export const getMaterialCategories = () =>
-  request.get<MaterialCategory[]>('/material-categories').then(r => r.data)
+export const getMaterialCategories = (params?: { category_type?: string }) =>
+  request.get<MaterialCategory[]>('/material-categories', { params }).then(r => r.data)
 export const createMaterialCategory = (data: any) =>
   request.post('/material-categories', data).then(r => r.data)
 export const updateMaterialCategory = (id: number, data: any) =>
