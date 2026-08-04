@@ -34,8 +34,8 @@
       <el-table-column label="预警值" width="90">
         <template #default="{row}">{{ row.warning_qty != null ? row.warning_qty : '-' }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{row}"><el-tag :type="statusType(row)">{{ statusText(row) }}</el-tag></template>
+      <el-table-column label="库存状态" width="90">
+        <template #default="{row}"><el-tag :type="STOCK_STATUS_META[stockStatus(row)].tag">{{ STOCK_STATUS_META[stockStatus(row)].label }}</el-tag></template>
       </el-table-column>
       <el-table-column label="操作" min-width="280" fixed="right">
         <template #default="{row}">
@@ -144,6 +144,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Picture, UploadFilled, Download, Printer } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { stockStatus, STOCK_STATUS_META } from '@/utils/stock'
 
 const router = useRouter()
 const list = ref<any[]>([])
@@ -194,15 +195,6 @@ const onWarehouseFilterChange = () => { shelfFilter.value = '' }
 const onShelfFilterChange = () => {}
 const onWarehouseChange = () => { form.value.shelf_id = undefined; form.value.storage_location_id = undefined }
 const onShelfChange = () => { form.value.storage_location_id = undefined }
-
-const statusType = (row: any) => {
-  if (row.warning_qty != null && row.stock_qty <= row.warning_qty) return 'warning'
-  return 'success'
-}
-const statusText = (row: any) => {
-  if (row.warning_qty != null && row.stock_qty <= row.warning_qty) return '库存预警'
-  return '正常'
-}
 
 const load = async () => { list.value = await getConsumables() }
 const loadCategories = async () => { categories.value = await getMaterialCategories({ category_type: 'consumable' }) }
@@ -293,10 +285,11 @@ async function exportExcel() {
     const data = filteredList.value.map((t: any, i: number) => ({
       '序号': i + 1, '编码': t.consumable_code || '', '名称': t.consumable_name || '', '分类': t.category_name || '',
       '仓库': t.warehouse_name || '', '货架': t.shelf_name || '', '库位': t.location_name || '',
-      '当前库存': t.stock_qty || 0, '预警值': t.warning_qty != null ? t.warning_qty : '', '单位': t.unit || ''
+      '当前库存': t.stock_qty || 0, '预警值': t.warning_qty != null ? t.warning_qty : '', '单位': t.unit || '',
+      '库存状态': STOCK_STATUS_META[stockStatus(t)].label
     }))
     const ws = XLSX.utils.json_to_sheet(data)
-    ws['!cols'] = [{ wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 8 }]
+    ws['!cols'] = [{ wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 10 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '消耗品清单')
     const date = new Date().toISOString().slice(0, 10)

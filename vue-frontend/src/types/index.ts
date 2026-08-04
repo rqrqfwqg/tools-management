@@ -50,6 +50,17 @@ export interface Tool {
   image_url?: string
 }
 
+export interface ReturnRecord {
+  return_id: number
+  item_id?: number
+  spare_id?: number
+  tool_id?: number
+  return_qty: number
+  returned_at: string
+  returned_by?: string
+  remark?: string
+}
+
 export interface OrderItem {
   item_id: number
   tool_id?: number
@@ -62,6 +73,14 @@ export interface OrderItem {
   item_status: string
   return_time?: string
   condition_note?: string
+  // 物料数量语义（T01 新增）
+  borrow_qty?: number
+  returned_qty?: number
+  return_records?: ReturnRecord[]
+  last_use_qty?: number
+  checked?: boolean
+  checked_at?: string
+  checked_by?: string
 }
 
 export interface Order {
@@ -69,6 +88,9 @@ export interface Order {
   order_no: string
   borrower_name: string
   status: string
+  order_type?: 'tool' | 'material'
+  closed?: boolean
+  closed_at?: string
   scene?: string
   warehouse?: string
   require_approval: boolean
@@ -94,6 +116,11 @@ export interface SparePart {
   location_name?: string
   storage_location?: string
   stock_qty?: number
+  model?: string
+  warning_qty?: number | null
+  is_low_stock?: boolean
+  model_available_count?: number | null
+  model_warning_qty?: number | null
   unit?: string
   status: string
   image_url?: string

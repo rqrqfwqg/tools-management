@@ -73,6 +73,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '盘点' }
   },
   {
+    path: '/inventory/shelf',
+    name: 'InventoryShelf',
+    component: () => import('@/views/inventory/InventoryShelf.vue'),
+    meta: { title: '货架导航盘点' }
+  },
+  {
     path: '/stock-movements',
     name: 'StockMovements',
     component: () => import('@/views/StockMovement.vue'),

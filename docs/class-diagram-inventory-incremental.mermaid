@@ -1,0 +1,92 @@
+classDiagram
+  class StockStatus {
+    <<enum>>
+    normal
+    low
+    out
+  }
+  class stockStatus {
+    <<pure function>>
+    +stockStatus(item) StockStatus
+  }
+  class STOCK_STATUS_META {
+    <<const>>
+    +Record~StockStatus, {label, tag}~
+  }
+  class useInventoryEntered {
+    <<composable>>
+    +getEnteredCodes(checkId) Set~string~
+    +markEntered(checkId, code) void
+    +isItemEntered(checkId, item) boolean
+  }
+  class InventoryCheck {
+    +check_id number
+    +check_no string
+    +warehouse_id number
+    +warehouse_name string
+    +status 'pending'|'completed'
+    +operator_id number
+    +operator_name string
+    +items InventoryCheckItem[]
+    +started_at string
+    +completed_at string|null
+  }
+  class InventoryCheckItem {
+    +item_type 'spare'|'consumable'|'tool'
+    +item_id number
+    +item_code string
+    +item_name string
+    +system_qty number
+    +actual_qty number
+    +diff number
+    +entered boolean
+  }
+  class InventoryScannerPopup {
+    +props.show boolean
+    +emitCode(raw string)
+    +useScanner()
+  }
+  class Inventory {
+    +state 'create'|'scan'|'result'
+    +check InventoryCheck
+    +onResume(check) void
+    +onPause() void
+    +goShelf() void
+  }
+  class InventoryCreate {
+    +warehouses Warehouse[]
+    +pendingChecks InventoryCheck[]
+    +emitResume(check) void
+  }
+  class InventoryScan {
+    +items ScanItem[]
+    +onScannedCode(raw string) Promise~void~
+    +scrollToItem(item) void
+    +submitItem(item) Promise~void~
+    +emitPause() void
+    +emitShelf() void
+  }
+  class InventoryShelf {
+    +check InventoryCheck
+    +shelves Shelf[]
+    +locations StorageLocation[]
+    +locationIndex Map~number, InventoryCheckItem[]~
+    +emitBack() void
+  }
+  class ScanItem {
+    <<InventoryCheckItem 扩展>>
+    +actualInput string
+    +entered boolean
+  }
+
+  InventoryCheck "1" *-- "many" InventoryCheckItem
+  Inventory "1" o-- "1" InventoryCheck
+  Inventory --> InventoryCreate
+  Inventory --> InventoryScan
+  Inventory --> InventoryShelf
+  InventoryScan ..> InventoryScannerPopup : 复用扫码
+  InventoryScan ..> stockStatus : 三态展示
+  InventoryScan ..> useInventoryEntered : entered 标记
+  InventoryCreate ..> useInventoryEntered : 恢复进度 X/Y
+  InventoryShelf ..> useInventoryEntered : entered 标记
+  InventoryShelf ..> stockStatus : 三态展示

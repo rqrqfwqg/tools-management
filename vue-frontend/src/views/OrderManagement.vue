@@ -133,7 +133,7 @@
         <!-- 表头区域 -->
         <div style="text-align:center;margin-bottom:8mm;">
           <div style="font-size:10px;color:#666;margin-bottom:5px;">编号：{{ printOrder?.order_no || '________________' }}</div>
-          <h1 style="font-size:24px;font-weight:bold;margin:0 0 5px;letter-spacing:4px;">物料领用单</h1>
+          <h1 style="font-size:24px;font-weight:bold;margin:0 0 5px;letter-spacing:4px;">工具领用单</h1>
           <div style="border-bottom:2px solid #000;margin-top:8px;"></div>
         </div>
 
@@ -274,7 +274,8 @@ const getImageUrl = (path: string) => {
 }
 
 const load = async () => {
-  list.value = await getOrders()
+  // T04：工具领用单仅展示工具单（type=tool），物料单由 MaterialOrderManagement 管理
+  list.value = await getOrders({ type: 'tool' })
   // 提取仓库列表（去重）
   const whSet = new Set<string>()
   list.value.forEach((o: any) => { if (o.warehouse) whSet.add(o.warehouse) })
@@ -299,8 +300,8 @@ const load = async () => {
 
 const formatTime = (t: string) => t ? t.replace('T', ' ').slice(0, 19) : '-'
 
-const statusType = (s: string) => ({ pending: 'info', approved: 'success', rejected: 'danger', borrowed: 'warning', returned: 'success', cancelled: 'info' }[s] || 'info')
-const statusText = (s: string) => ({ pending: '待审核', approved: '已批准', rejected: '已拒绝', borrowed: '借出中', returned: '已归还', cancelled: '已取消' }[s] || s)
+const statusType = (s: string) => ({ pending: 'info', approved: 'success', rejected: 'danger', borrowed: 'warning', returned: 'success', cancelled: 'info', closed: 'info' }[s] || 'info')
+const statusText = (s: string) => ({ pending: '待审核', approved: '已批准', rejected: '已拒绝', borrowed: '借出中', returned: '已归还', cancelled: '已取消', closed: '已关闭' }[s] || s)
 const itemStatusType = (s: string) => ({ reserved: 'info', borrowed: 'warning', returned: 'success' }[s] || 'info')
 const itemStatusText = (s: string) => ({ reserved: '预留中', borrowed: '借出中', returned: '已归还' }[s] || s)
 

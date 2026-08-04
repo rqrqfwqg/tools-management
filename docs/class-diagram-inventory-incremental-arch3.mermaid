@@ -1,0 +1,121 @@
+classDiagram
+  direction LR
+  class StockStatus {
+    <<enum>>
+    normal
+    low
+    out
+  }
+  class stockStatus {
+    <<pure function>>
+    +stockStatus(item: StockStatusInput) StockStatus
+  }
+  class STOCK_STATUS_META {
+    <<const>>
+    +Record~StockStatus, {label, tag}~
+  }
+  class useInventoryEntered {
+    <<composable>>
+    +getEnteredCodes(checkId: number) Set~string~
+    +markEntered(checkId: number, code: string) void
+    +isItemEntered(checkId: number, item) boolean
+  }
+  class InventoryCheck {
+    +check_id number
+    +check_no string
+    +warehouse_id number
+    +warehouse_name string
+    +status 'pending'|'completed'
+    +operator_id number
+    +operator_name string
+    +items InventoryCheckItem[]
+    +started_at string
+    +completed_at string|null
+  }
+  class InventoryCheckItem {
+    +item_type 'spare'|'consumable'|'tool'
+    +item_id number
+    +item_code string
+    +item_name string
+    +system_qty number
+    +actual_qty number
+    +diff number
+    +entered boolean
+  }
+  class SparePart {
+    +spare_id number
+    +spare_code string
+    +spare_name string
+    +stock_qty number
+    +warning_qty number|null
+    +is_low_stock boolean
+    +shelf_id number
+    +storage_location_id number
+    +location_name string
+  }
+  class Consumable {
+    +consumable_id number
+    +consumable_code string
+    +consumable_name string
+    +stock_qty number
+    +warning_qty number|null
+    +shelf_id number
+    +storage_location_id number
+    +location_name string
+  }
+  class InventoryScannerPopup {
+    +props.show boolean
+    +emitCode(raw string)
+    +useScanner()
+  }
+  class Inventory {
+    +state 'create'|'scan'|'result'
+    +check InventoryCheck
+    +onMountedResume() void
+    +onResume(check) void
+    +onPause() void
+    +goShelf() void
+  }
+  class InventoryCreate {
+    +warehouses Warehouse[]
+    +pendingChecks InventoryCheck[]
+    +progressOf(check) string
+    +emitResume(check) void
+  }
+  class InventoryScan {
+    +items ScanItem[]
+    +onScannedCode(raw string) Promise~void~
+    +scrollToItem(code string) void
+    +prefillAndSubmit(item) Promise~void~
+    +submitItem(item) Promise~void~
+    +emitPause() void
+    +goShelf() void
+  }
+  class InventoryShelf {
+    +check InventoryCheck
+    +shelves Shelf[]
+    +locations StorageLocation[]
+    +locationIndex Map~number, InventoryCheckItem[]~
+    +onLocationSelect(loc) void
+    +submitItem(item) Promise~void~
+    +backToList() void
+  }
+  class ScanItem {
+    <<InventoryCheckItem 扩展>>
+    +actualInput string
+    +entered boolean
+  }
+
+  InventoryCheck "1" *-- "many" InventoryCheckItem
+  Inventory "1" o-- "1" InventoryCheck
+  Inventory --> InventoryCreate
+  Inventory --> InventoryScan
+  InventoryShelf ..> InventoryCheck : 读取+写入(scan接口)
+  InventoryScan ..> InventoryScannerPopup : 复用扫码
+  InventoryScan ..> stockStatus : 三态展示
+  InventoryScan ..> useInventoryEntered : entered 标记
+  InventoryCreate ..> useInventoryEntered : 恢复进度 X/Y
+  InventoryShelf ..> useInventoryEntered : entered 标记
+  InventoryShelf ..> stockStatus : 三态展示
+  SparePart ..> stockStatus : 输入
+  Consumable ..> stockStatus : 输入

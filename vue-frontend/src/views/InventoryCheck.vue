@@ -82,10 +82,10 @@
         <p>类型：<el-tag :type="scanMeta.type === 'spare' ? 'primary' : scanMeta.type === 'consumable' ? 'success' : ''">{{ itemTypeText(scanMeta.type) }}</el-tag></p>
         <p v-if="scanMeta.system_qty != null">系统数量：<strong>{{ scanMeta.system_qty }}</strong></p>
       </div>
-      <el-alert v-if="scanMeta && scanMeta.type === 'spare'" type="info" :closable="false" style="margin:8px 0" title="备件一物一码：在位填 1，缺失填 0" />
+      <el-alert v-if="scanMeta && scanMeta.type === 'spare'" type="info" :closable="false" style="margin:8px 0" title="备件实盘数量支持录入大于 1 的整数（与数量库存口径一致）" />
       <el-form label-width="90px" style="margin-top:8px">
         <el-form-item label="实盘数量">
-          <el-input-number v-model="scanQty" :min="0" :max="scanMeta && scanMeta.type === 'spare' ? 1 : 999999" />
+          <el-input-number v-model="scanQty" :min="0" :max="999999" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -153,15 +153,18 @@ const openScanConfirm = () => {
   if (!code) { ElMessage.warning('请输入编码'); return }
   if (!current.value || current.value.status !== 'pending') { ElMessage.warning('当前盘库单不可录入'); return }
   const type = detectPrefix(code)
-  if (!type) { ElMessage.error('无法识别的编码前缀（应为 BJ-/XH-/G-）'); return }
+  if (!type) { ElMessage.error('无法识别的编码前缀（应为 BJ-/XH-）'); return }
+  // 决策 #7：盘点范围仅备件+消耗品；扫到 G-(工具)/BX-(工具箱) → 不在本次盘点范围，不调接口不追加
+  if (type === 'tool') { ElMessage.warning('不在本次盘点范围'); return }
   const existing = (current.value.items || []).find((it: any) => it.item_code === code)
+  if (!existing) { ElMessage.warning('不在本次盘点范围'); return }
   scanMeta.value = {
     code,
     type,
     name: existing?.item_name || '',
     system_qty: existing?.system_qty != null ? existing.system_qty : null
   }
-  scanQty.value = type === 'spare' ? 1 : (existing?.system_qty != null ? existing.system_qty : 0)
+  scanQty.value = existing?.system_qty != null ? existing.system_qty : 0
   scanVisible.value = true
 }
 

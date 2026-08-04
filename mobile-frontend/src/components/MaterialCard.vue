@@ -14,7 +14,12 @@
     <div class="material-card-info">
       <div class="material-card-title">
         {{ current?.spare_name || current?.consumable_name || current?.name || '未命名' }}
-        <van-tag v-if="lowStock" type="warning" size="medium" class="status-in-line">库存预警</van-tag>
+        <van-tag
+          v-if="status !== 'normal'"
+          :type="STOCK_STATUS_META[status].tag"
+          size="medium"
+          class="status-in-line"
+        >{{ STOCK_STATUS_META[status].label }}</van-tag>
       </div>
       <div class="material-card-code">{{ current?.spare_code || current?.consumable_code || current?.code || '-' }}</div>
       <div class="material-card-desc">{{ stockText }}</div>
@@ -24,8 +29,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { stockStatus, STOCK_STATUS_META } from '@/utils/stock'
 
-// 通用物料卡片：备件 / 消耗品复用，含低库存预警标签。
+// 通用物料卡片：备件 / 消耗品复用，含库存三态标签（决策 #3 口径统一）。
 // 字段读取采用与 ScanResultPopup 一致的宽松方式（any），避免散落的字段适配逻辑。
 const props = defineProps<{
   spare?: any | null
@@ -45,18 +51,15 @@ const stockText = computed<string>(() => {
   return `${q} ${unit || ''}`.trim()
 })
 
-// 低库存判定：
-// - 备件(spare)：优先使用后端衍生字段 is_low_stock（按型号聚合判定），避免旧数据因无 warning_qty 而恒不触发
-// - 消耗品(consumable)：回退原逻辑 warning_qty 非空 且 库存 <= 预警值
-const lowStock = computed<boolean>(() => {
+// 库存三态：优先走共享口径 stockStatus()（备件用 is_low_stock 后端字段，消耗品回退 warning_qty）
+const status = computed(() => {
   const c = current.value
-  if (!c) return false
-  if (props.spare) {
-    if (c.is_low_stock != null) return !!c.is_low_stock
-    // 兜底：直接按该件预警值判断
-    return c.warning_qty != null && c.stock_qty != null && c.stock_qty <= c.warning_qty
-  }
-  return c.warning_qty != null && c.stock_qty != null && c.stock_qty <= c.warning_qty
+  if (!c) return 'normal'
+  return stockStatus({
+    stock_qty: c.stock_qty,
+    warning_qty: c.warning_qty,
+    is_low_stock: props.spare ? c.is_low_stock : undefined
+  })
 })
 </script>
 

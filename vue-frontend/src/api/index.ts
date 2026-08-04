@@ -161,8 +161,8 @@ export const deleteTool = (id: number) =>
   request.delete(`/tools/${id}`).then(r => r.data)
 
 // Orders
-export const getOrders = () =>
-  request.get<Order[]>('/orders').then(r => r.data)
+export const getOrders = (params?: { type?: string }) =>
+  request.get<Order[]>('/orders', { params }).then(r => r.data)
 
 export const createOrder = (data: any) =>
   request.post('/orders', data).then(r => r.data)
@@ -173,8 +173,11 @@ export const approveOrder = (id: number) =>
 export const rejectOrder = (id: number) =>
   request.post(`/orders/${id}/reject`).then(r => r.data)
 
-export const returnOrder = (id: number) =>
-  request.post(`/orders/${id}/return`).then(r => r.data)
+export const returnOrder = (id: number, returns?: Array<{ item_id?: number; spare_id?: number; return_qty: number }>) =>
+  request.post(`/orders/${id}/return`, returns ? { returns } : {}).then(r => r.data)
+
+export const closeOrder = (id: number) =>
+  request.post(`/orders/${id}/close`).then(r => r.data)
 
 export const cancelOrder = (id: number) =>
   request.post(`/orders/${id}/cancel`).then(r => r.data)
@@ -235,7 +238,7 @@ export const uploadSpareImage = (id: number, formData: FormData) =>
   request.post(`/spare-parts/${id}/upload-image`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data)
-// 低库存备件（按型号聚合，返回纯数组，元素含 model/available_count/warning_qty/spare_ids）
+// 低库存备件（按条比较 stock_qty<=warning_qty，与消耗品一致；返回富化后的备件记录数组，元素含 is_low_stock）
 export const getLowStockSpareParts = () =>
   request.get('/spare-parts/low-stock').then(r => r.data)
 

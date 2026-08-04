@@ -39,7 +39,12 @@
           <van-cell title="货架" :value="current.shelf_name || '未分配'" />
           <van-cell title="货位" :value="current.location_name || '未分配'" />
           <van-cell v-if="kind === 'consumable'" title="当前库存" :value="`${current.stock_qty} ${current.unit || ''}`" />
-          <van-cell v-if="kind === 'spare'" title="借出次数" :value="String(current.borrow_count || 0)" />
+          <van-cell v-if="kind === 'spare'" title="当前库存">
+            <template #value>
+              <span style="margin-right:8px">{{ current.stock_qty != null ? current.stock_qty : 0 }} 件</span>
+              <van-tag :type="STOCK_STATUS_META[stockStatus(current)].tag" size="medium">{{ STOCK_STATUS_META[stockStatus(current)].label }}</van-tag>
+            </template>
+          </van-cell>
         </van-cell-group>
       </div>
 
@@ -80,10 +85,10 @@
         >{{ statusLabel }}</van-button>
 
         <van-button
-          v-else-if="kind === 'spare' && current.status === 'available'"
+          v-else-if="kind === 'spare' && (current.stock_qty || 0) > 0"
           type="primary" block round :loading="acting"
           @click="handleBorrowSpare"
-        >扫码领用（生成工单）</van-button>
+        >领用</van-button>
         <van-button
           v-else-if="kind === 'spare'"
           type="default" block round disabled
@@ -112,6 +117,7 @@ import { showSuccessToast, showFailToast } from 'vant'
 import { useCartStore } from '@/store/cart'
 import { useScanHistoryStore } from '@/store/scanHistory'
 import type { TagType } from 'vant'
+import { stockStatus, STOCK_STATUS_META } from '@/utils/stock'
 import type { Tool } from '@/types'
 
 const props = defineProps<{
@@ -150,8 +156,9 @@ const codeLabel = computed(() => {
 const statusLabel = computed(() => {
   const c = current.value
   if (!c) return ''
-  if (kind.value === 'consumable') {
-    return (c.warning_qty != null && c.stock_qty <= c.warning_qty) ? '库存预警' : '正常'
+  // 备件/消耗品：统一走库存三态口径（决策 #3）
+  if (kind.value === 'spare' || kind.value === 'consumable') {
+    return STOCK_STATUS_META[stockStatus(c)].label
   }
   const map: Record<string, string> = {
     available: '可用', borrowed: '已借出', reserved: '已预留',
@@ -163,8 +170,8 @@ const statusLabel = computed(() => {
 const statusTagType = computed<TagType>(() => {
   const c = current.value
   if (!c) return 'default'
-  if (kind.value === 'consumable') {
-    return (c.warning_qty != null && c.stock_qty <= c.warning_qty) ? 'warning' : 'success'
+  if (kind.value === 'spare' || kind.value === 'consumable') {
+    return STOCK_STATUS_META[stockStatus(c)].tag
   }
   const map: Record<string, TagType> = {
     available: 'success', borrowed: 'danger', reserved: 'warning',

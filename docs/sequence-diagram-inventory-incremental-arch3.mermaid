@@ -1,0 +1,97 @@
+sequenceDiagram
+  autonumber
+  actor U as 用户(物料管理员)
+  participant IV as Inventory.vue(容器)
+  participant IC as InventoryCreate.vue
+  participant API as GET /inventory-checks
+  participant API2 as GET /inventory-checks/:id
+  participant IS as InventoryScan.vue
+  participant LS as useInventoryEntered
+
+  U->>IV: 进入「盘点」(/inventory)
+  IV->>IC: 渲染 create 态
+  IC->>API: getInventoryChecks()
+  API-->>IC: 全量 list（含 pending）
+  IC->>IC: 过滤 status==='pending' → pendingChecks
+  alt 存在 pending 单（P0-3 入口 + P1 详情增强）
+    IC->>LS: isItemEntered(checkId, item) 逐个计算已录入数
+    IC-->>U: 恢复卡片（单号/仓库/进度 X/Y/开始时间）
+    U->>IC: 点击「继续未完成盘库单」
+    IC->>IV: emit('resume', check)
+    IV->>API2: getInventoryCheckById(check_id)（取最新 items）
+    API2-->>IV: check（含 items）
+    IV->>IS: state='scan', 传入 check
+    IS->>LS: 恢复 entered（actual_qty!==system_qty 或 本地集合）
+    IS-->>U: 恢复录入页（已录入项带「已录入」标签）
+  else 无 pending
+    IC-->>U: 正常「选择仓库 → 开始盘点」建新单
+  end
+
+  Note over IS,U: 盘点中途暂停（决策 #5：复用 pending，零后端改动）
+  U->>IS: 点击「暂停并退出」（或导航栏返回）
+  IS->>IV: emit('pause')
+  IV->>IV: router.replace('/material-center')（DB 保留 pending 单，不调后端）
+
+sequenceDiagram
+  autonumber
+  actor U as 用户
+  participant IS as InventoryScan.vue
+  participant SP as InventoryScannerPopup.vue
+  participant API as POST /inventory-checks/:id/scan
+  participant LS as useInventoryEntered
+
+  U->>IS: 点击浮动扫码按钮
+  IS->>SP: show=true → useScanner 启动摄像头
+  SP-->>U: 扫码框（含手动输入降级）
+  SP->>IS: emit('code', raw)
+  IS->>IS: 门禁：前缀 BJ-/XH- 且 编码在 check.items ?
+  alt G- 前缀 或 编码不在 items（本仓库无此编码）
+    IS-->>U: toast「不在本次盘点范围」（决策 #7，不调接口、不追加明细）
+  else 命中
+    IS->>IS: 预填 item.actualInput = system_qty（可改），entered=true
+    IS->>API: scanInventoryCheck(id, code, system_qty)
+    API-->>IS: 返回 item（actual_qty/diff 更新）
+    IS->>LS: markEntered(checkId, item_code)（幂等）
+    IS->>IS: 定位 DOM(data-code) → 高亮 → scrollIntoView
+    IS-->>U: 提示「已录入：名称」，进度 X/Y 刷新
+    U->>IS: 修改实盘数（备件/消耗品均 digit）
+    IS->>API: blur → scanInventoryCheck(id, code, 新值)
+    API-->>IS: 覆盖 actual_qty/diff
+    IS->>LS: markEntered（幂等）
+    IS-->>U: 进度刷新
+  end
+
+sequenceDiagram
+  autonumber
+  actor U as 用户
+  participant IS as InventoryScan.vue
+  participant IV as Inventory.vue(容器)
+  participant SH as InventoryShelf.vue(新路由页)
+  participant API as 既有接口组
+  participant LS as useInventoryEntered
+
+  U->>IS: 点击「货架导航」
+  IS->>IV: router.push('/inventory/shelf?check_id=xx')
+  IV->>SH: 挂载 shelf 页
+  SH->>API: getInventoryCheckById(check_id)
+  API-->>SH: check（含 items）
+  par 并行加载
+    SH->>API: getSpareParts() / getConsumables()（富化 shelf/location）
+    API-->>SH: 物料列表
+    SH->>API: getShelves() / getLocations()
+    API-->>SH: 货架/货位
+  end
+  SH->>SH: 按 item_code 建立 locationIndex: Map<location_id, items[]>
+  SH-->>U: 仓库(固定=check.warehouse_name) → 货架 → 货位 逐级定位
+  U->>SH: 选择货位
+  SH-->>U: 货位下物料卡片列表（编码/名称/系统量/已录入标记/三态标签）
+  U->>SH: 逐项输入实盘数 digit
+  SH->>API: scanInventoryCheck(id, code, 实盘数)
+  API-->>SH: 覆盖 actual_qty/diff
+  SH->>LS: markEntered(checkId, code)
+  SH-->>U: 卡片标记「已录入」，进度刷新
+  U->>SH: 点击「返回逐项列表」
+  SH->>IV: router.replace('/inventory?resume_check_id=xx')
+  IV->>API: getInventoryCheckById(xx)（取最新 items）
+  API-->>IV: check
+  IV->>IS: state='scan'，同一盘库单继续

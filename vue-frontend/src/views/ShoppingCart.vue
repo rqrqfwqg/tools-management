@@ -1,16 +1,22 @@
 <template>
   <div>
-    <h2>购物车</h2>
-    <div v-if="cartStore.items.length === 0" style="text-align: center; padding: 50px; color: #999;">
+    <h2>工具购物车</h2>
+    <div v-if="cartStore.toolItems.length === 0" style="text-align: center; padding: 50px; color: #999;">
       <el-icon size="60"><ShoppingCart /></el-icon>
       <p style="margin-top: 20px; font-size: 16px;">购物车是空的</p>
-      <el-button type="primary" @click="$router.push('/tools')" style="margin-top: 20px;">
+      <template v-if="cartStore.materialItems.length > 0">
+        <p style="margin-top: 8px; font-size: 14px;">当前购物车为物料（备件）条目，请到物料领用购物车结算。</p>
+        <el-button type="primary" @click="$router.push('/material-cart')" style="margin-top: 20px;">
+          去物料领用购物车
+        </el-button>
+      </template>
+      <el-button v-else type="primary" @click="$router.push('/tools')" style="margin-top: 20px;">
         去添加工具
       </el-button>
     </div>
 
       <div v-else>
-      <el-table :data="cartStore.items" border style="margin-top: 15px;">
+      <el-table :data="cartStore.toolItems" border style="margin-top: 15px;">
         <el-table-column label="图片" width="100">
           <template #default="{row}">
             <el-image
@@ -88,7 +94,7 @@
 
       <div style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-radius: 8px;">
         <p style="font-weight: bold; margin-bottom: 10px;">领用工具清单：</p>
-        <div v-for="item in cartStore.items" :key="item.tool_id" style="margin: 5px 0; color: #666;">
+        <div v-for="item in cartStore.toolItems" :key="item.tool_id" style="margin: 5px 0; color: #666;">
           • {{ item.tool_name }} ({{ item.tool_code }})
         </div>
         <el-alert
@@ -152,12 +158,12 @@ const handleRemove = (toolId: string) => {
 }
 
 const handleCheckout = async () => {
-  if (cartStore.items.length === 0) {
+  if (cartStore.toolItems.length === 0) {
     ElMessage.warning('购物车是空的')
     return
   }
   // 根据工具属性自动填写仓库
-  const warehouses = [...new Set(cartStore.items.map(item => item.warehouse).filter(Boolean))] as string[]
+  const warehouses = [...new Set(cartStore.toolItems.map(item => item.warehouse).filter(Boolean))] as string[]
   checkoutForm.warehouse = warehouses.length === 1 ? warehouses[0] : (warehouses.join('、') || '')
   checkoutForm.scene = ''
   checkoutForm.expected_return = null
@@ -187,16 +193,15 @@ const handleSubmitOrder = async () => {
 
   submitting.value = true
   try {
-    const orderData = {
-      tool_ids: cartStore.items.filter(i => i.item_type !== 'spare').map(i => i.tool_id),
-      spare_ids: cartStore.items.filter(i => i.item_type === 'spare').map(i => i.spare_id),
+    // T04：工具购物车仅提交 tool_ids（物料单走 MaterialCartView）
+    const orderData = cartStore.buildOrderPayload({
       warehouse: checkoutForm.warehouse,
       scene: checkoutForm.scene,
       expected_return: checkoutForm.expected_return
         ? new Date(checkoutForm.expected_return).toISOString()
         : null,
       purpose: checkoutForm.purpose
-    }
+    })
 
     await createOrder(orderData)
     if (checkoutForm.needApproval) {

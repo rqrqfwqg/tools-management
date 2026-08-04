@@ -16,17 +16,17 @@
             <div class="tool-card-info">
               <div class="tool-card-title">
                 {{ c.consumable_name }}
-                <van-tag :type="lowStock(c) ? 'warning' : 'success'" size="medium" class="status-in-line">
-                  {{ lowStock(c) ? '库存预警' : '正常' }}
+                <van-tag :type="STOCK_STATUS_META[stockStatus(c)].tag" size="medium" class="status-in-line">
+                  {{ STOCK_STATUS_META[stockStatus(c)].label }}
                 </van-tag>
               </div>
               <div class="tool-card-code">{{ c.consumable_code }}</div>
               <div class="tool-card-desc">{{ cardDesc(c) }}</div>
-              <div class="tool-card-stock">库存：{{ c.stock_qty }} {{ c.unit || '' }}</div>
+              <div class="tool-card-stock">数量：{{ c.stock_qty }} {{ c.unit || '' }}</div>
             </div>
           </div>
           <div class="tool-card-right" @click.stop="openTake(c)">
-            <van-button size="normal" type="primary" class="tool-borrow-btn">直领</van-button>
+            <van-button size="normal" type="primary" class="tool-borrow-btn" :disabled="!(c.stock_qty > 0)">直领</van-button>
           </div>
         </div>
       </van-list>
@@ -54,7 +54,7 @@
           <van-cell title="描述" :label="detailConsumable.description || '无'" />
         </van-cell-group>
         <div class="detail-actions">
-          <van-button type="primary" block round :loading="taking" @click="handleTake(detailConsumable)">
+          <van-button type="primary" block round :loading="taking" :disabled="!(detailConsumable.stock_qty > 0)" @click="handleTake(detailConsumable)">
             扫码直领
           </van-button>
         </div>
@@ -96,6 +96,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getConsumables, getConsumableByCode, takeConsumableByCode } from '@/api/material'
 import { showSuccessToast, showFailToast, showToast, showLoadingToast, closeToast } from 'vant'
+import { stockStatus, STOCK_STATUS_META } from '@/utils/stock'
 
 const router = useRouter()
 const list = ref<any[]>([])
@@ -109,7 +110,6 @@ const takeQty = ref('1')
 const taking = ref(false)
 const active = ref(-1)
 
-const lowStock = (c: any) => c.warning_qty != null && c.stock_qty <= c.warning_qty
 const cardDesc = (c: any) => {
   const parts: string[] = []
   if (c.category_name) parts.push(c.category_name)

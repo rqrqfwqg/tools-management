@@ -59,10 +59,14 @@
           <el-menu-item index="/stock-movements">出入库流水</el-menu-item>
           <el-menu-item index="/inventory-checks">盘库管理</el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/orders">
-          <el-icon><Document /></el-icon>
-          <span>领用管理</span>
-        </el-menu-item>
+        <el-sub-menu index="orders-menu">
+          <template #title>
+            <el-icon><Document /></el-icon>
+            <span>领用管理</span>
+          </template>
+          <el-menu-item index="/orders">工具领用单</el-menu-item>
+          <el-menu-item index="/material-orders">物料领用单</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/roles" v-if="authStore.hasRole(['admin'])">
           <el-icon><Key /></el-icon>
           <span>角色管理</span>
@@ -74,7 +78,7 @@
         <span>当前用户：{{ authStore.user?.real_name || authStore.user?.username }}</span>
         <div style="display:flex;align-items:center;gap:15px">
           <el-badge :value="cartStore.totalItems" :hidden="cartStore.totalItems === 0" :max="99">
-            <el-button @click="$router.push('/cart')">
+            <el-button @click="goCart">
               <el-icon><ShoppingCart /></el-icon>
               购物车
             </el-button>
@@ -129,6 +133,11 @@ onMounted(() => {
 const handleLogout = () => {
   authStore.logout()
   router.push('/login')
+}
+
+// 购物车徽标：按购物车类型跳转（物料→物料领用购物车，工具→工具购物车）
+const goCart = () => {
+  router.push(cartStore.cartType === 'spare' ? '/material-cart' : '/cart')
 }
 
 const handleCommand = (command: string) => {

@@ -49,32 +49,32 @@ test('buildSpareModelMap：model===\'\' 的旧 lone 项被忽略', () => {
   assert.equal(map.size, 0, '空 model 不应进入聚合');
 });
 
-test('buildSpareModelMap：available_count 只数 status===\'available\'（borrowed/reserved 不计）', () => {
+test('buildSpareModelMap：available_count 只数 status===\'available\' 且按 stock_qty 求和（数量口径）', () => {
   const map = buildSpareModelMap([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: 5 },
-    { spare_id: 2, model: 'M1', status: 'borrowed', warning_qty: 5 },
-    { spare_id: 3, model: 'M1', status: 'reserved', warning_qty: 5 },
+    { spare_id: 1, model: 'M1', status: 'available', stock_qty: 3, warning_qty: 5 },
+    { spare_id: 2, model: 'M1', status: 'borrowed', stock_qty: 5, warning_qty: 5 },
+    { spare_id: 3, model: 'M1', status: 'reserved', stock_qty: 2, warning_qty: 5 },
   ]);
-  assert.equal(map.get('M1').available_count, 1, '仅 available 计入，borrowed/reserved 不计');
+  assert.equal(map.get('M1').available_count, 3, '仅 available 的 stock_qty 求和，borrowed/reserved 不计');
 });
 
 test('buildSpareModelMap：warning_qty 取同组首件值', () => {
   const map = buildSpareModelMap([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: 3 },
-    { spare_id: 2, model: 'M1', status: 'available', warning_qty: 99 },
+    { spare_id: 1, model: 'M1', status: 'available', stock_qty: 1, warning_qty: 3 },
+    { spare_id: 2, model: 'M1', status: 'available', stock_qty: 1, warning_qty: 99 },
   ]);
   assert.equal(map.get('M1').warning_qty, 3, '预警值应取同组首件值');
 });
 
-test('buildSpareModelMap：多件不同 model 分组正确', () => {
+test('buildSpareModelMap：多件不同 model 分组正确（数量求和）', () => {
   const map = buildSpareModelMap([
-    { spare_id: 1, model: 'A', status: 'available', warning_qty: 5 },
-    { spare_id: 2, model: 'A', status: 'available', warning_qty: 5 },
-    { spare_id: 3, model: 'B', status: 'available', warning_qty: 2 },
+    { spare_id: 1, model: 'A', status: 'available', stock_qty: 2, warning_qty: 5 },
+    { spare_id: 2, model: 'A', status: 'available', stock_qty: 3, warning_qty: 5 },
+    { spare_id: 3, model: 'B', status: 'available', stock_qty: 4, warning_qty: 2 },
   ]);
   assert.equal(map.size, 2, '应聚合出 2 个型号');
-  assert.equal(map.get('A').available_count, 2);
-  assert.equal(map.get('B').available_count, 1);
+  assert.equal(map.get('A').available_count, 5);
+  assert.equal(map.get('B').available_count, 4);
 });
 
 test('buildSpareModelMap：warning_qty=null 正确存为 null', () => {
@@ -87,65 +87,45 @@ test('buildSpareModelMap：空/ null 输入安全返回空 Map', () => {
   assert.equal(buildSpareModelMap([]).size, 0);
 });
 
-// ============ computeSpareLowStock 单测 ============
-test('computeSpareLowStock：同 model 2 件 available、warning 3 → 低库存', () => {
+// ============ computeSpareLowStock 单测（数量库存改造后：按条比较 stock_qty<=warning_qty） ============
+test('computeSpareLowStock：stock_qty(1) <= warning_qty(3) → 低库存（返回备件记录）', () => {
   const res = computeSpareLowStock([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: 3 },
-    { spare_id: 2, model: 'M1', status: 'available', warning_qty: 3 },
+    { spare_id: 1, model: 'M1', status: 'available', stock_qty: 1, warning_qty: 3 },
+    { spare_id: 2, model: 'M1', status: 'available', stock_qty: 5, warning_qty: 3 },
   ]);
-  assert.equal(res.length, 1);
-  assert.deepEqual(res[0], { model: 'M1', available_count: 2, warning_qty: 3, spare_ids: [1, 2] });
+  assert.equal(res.length, 1, '仅 stock_qty<=warning_qty 的条目标记低库存');
+  assert.equal(res[0].spare_id, 1);
 });
 
-test('computeSpareLowStock：1 件 available、warning 1 → 不低（相等不触发）', () => {
+test('computeSpareLowStock：stock_qty==warning_qty 相等 → 低库存（<=）', () => {
   const res = computeSpareLowStock([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: 1 },
+    { spare_id: 1, model: 'M1', status: 'available', stock_qty: 1, warning_qty: 1 },
   ]);
-  assert.equal(res.length, 0, 'available_count(1) 不 < warning_qty(1)');
+  assert.equal(res.length, 1, '1<=1 触发低库存（与消耗品一致）');
 });
 
-test('computeSpareLowStock：1 件 available、warning 2 → 低库存', () => {
+test('computeSpareLowStock：stock_qty(2) > warning_qty(1) → 不低', () => {
   const res = computeSpareLowStock([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: 2 },
+    { spare_id: 1, model: 'M1', status: 'available', stock_qty: 2, warning_qty: 1 },
   ]);
-  assert.equal(res.length, 1);
-  assert.deepEqual(res[0], { model: 'M1', available_count: 1, warning_qty: 2, spare_ids: [1] });
+  assert.equal(res.length, 0, '2<=1 不成立');
 });
 
-test('computeSpareLowStock：model===\'\' 的 lone 项被忽略（不误报低库存）', () => {
+test('computeSpareLowStock：多型号 — 仅真正低库存的条目进入结果', () => {
   const res = computeSpareLowStock([
-    { spare_id: 1, model: '', status: 'available', warning_qty: 0 },
+    { spare_id: 1, model: 'A', status: 'available', stock_qty: 1, warning_qty: 5 }, // 1<=5 → 低
+    { spare_id: 2, model: 'B', status: 'available', stock_qty: 6, warning_qty: 1 }, // 6<=1 → 不低
+    { spare_id: 3, model: 'B', status: 'available', stock_qty: 1, warning_qty: 1 }, // 1<=1 → 低
   ]);
-  assert.equal(res.length, 0, '空 model 不参与低库存判定');
-});
-
-test('computeSpareLowStock：多型号 — 仅真正低于预警的型号进入结果', () => {
-  const res = computeSpareLowStock([
-    { spare_id: 1, model: 'A', status: 'available', warning_qty: 5 }, // 1<5 → 低
-    { spare_id: 2, model: 'B', status: 'available', warning_qty: 1 }, // 1<1 → 不低
-    { spare_id: 3, model: 'B', status: 'available', warning_qty: 1 }, // 2<1 → 不低
-  ]);
-  assert.equal(res.length, 1, '仅型号 A 低库存');
-  assert.equal(res[0].model, 'A');
-  assert.deepEqual(res[0].spare_ids, [1]);
+  assert.equal(res.length, 2, '按条判定，与型号无关');
+  assert.deepEqual(res.map(r => r.spare_id).sort(), [1, 3]);
 });
 
 test('computeSpareLowStock：warning_qty=null 不预警', () => {
   const res = computeSpareLowStock([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: null },
+    { spare_id: 1, model: 'M1', status: 'available', stock_qty: 0, warning_qty: null },
   ]);
-  assert.equal(res.length, 0, '未设置最低库存的型号不预警');
-});
-
-test('computeSpareLowStock：spare_ids 正确收集 available 件 id（borrowed 排除）', () => {
-  const res = computeSpareLowStock([
-    { spare_id: 1, model: 'M1', status: 'available', warning_qty: 5 },
-    { spare_id: 2, model: 'M1', status: 'borrowed', warning_qty: 5 },
-    { spare_id: 3, model: 'M1', status: 'available', warning_qty: 5 },
-  ]);
-  assert.equal(res.length, 1);
-  assert.equal(res[0].available_count, 2, 'available_count 只数 available');
-  assert.deepEqual(res[0].spare_ids, [1, 3], 'spare_ids 仅含 available 件');
+  assert.equal(res.length, 0, '未设置最低库存的条目不预警');
 });
 
 test('computeSpareLowStock：空/ null 输入安全返回空数组', () => {

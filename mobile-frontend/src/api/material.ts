@@ -27,6 +27,8 @@ export const getStockMovements = (params?: any) => api.get('/stock-movements', {
 
 // 盘库
 export const getInventoryChecks = () => api.get('/inventory-checks').then(r => r.data)
+export const getInventoryCheckById = (id: number) =>
+  api.get(`/inventory-checks/${id}`).then(r => r.data)
 export const createInventoryCheck = (data: { warehouse_id: number; operator?: string }) =>
   api.post('/inventory-checks', data).then(r => r.data)
 export const scanInventoryCheck = (id: number, code: string, actual_qty?: number) =>

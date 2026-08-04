@@ -1,0 +1,94 @@
+classDiagram
+    class Order {
+        +number order_id
+        +string order_no
+        +string order_type
+        +string status
+        +string borrower_name
+        +string warehouse
+        +string scene
+        +string borrow_time
+        +string actual_return
+        +string closed_at
+        +OrderItem[] items
+    }
+    class OrderItem {
+        +number item_id
+        +string item_type
+        +number tool_id
+        +number spare_id
+        +string spare_code
+        +string spare_name
+        +number borrow_qty
+        +number returned_qty
+        +ReturnRecord[] return_records
+        +number last_use_qty
+        +string item_status
+        +boolean checked
+    }
+    class ReturnRecord {
+        +number qty
+        +string returned_at
+        +string returned_by
+    }
+    class SparePart {
+        +number spare_id
+        +string spare_code
+        +string spare_name
+        +number stock_qty
+        +number warning_qty
+        +string status
+    }
+    class StockMovement {
+        +number movement_id
+        +string item_type
+        +number qty
+        +string movement_type
+        +number order_id
+        +string remark
+        +string created_at
+    }
+    class OrderHelper {
+        <<service>>
+        +deriveOrderType(order) string
+        +normalizeOrderItems(order) void
+        +applyMaterialApprove(db, order, user) void
+        +applyMaterialReturn(db, order, returns, user) object
+        +applyMaterialClose(db, order, user) object
+        +getItemRemaining(item) number
+    }
+    class OrderRouter {
+        <<route>>
+        +GET /orders?type=
+        +POST /orders
+        +POST /orders/:id/approve
+        +POST /orders/:id/return
+        +POST /orders/:id/close
+        +POST /orders/:id/cancel
+    }
+    class CartStore {
+        <<pinia>>
+        +CartItem[] items
+        +computed toolItems
+        +computed materialItems
+        +computed cartType
+        +addToCart(item) boolean
+        +updateQuantity(key, qty, max) void
+        +buildOrderPayload() object
+    }
+    class CartItem {
+        +string item_type
+        +number quantity
+        +number stock_qty
+        +number spare_id
+        +number tool_id
+    }
+    Order "1" o-- "*" OrderItem
+    OrderItem "1" o-- "*" ReturnRecord
+    OrderRouter --> OrderHelper : 调用
+    OrderHelper ..> Order : 读写
+    OrderHelper ..> SparePart : 扣/回补 stock_qty
+    OrderHelper ..> StockMovement : 写流水
+    MaterialCartView --> CartStore
+    MaterialOrderManagement --> CartStore
+    CartStore o-- CartItem

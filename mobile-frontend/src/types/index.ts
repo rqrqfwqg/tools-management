@@ -114,6 +114,10 @@ export interface SparePart {
   image_url?: string
   description?: string
   borrow_count?: number
+  /** 预警值（后端 enrichSpare 已返回） */
+  warning_qty?: number | null
+  /** 单条低库存标记（后端 enrichSpare 已返回，按条比较 stock_qty<=warning_qty） */
+  is_low_stock?: boolean
   created_at?: string
 }
 
@@ -172,6 +176,8 @@ export interface InventoryCheckItem {
   system_qty: number
   actual_qty: number
   diff: number
+  /** 前端瞬时"已录入"标记（不持久化到后端，由 useInventoryEntered 统一维护） */
+  entered?: boolean
 }
 
 export interface InventoryCheck {

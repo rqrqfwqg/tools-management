@@ -16,12 +16,13 @@
             <div class="tool-card-info">
               <div class="tool-card-title">
                 {{ sp.spare_name }}
-                <van-tag :type="statusTagType(sp.status)" size="medium" class="status-in-line">
-                  {{ statusLabel(sp.status) }}
+                <van-tag :type="STOCK_STATUS_META[stockStatus(sp)].tag" size="medium" class="status-in-line">
+                  {{ STOCK_STATUS_META[stockStatus(sp)].label }}
                 </van-tag>
               </div>
               <div class="tool-card-code">{{ sp.spare_code }}</div>
               <div class="tool-card-desc">{{ cardDesc(sp) }}</div>
+              <div class="tool-card-stock">数量：{{ sp.stock_qty != null ? sp.stock_qty : 0 }} 件</div>
             </div>
           </div>
         </div>
@@ -44,9 +45,9 @@
           <van-cell title="分类" :value="detailSpare.category_name || '-'" />
           <van-cell title="型号" :value="detailSpare.model || '-'" />
           <van-cell title="最低库存" :value="detailSpare.warning_qty != null ? `${detailSpare.warning_qty} 件` : '未设置'" />
-          <van-cell title="状态">
+          <van-cell title="库存状态">
             <template #value>
-              <van-tag :type="statusTagType(detailSpare.status)" size="medium">{{ statusLabel(detailSpare.status) }}</van-tag>
+              <van-tag :type="STOCK_STATUS_META[stockStatus(detailSpare)].tag" size="medium">{{ STOCK_STATUS_META[stockStatus(detailSpare)].label }}</van-tag>
             </template>
           </van-cell>
           <van-cell title="仓库" :value="detailSpare.warehouse_name || '未分配'" />
@@ -56,14 +57,14 @@
         </van-cell-group>
         <div class="detail-actions">
           <van-button
-            v-if="detailSpare.status === 'available'"
+            v-if="(detailSpare.stock_qty || 0) > 0"
             type="primary" block round :loading="borrowing"
             @click="handleBorrow(detailSpare)"
           >
-            扫码领用（生成工单）
+            领用
           </van-button>
           <van-button v-else type="default" block round disabled>
-            {{ statusLabel(detailSpare.status) }}
+            缺货，无法领用
           </van-button>
         </div>
       </div>
@@ -89,6 +90,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getSpareParts, borrowSpareByCode } from '@/api/material'
 import { showSuccessToast, showFailToast, showToast } from 'vant'
+import { stockStatus, STOCK_STATUS_META } from '@/utils/stock'
 
 const router = useRouter()
 const list = ref<any[]>([])
@@ -99,14 +101,6 @@ const detailSpare = ref<any>(null)
 const borrowing = ref(false)
 const active = ref(-1)
 
-const statusLabel = (s: string) => {
-  const map: Record<string, string> = { available: '可用', borrowed: '借出', reserved: '预留', maintenance: '维修' }
-  return map[s] || s
-}
-const statusTagType = (s: string): any => {
-  const map: Record<string, string> = { available: 'success', borrowed: 'warning', reserved: 'primary', maintenance: 'danger' }
-  return map[s] || 'default'
-}
 const cardDesc = (sp: any) => {
   const parts: string[] = []
   if (sp.model) parts.push(`型号:${sp.model}`)
@@ -178,6 +172,7 @@ onMounted(async () => {
 .tool-card-title { font-size: 15px; font-weight: 600; color: #323233; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
 .tool-card-code { font-size: 12px; color: #969799; margin-top: 1px; }
 .tool-card-desc { font-size: 12px; color: #969799; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-card-stock { font-size: 12px; color: #1989fa; margin-top: 2px; }
 
 .detail-panel { padding: 16px 16px 32px; min-height: 50vh; }
 .detail-image-section { margin-bottom: 16px; }

@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    actor User as 领用人(PC)
+    participant MC as MaterialCartView.vue
+    participant CS as cart.ts
+    participant API as api/index.ts
+    participant OR as orders.js
+    participant H as orders-helpers.js
+    participant DB as db.json
+
+    User->>MC: 选择备件并设置数量 qty(≤stock_qty)
+    MC->>CS: addToCart(spare, qty)（单类型强制）
+    User->>MC: 填写用途/预计归还，提交
+    MC->>API: createOrder({ spare_items:[{spare_id,qty}], scene, purpose })
+    API->>OR: POST /api/orders
+    OR->>H: deriveOrderType→'material'; 校验混提/存在性/qty≤stock_qty
+    OR->>DB: 写入 order(order_type='material', items:[{borrow_qty,returned_qty:0,return_records:[]}])
+    OR->>DB: spare.status='reserved'
+    OR-->>MC: 201 order(pending)
+
+    User->>OR: 审批 POST /orders/:id/approve
+    OR->>H: applyMaterialApprove: 逐条校验 stock_qty≥borrow_qty
+    H->>DB: stock_qty-=borrow_qty; spare.status='borrowed'; borrow_count+1
+    H->>DB: writeMovement('out', -borrow_qty, '物料领用-借出扣减', order_id)
+    OR-->>User: {message:'已批准'}
+
+    User->>OR: POST /orders/:id/return {returns:[{item_id, return_qty}]}
+    OR->>H: applyMaterialReturn: 0≤return_qty≤剩余(borrow_qty-returned_qty)
+    H->>DB: stock_qty+=return_qty; item.returned_qty+=return_qty; return_records.push
+    H->>DB: writeMovement('in', +return_qty, '物料归还-回补', order_id)
+    alt 全部还清
+        H->>DB: order.status='returned'; actual_return=now
+    else 部分归还
+        H->>DB: order.status 保持 'borrowed'（条目 returned_qty 记进度）
+    end
+    OR-->>User: {message, order}
+
+    User->>OR: POST /orders/:id/close
+    OR->>H: applyMaterialClose: 历史单(order_type缺失)→400；否则逐条 last_use_qty=borrow_qty-returned_qty
+    H->>DB: writeMovement('out', -last_use_qty, '物料关闭-最后使用(仅统计)', order_id)
+    H->>DB: order.status='closed'; closed_at=now; item.item_status='closed'
+    OR-->>User: {message, summary}

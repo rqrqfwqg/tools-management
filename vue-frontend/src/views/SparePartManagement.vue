@@ -6,12 +6,6 @@
       <el-button type="success" @click="exportExcel"><el-icon style="margin-right:4px"><Download /></el-icon>导出Excel</el-button>
       <el-button @click="goBarcodeList"><el-icon style="margin-right:4px"><Printer /></el-icon>条形码清单</el-button>
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
-      <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:120px">
-        <el-option label="可用" value="available" />
-        <el-option label="预留" value="reserved" />
-        <el-option label="借出" value="borrowed" />
-        <el-option label="维修" value="maintenance" />
-      </el-select>
       <el-select v-model="categoryFilter" placeholder="全部分类" clearable style="width:120px">
         <el-option v-for="c in categories" :key="c.category_id" :label="c.category_name" :value="c.category_name" />
       </el-select>
@@ -35,6 +29,9 @@
       <el-table-column prop="spare_id" label="ID" width="60" />
       <el-table-column prop="spare_code" label="编码" min-width="100" show-overflow-tooltip />
       <el-table-column prop="spare_name" label="名称" min-width="120" show-overflow-tooltip />
+      <el-table-column label="数量" width="80">
+        <template #default="{row}"><span>{{ row.stock_qty != null ? row.stock_qty : '-' }}</span></template>
+      </el-table-column>
       <el-table-column prop="category_name" label="分类" min-width="80" show-overflow-tooltip />
       <el-table-column prop="model" label="型号" min-width="100" show-overflow-tooltip />
       <el-table-column label="最低库存" min-width="110">
@@ -43,18 +40,17 @@
           <el-tag v-if="row.is_low_stock" type="warning" size="small" style="margin-left:6px">库存预警</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{row}"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
+      <el-table-column label="库存状态" width="90">
+        <template #default="{row}"><el-tag :type="STOCK_STATUS_META[stockStatus(row)].tag">{{ STOCK_STATUS_META[stockStatus(row)].label }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="warehouse_name" label="仓库" min-width="80" show-overflow-tooltip />
       <el-table-column prop="location_name" label="货位" min-width="80" show-overflow-tooltip />
-      <el-table-column prop="borrow_count" label="借次" width="70" />
       <el-table-column label="操作" min-width="340" fixed="right">
         <template #default="{row}">
           <el-button size="small" @click="openDialog(row)">编辑</el-button>
           <el-button size="small" @click="openUploadDialog(row)" title="上传图片"><el-icon><Upload /></el-icon></el-button>
           <el-button size="small" @click="openBarcodeDialog(row)" title="生成条形码"><el-icon><Operation /></el-icon></el-button>
-          <el-button size="small" type="primary" @click="handleAddToCart(row)" :disabled="row.status !== 'available'">加入领用篮</el-button>
+          <el-button size="small" type="primary" @click="handleAddToCart(row)" :disabled="!(row.stock_qty > 0)">加入领用篮</el-button>
           <el-button size="small" type="danger" @click="handleDelete(row.spare_id)">删除</el-button>
         </template>
       </el-table-column>
@@ -86,6 +82,9 @@
         </el-form-item>
         <el-form-item label="型号"><el-input v-model="form.model" placeholder="如 iPhone-13（同型号备件可设最低库存）" /></el-form-item>
         <el-form-item label="单位"><el-input v-model="form.unit" placeholder="如 件" /></el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model="form.stock_qty" :min="1" :precision="0" :value-on-clear="1" style="width:100%" />
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width:100%">
             <el-option label="可用" value="available" />
@@ -144,6 +143,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Picture, UploadFilled, Download, Printer, Operation } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { useCartStore } from '@/store/cart'
+import { stockStatus, STOCK_STATUS_META } from '@/utils/stock'
 
 const router = useRouter()
 const list = ref<any[]>([])
@@ -155,7 +155,6 @@ const dialogVisible = ref(false)
 const uploadDialogVisible = ref(false)
 const currentSpare = ref<any>(null)
 const selectedFile = ref<File | null>(null)
-const statusFilter = ref('')
 const categoryFilter = ref('')
 const warehouseFilter = ref('')
 const shelfFilter = ref('')
@@ -166,7 +165,6 @@ const uploadRef = ref()
 const form = ref<any>({})
 
 const filteredList = computed(() => list.value.filter(t => {
-  if (statusFilter.value && t.status !== statusFilter.value) return false
   if (categoryFilter.value && t.category_name !== categoryFilter.value) return false
   if (warehouseFilter.value && t.warehouse_name !== warehouseFilter.value) return false
   if (shelfFilter.value) { const s = shelves.value.find(ss => ss.shelf_name === shelfFilter.value); if (s && t.shelf_id !== s.shelf_id) return false }
@@ -201,7 +199,7 @@ const loadLocations = async () => { locations.value = await getStorageLocations(
 
 const openDialog = (row?: any) => {
   if (row) form.value = { ...row }
-  else form.value = { status: 'available', unit: '件', model: '', warehouse_id: undefined, shelf_id: undefined, storage_location_id: undefined, description: '' }
+  else form.value = { status: 'available', unit: '件', model: '', stock_qty: 1, warehouse_id: undefined, shelf_id: undefined, storage_location_id: undefined, description: '' }
   dialogVisible.value = true
 }
 
@@ -233,9 +231,6 @@ const handleUpload = async () => {
     ElMessage.success('图片上传成功'); uploadDialogVisible.value = false; load()
   } catch (e: any) { ElMessage.error(e.response?.data?.message || '上传失败') } finally { uploading.value = false }
 }
-
-const statusType = (s: string) => ({ available: 'success', reserved: 'info', borrowed: 'warning', maintenance: 'danger' }[s] || 'info')
-const statusText = (s: string) => ({ available: '可用', reserved: '预留', borrowed: '借出', maintenance: '维修' }[s] || s)
 
 // 低库存行高亮 class（按后端 is_low_stock 衍生字段）
 const lowStockRowClass = ({ row }: any): string => (row.is_low_stock ? 'low-stock-row' : '')
@@ -274,10 +269,10 @@ async function exportExcel() {
     const data = filteredList.value.map((t: any, i: number) => ({
       '序号': i + 1, '编码': t.spare_code || '', '名称': t.spare_name || '', '分类': t.category_name || '',
       '仓库': t.warehouse_name || '', '货架': t.shelf_name || '', '货位': t.location_name || t.storage_location || '',
-      '状态': statusText(t.status), '借出次数': t.borrow_count || 0
+      '数量': t.stock_qty || 0, '最低库存': t.warning_qty != null ? t.warning_qty : '', '库存状态': STOCK_STATUS_META[stockStatus(t)].label
     }))
     const ws = XLSX.utils.json_to_sheet(data)
-    ws['!cols'] = [{ wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 10 }]
+    ws['!cols'] = [{ wch: 6 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 10 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '备件清单')
     const date = new Date().toISOString().slice(0, 10)

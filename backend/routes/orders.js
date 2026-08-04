@@ -1,9 +1,24 @@
 // 订单管理路由
+// v4.0.0：工具/物料领用单拆分（T02）
+//  - GET /orders 支持 ?type=tool|material 过滤（含历史推导）
+//  - POST /orders 拆单校验：spare_items:[{spare_id,qty}]（兼容旧 spare_ids=1），工具仅 tool_ids，混提 400
+//  - approve 物料单走 applyMaterialApprove（强校验库存→扣减→写流水）
+//  - return 物料单支持 returns:[{item_id|spare_id, return_qty}] 按量归还
+//  - 新增 POST /orders/:id/close 物料单关闭（终态）
+//  - cancel 修复：备件 status 一并恢复 available（既有 bug）
+//  - DELETE 允许 closed 状态
 const express = require('express');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId, nowCST } = require('./db');
 const { authenticate, requireAdmin, requireApprover } = require('../middleware/auth');
+const {
+  deriveOrderType,
+  normalizeOrderItems,
+  applyMaterialApprove,
+  applyMaterialReturn,
+  applyMaterialClose
+} = require('./orders-helpers');
 
 const router = express.Router();
 
@@ -15,14 +30,20 @@ const validate = (req, res, next) => {
   next();
 };
 
-// 获取订单列表
+// 获取订单列表（支持 ?type=tool|material 过滤，含历史推导）
 router.get('/orders', authenticate, (req, res) => {
   const db = readDB();
   const orders = db.orders || [];
-  // 为每个 item 补充 image_url（工具与备件分别取图）
-  const enriched = orders.map(o => ({
+  const typeFilter = req.query.type;
+  let list = orders;
+  if (typeFilter === 'tool' || typeFilter === 'material') {
+    list = orders.filter(o => deriveOrderType(o) === typeFilter);
+  }
+  // 为每个 item 补充 image_url（工具与备件分别取图），并归一化数量字段
+  const enriched = list.map(o => ({
     ...o,
-    items: (o.items || []).map(item => {
+    order_type: deriveOrderType(o),
+    items: normalizeOrderItems(o.items).map(item => {
       let imageUrl = '';
       if (item.item_type === 'spare') {
         imageUrl = (db.spare_parts || []).find(s => s.spare_id === item.spare_id)?.image_url || '';
@@ -39,17 +60,26 @@ router.get('/orders', authenticate, (req, res) => {
   res.json(enriched);
 });
 
-// 创建订单
+// 创建订单（工具单 / 物料单拆单）
 router.post('/orders', authenticate, [
   body('tool_ids').optional().isArray(),
   body('spare_ids').optional().isArray(),
+  body('spare_items').optional().isArray(),
   body('toolkit').optional().isString(),
   validate
 ], (req, res) => {
-  const { tool_ids, spare_ids, toolkit, warehouse, scene, expected_return, purpose } = req.body;
+  const { tool_ids, spare_ids, spare_items, toolkit, warehouse, scene, expected_return, purpose } = req.body;
   const db = readDB();
   const user = db.users.find(u => u.user_id === req.user.user_id);
   if (!user) return res.status(404).json({ message: '用户不存在' });
+
+  // ---- 拆单校验：工具与备件不能混提 ----
+  const hasTools = !!((tool_ids && tool_ids.length > 0) || toolkit);
+  const hasSpareItems = !!(spare_items && spare_items.length > 0);
+  const hasLegacySpareIds = !!(spare_ids && spare_ids.length > 0);
+  if (hasTools && (hasSpareItems || hasLegacySpareIds)) {
+    return res.status(400).json({ message: '工具与备件不能在同一订单中领用，请分别下单' });
+  }
 
   // 支持工具包批量领用：自动收集该包下所有可用工具
   let resolvedIds = tool_ids || [];
@@ -69,10 +99,33 @@ router.post('/orders', authenticate, [
     resolvedIds = [...new Set([...resolvedIds, ...kitIds])];
   }
 
-  // 解析备件（item_type='spare'）
-  const resolvedSpareIds = spare_ids || [];
-  const allResolved = [...resolvedIds, ...resolvedSpareIds];
-  if (allResolved.length === 0) return res.status(400).json({ message: '请选择至少要领用的工具或备件' });
+  // ---- 物料条目归一：spare_items:[{spare_id,qty}]，兼容旧 spare_ids（默认 qty=1） ----
+  const resolvedSpareItems = []; // [{ spare, qty }]
+  if (hasSpareItems) {
+    for (const si of spare_items) {
+      const spareId = Number(si.spare_id);
+      const qty = si.qty != null ? Number(si.qty) : 1;
+      if (!Number.isInteger(spareId) || spareId <= 0) return res.status(400).json({ message: '备件参数不合法' });
+      if (!Number.isInteger(qty) || qty < 1) return res.status(400).json({ message: '备件领用数量必须为正整数' });
+      const sp = (db.spare_parts || []).find(s => s.spare_id === spareId);
+      if (!sp) return res.status(400).json({ message: `备件ID ${spareId} 不存在` });
+      if (Number(sp.stock_qty) < qty) {
+        return res.status(400).json({ message: `备件「${sp.spare_name}」库存不足（需 ${qty}，现有 ${sp.stock_qty}）` });
+      }
+      resolvedSpareItems.push({ spare: sp, qty });
+    }
+  } else if (hasLegacySpareIds) {
+    for (const spareId of spare_ids) {
+      const sp = (db.spare_parts || []).find(s => s.spare_id === Number(spareId));
+      if (!sp) return res.status(400).json({ message: `备件ID ${spareId} 不存在` });
+      if (sp.status !== 'available') return res.status(400).json({ message: `备件${sp.spare_name} 当前状态为${sp.status}，不可领用` });
+      resolvedSpareItems.push({ spare: sp, qty: 1 });
+    }
+  }
+
+  if (resolvedIds.length === 0 && resolvedSpareItems.length === 0) {
+    return res.status(400).json({ message: '请选择至少要领用的工具或备件' });
+  }
 
   // 检查工具可用性
   const unavailableTools = [];
@@ -80,12 +133,6 @@ router.post('/orders', authenticate, [
     const tool = db.tools.find(t => t.tool_id === toolId);
     if (!tool) unavailableTools.push(`工具ID ${toolId} 不存在`);
     else if (tool.status !== 'available') unavailableTools.push(`${tool.tool_name} 当前状态为${tool.status}，不可领用`);
-  }
-  // 检查备件可用性
-  for (const spareId of resolvedSpareIds) {
-    const sp = (db.spare_parts || []).find(s => s.spare_id === spareId);
-    if (!sp) unavailableTools.push(`备件ID ${spareId} 不存在`);
-    else if (sp.status !== 'available') unavailableTools.push(`备件${sp.spare_name} 当前状态为${sp.status}，不可领用`);
   }
   if (unavailableTools.length > 0) {
     return res.status(400).json({ message: unavailableTools.join('；') });
@@ -120,14 +167,14 @@ router.post('/orders', authenticate, [
       item_status: 'reserved'
     });
   }
-  for (const spareId of resolvedSpareIds) {
-    const sp = (db.spare_parts || []).find(s => s.spare_id === spareId);
+  for (const { spare: sp, qty } of resolvedSpareItems) {
     const randomPart = crypto.randomBytes(3).readUIntBE(0, 3);
     items.push({
       item_id: (itemCounter++ << 12) | (randomPart & 0xFFF),
       item_type: 'spare',
-      spare_id: spareId, spare_code: sp.spare_code, spare_name: sp.spare_name,
-      item_status: 'reserved'
+      spare_id: sp.spare_id, spare_code: sp.spare_code, spare_name: sp.spare_name,
+      item_status: 'reserved',
+      borrow_qty: qty, returned_qty: 0, return_records: []
     });
   }
 
@@ -138,6 +185,7 @@ router.post('/orders', authenticate, [
     borrower_phone: user.phone || '',
     borrower_id: user.user_id,
     status: 'pending',
+    order_type: resolvedSpareItems.length > 0 ? 'material' : 'tool',
     warehouse: warehouse || '', scene: scene || '',
     borrow_time: nowCST(),
     expected_return: expected_return || null,
@@ -151,10 +199,7 @@ router.post('/orders', authenticate, [
     const toolIndex = db.tools.findIndex(t => t.tool_id === toolId);
     if (toolIndex > -1) db.tools[toolIndex].status = 'reserved';
   }
-  for (const spareId of resolvedSpareIds) {
-    const spIndex = (db.spare_parts || []).findIndex(s => s.spare_id === spareId);
-    if (spIndex > -1) db.spare_parts[spIndex].status = 'reserved';
-  }
+  // 备件：数量库存模型下不在创建时置 reserved（无在途占用计数），approve 时强校验扣减
 
   db.orders.push(newOrder);
   writeDB(db);
@@ -188,13 +233,21 @@ router.get('/orders/pending-alerts', authenticate, (req, res) => {
   });
 });
 
-// 批准订单
+// 批准订单（物料单走 applyMaterialApprove；工具单保持原逻辑）
 router.post('/orders/:id/approve', authenticate, requireApprover, (req, res) => {
   const orderId = parseInt(req.params.id);
   const db = readDB();
   const orderIndex = db.orders.findIndex(o => o.order_id === orderId);
   if (orderIndex === -1) return res.status(404).json({ message: '订单不存在' });
   if (db.orders[orderIndex].status !== 'pending') return res.status(400).json({ message: '只能批准待审核的订单' });
+
+  const order = db.orders[orderIndex];
+  if (deriveOrderType(order) === 'material') {
+    const result = applyMaterialApprove(db, order, req.user);
+    if (!result.ok) return res.status(400).json({ message: result.error });
+    writeDB(db);
+    return res.json({ message: '已批准', order });
+  }
 
   db.orders[orderIndex].status = 'borrowed';
   for (const item of db.orders[orderIndex].items) {
@@ -239,9 +292,10 @@ router.post('/orders/:id/reject', authenticate, requireApprover, (req, res) => {
   res.json({ message: '已拒绝' });
 });
 
-// 归还订单
+// 归还订单（物料单支持按量归还 returns:[{item_id|spare_id, return_qty}]，缺省=全还；工具单保持整单归还）
 router.post('/orders/:id/return', authenticate, (req, res) => {
   const orderId = parseInt(req.params.id);
+  const { returns } = req.body || {};
   const db = readDB();
   const orderIndex = db.orders.findIndex(o => o.order_id === orderId);
   if (orderIndex === -1) return res.status(404).json({ message: '订单不存在' });
@@ -252,7 +306,18 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
     return res.status(403).json({ message: '只有领用人、分队长、管理员或物料管理员才能归还' });
   }
 
-  // 借出中的工单必须完成现场清点才能归还
+  // 物料单：按量归还
+  if (deriveOrderType(order) === 'material') {
+    const result = applyMaterialReturn(db, order, req.user, returns);
+    if (!result.ok) return res.status(400).json({ message: result.error });
+    writeDB(db);
+    return res.json({
+      message: result.allReturned ? '已全部归还' : '已归还（部分归还，仍处于借出中）',
+      order
+    });
+  }
+
+  // 借出中的工单必须完成现场清点才能归还（工具单）
   if (order.status === 'borrowed') {
     const unchecked = order.items.filter(i => !i.checked);
     if (unchecked.length > 0) {
@@ -274,6 +339,28 @@ router.post('/orders/:id/return', authenticate, (req, res) => {
   db.orders[orderIndex].actual_return = nowCST();
   writeDB(db);
   res.json({ message: '已归还' });
+});
+
+// 关闭物料单（终态）：仅物料单、借出中/部分归还后可关；历史单 400
+router.post('/orders/:id/close', authenticate, (req, res) => {
+  const orderId = parseInt(req.params.id);
+  const db = readDB();
+  const orderIndex = db.orders.findIndex(o => o.order_id === orderId);
+  if (orderIndex === -1) return res.status(404).json({ message: '订单不存在' });
+
+  const order = db.orders[orderIndex];
+  if (deriveOrderType(order) !== 'material') return res.status(400).json({ message: '仅物料领用单支持关闭' });
+  if (order.status !== 'borrowed' && order.status !== 'approved') {
+    return res.status(400).json({ message: '仅借出中或部分归还的物料单可关闭' });
+  }
+  if (order.borrower_id !== req.user.user_id && req.user.role !== 'admin' && req.user.role !== 'team_leader' && req.user.role !== 'material_manager') {
+    return res.status(403).json({ message: '只有领用人、分队长、管理员或物料管理员才能关闭' });
+  }
+
+  const result = applyMaterialClose(db, order, req.user);
+  if (!result.ok) return res.status(400).json({ message: result.error });
+  writeDB(db);
+  res.json({ message: '已关闭', order: result.order, summary: result.summary });
 });
 
 // 获取清点进度
@@ -323,7 +410,7 @@ router.post('/orders/:id/checklist', authenticate, (req, res) => {
   });
 });
 
-// 取消订单
+// 取消订单（修复：备件 status 一并恢复 available）
 router.post('/orders/:id/cancel', authenticate, (req, res) => {
   const orderId = parseInt(req.params.id);
   const db = readDB();
@@ -335,8 +422,13 @@ router.post('/orders/:id/cancel', authenticate, (req, res) => {
   if (req.user.role !== 'admin' && order.borrower_id !== req.user.user_id) return res.status(403).json({ message: '只能取消自己的订单' });
 
   for (const item of order.items) {
-    const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
-    if (toolIndex > -1) db.tools[toolIndex].status = 'available';
+    if (item.item_type === 'spare') {
+      const spIndex = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+      if (spIndex > -1) db.spare_parts[spIndex].status = 'available';
+    } else {
+      const toolIndex = db.tools.findIndex(t => t.tool_id === item.tool_id);
+      if (toolIndex > -1) db.tools[toolIndex].status = 'available';
+    }
   }
   db.orders[orderIndex].status = 'cancelled';
   writeDB(db);
@@ -358,16 +450,21 @@ router.put('/orders/:id/status', authenticate, (req, res) => {
   if (status === 'approved') {
     if (order.status !== 'pending') return res.status(400).json({ message: '只能批准待审核的订单' });
     if (req.user.role !== 'admin' && req.user.role !== 'team_leader') return res.status(403).json({ message: '无审批权限' });
-    db.orders[idx].status = 'borrowed';
-    for (const item of db.orders[idx].items) {
-      if (item.item_type === 'spare') {
-        const ti = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
-        if (ti > -1) { db.spare_parts[ti].status = 'borrowed'; db.spare_parts[ti].borrow_count = (db.spare_parts[ti].borrow_count || 0) + 1; }
-      } else {
-        const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
-        if (ti > -1) { db.tools[ti].status = 'borrowed'; db.tools[ti].borrow_count = (db.tools[ti].borrow_count || 0) + 1; }
+    if (deriveOrderType(order) === 'material') {
+      const result = applyMaterialApprove(db, order, req.user);
+      if (!result.ok) return res.status(400).json({ message: result.error });
+    } else {
+      db.orders[idx].status = 'borrowed';
+      for (const item of db.orders[idx].items) {
+        if (item.item_type === 'spare') {
+          const ti = (db.spare_parts || []).findIndex(s => s.spare_id === item.spare_id);
+          if (ti > -1) { db.spare_parts[ti].status = 'borrowed'; db.spare_parts[ti].borrow_count = (db.spare_parts[ti].borrow_count || 0) + 1; }
+        } else {
+          const ti = db.tools.findIndex(t => t.tool_id === item.tool_id);
+          if (ti > -1) { db.tools[ti].status = 'borrowed'; db.tools[ti].borrow_count = (db.tools[ti].borrow_count || 0) + 1; }
+        }
+        item.item_status = 'borrowed';
       }
-      item.item_status = 'borrowed';
     }
   } else if (status === 'rejected') {
     if (order.status !== 'pending') return res.status(400).json({ message: '只能拒绝待审核的订单' });
@@ -408,7 +505,7 @@ router.delete('/orders/:id', authenticate, (req, res) => {
   if (orderIndex === -1) return res.status(404).json({ message: '订单不存在' });
 
   const order = db.orders[orderIndex];
-  if (!['returned', 'cancelled', 'rejected'].includes(order.status)) return res.status(400).json({ message: '只能删除已归还、已取消或已拒绝的订单' });
+  if (!['returned', 'cancelled', 'rejected', 'closed'].includes(order.status)) return res.status(400).json({ message: '只能删除已归还、已取消、已拒绝或已关闭的订单' });
   if (req.user.role !== 'admin' && order.borrower_id !== req.user.user_id) return res.status(403).json({ message: '只能删除自己的订单' });
 
   db.orders.splice(orderIndex, 1);
