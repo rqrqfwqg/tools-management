@@ -47,7 +47,7 @@
         <div v-if="filteredLocations.length === 0" class="group-empty">该货架下暂无货位</div>
       </van-cell-group>
 
-      <!-- 第三级：货位下物料卡片（逐项 digit 录入） -->
+      <!-- 第三级：货位下物料卡片（逐项步进器录入） -->
       <div v-if="selectedLocationId" class="location-items">
         <div v-if="currentLocationItems.length === 0" class="empty-state"><p>该货位下无应盘物料</p></div>
         <div
@@ -63,17 +63,20 @@
             </van-tag>
             <van-tag v-if="item.entered" type="success">已录入</van-tag>
           </div>
-          <div class="shelf-item-code">
-            {{ item.item_code }} · 系统账 {{ item.system_qty }}{{ item.unit ? ` ${item.unit}` : '' }}
+          <div class="shelf-item-code">{{ item.item_code }}</div>
+          <div class="shelf-item-stock">
+            现有库存：<b>{{ item.system_qty }}</b>{{ item.unit ? ` ${item.unit}` : '' }}
           </div>
           <div class="shelf-item-edit">
-            <van-field
+            <span class="stepper-label">实盘数量</span>
+            <!-- 步进器录入：默认=现有库存，加减/手输即提交（决策：值变化@change 提交，替代 blur） -->
+            <van-stepper
               v-model="item.actualInput"
-              type="digit"
-              label="实盘数量"
-              :border="false"
-              placeholder="请输入实数"
-              @blur="onInputBlur(item)"
+              :min="0"
+              :max="999999"
+              integer
+              :long-press="false"
+              @change="onStepperChange(item, $event)"
             />
           </div>
         </div>
@@ -93,8 +96,9 @@ import { isItemEntered, markEntered } from '@/composables/useInventoryEntered'
 import type { InventoryCheck, InventoryCheckItem } from '@/types'
 
 // 货架导航盘点页（P0-5）：仓库固定=盘库单仓库 → 货架 → 货位 逐级定位，
-// 货位下物料卡片逐项 digit 录入，结果经 scan 接口汇入同一盘库单。
-// 返回逐项列表用 router.replace('/inventory?resume_check_id=xx') 自动恢复 scan 态。
+// 货位下物料卡片逐项步进器录入，结果经 scan 接口汇入同一盘库单。
+// 返回逐项列表用 router.replace('/inventory?resume_check_id=xx') 自动恢复 scan 态；
+// 返回前先补齐未录入项（与 InventoryScan.finish 时机一致，防 complete 清零坑）。
 interface ShelfItem extends InventoryCheckItem {
   stock_qty?: number
   shelf_id?: number
@@ -105,7 +109,7 @@ interface ShelfItem extends InventoryCheckItem {
   warning_qty?: number | null
   is_low_stock?: boolean
   entered: boolean
-  actualInput: string
+  actualInput: number
 }
 
 const route = useRoute()
@@ -173,37 +177,56 @@ function selectLocation(id: number): void {
   selectedLocationId.value = id
 }
 
-function backToList(): void {
+/** 返回逐项列表：先补齐未录入项（实际=系统量，diff=0），再跳转；失败不阻塞、toast 汇总 */
+async function backToList(): Promise<void> {
+  const pending = items.value.filter((i) => !i.entered)
+  if (pending.length > 0) {
+    const results = await Promise.all(
+      pending.map((i) => submitItem(i, i.system_qty, { silent: true }))
+    )
+    const failed = results.filter((ok) => !ok).length
+    if (failed > 0) {
+      showFailToast(`${failed} 项补齐失败，请返回逐项列表后重试`)
+    }
+  }
   router.replace({ path: '/inventory', query: { resume_check_id: String(checkId.value) } })
 }
 
-function parseQty(v: string): number | null {
-  const s = v.trim()
-  if (s === '') return null
-  const n = parseFloat(s)
-  if (isNaN(n) || n < 0) return null
-  return Math.floor(n)
+/** 步进器数量归一：非法恢复原值，合法钳制到 [0, 999999] 整数 */
+function clampQty(v: number): number {
+  return Math.max(0, Math.min(999999, Math.floor(v)))
 }
 
-/** blur 提交：空白=未录入不提交；非法值恢复上次值 */
-async function onInputBlur(item: ShelfItem): Promise<void> {
-  if (item.actualInput.trim() === '') return
-  const n = parseQty(item.actualInput)
-  if (n == null) {
-    showFailToast('请输入有效数量')
-    item.actualInput = item.actual_qty !== 0 ? String(item.actual_qty) : ''
-    return
-  }
+/**
+ * 提交单个明细（调 scan 接口 + markEntered，幂等）。
+ * @returns true=成功 false=失败（失败已 toast，不抛出，避免阻断批量补齐）
+ */
+async function submitItem(item: ShelfItem, actual: number, opts: { silent?: boolean } = {}): Promise<boolean> {
   try {
-    const res = await scanInventoryCheck(checkId.value, item.item_code, n)
-    item.actual_qty = n
+    const res = await scanInventoryCheck(checkId.value, item.item_code, actual)
+    item.actual_qty = actual
     if (res?.item?.diff != null) item.diff = res.item.diff
     item.entered = true
     markEntered(checkId.value, item.item_code)
-    showSuccessToast(`已录入：${item.item_name}`)
+    if (!opts.silent) showSuccessToast(`已录入：${item.item_name}`)
+    return true
   } catch (err: any) {
     showFailToast(err?.response?.data?.message || err?.message || '录入失败')
+    return false
   }
+}
+
+/** 步进器值变化即提交：加减/手输均触发；静默提交避免每步 toast 轰炸，失败仍 toast */
+async function onStepperChange(item: ShelfItem, value: number | string): Promise<void> {
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    // 非法输入（如清空）恢复当前已录值，不提交
+    item.actualInput = item.actual_qty
+    return
+  }
+  const q = clampQty(n)
+  item.actualInput = q
+  await submitItem(item, q, { silent: true })
 }
 
 onMounted(async () => {
@@ -245,7 +268,7 @@ onMounted(async () => {
           warning_qty: meta.warning_qty != null ? meta.warning_qty : null,
           is_low_stock: !!meta.is_low_stock,
           entered,
-          actualInput: entered ? String(it.actual_qty) : ''
+          actualInput: entered ? it.actual_qty : it.system_qty
         } as ShelfItem
       })
   } catch (e: any) {
@@ -270,6 +293,15 @@ onMounted(async () => {
 .shelf-item-head { display: flex; align-items: center; gap: 8px; }
 .shelf-item-name { font-size: 15px; font-weight: 600; color: #323233; }
 .shelf-item-code { font-size: 12px; color: #969799; margin-top: 4px; }
-.shelf-item-edit { margin-top: 8px; }
+.shelf-item-stock {
+  margin-top: 6px; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 13px; color: #576b95; background: #f0f5ff; border-radius: 6px;
+  padding: 4px 10px; font-weight: 500;
+}
+.shelf-item-stock b { font-size: 16px; color: #1989fa; font-weight: 600; }
+.shelf-item-edit {
+  margin-top: 10px; display: flex; align-items: center; justify-content: space-between;
+}
+.stepper-label { font-size: 13px; color: #646566; font-weight: 500; }
 .empty-state { text-align: center; padding: 40px; color: #999; }
 </style>

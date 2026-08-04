@@ -31,16 +31,18 @@
           </van-tag>
           <van-tag v-if="item.entered" type="success">已录入</van-tag>
         </div>
-        <div class="scan-item-code">{{ item.item_code }} · 系统账 {{ item.system_qty }}</div>
+        <div class="scan-item-code">{{ item.item_code }}</div>
+        <div class="scan-item-stock">现有库存：<b>{{ item.system_qty }}</b></div>
         <div class="scan-item-edit">
-          <!-- 备件/消耗品统一 digit 实盘数量录入（决策 #6：备件允许 >1） -->
-          <van-field
+          <span class="stepper-label">实盘数量</span>
+          <!-- 步进器录入：默认=现有库存，加减/手输即提交（决策：值变化@change 提交，替代 blur） -->
+          <van-stepper
             v-model="item.actualInput"
-            type="digit"
-            label="实盘数量"
-            :border="false"
-            placeholder="请输入实数"
-            @blur="onInputBlur(item)"
+            :min="0"
+            :max="999999"
+            integer
+            :long-press="false"
+            @change="onStepperChange(item, $event)"
           />
         </div>
       </div>
@@ -69,11 +71,11 @@ import { isItemEntered, markEntered } from '@/composables/useInventoryEntered'
 import InventoryScannerPopup from '@/components/InventoryScannerPopup.vue'
 import type { InventoryCheck, InventoryCheckItem } from '@/types'
 
-// 态2：以 items 为应盘清单逐项录入 actual_qty；备件/消耗品均 digit 实盘输入。
-// 支持扫码命中预填 + 定位高亮 + blur 提交覆盖；暂停复用 pending 状态（决策 #5）。
+// 态2：以 items 为应盘清单逐项录入 actual_qty；备件/消耗品均步进器实盘输入。
+// 支持扫码命中预填 + 定位高亮 + @change 提交覆盖；暂停复用 pending 状态（决策 #5）。
 interface ScanItem extends InventoryCheckItem {
   entered: boolean
-  actualInput: string
+  actualInput: number
 }
 
 const props = defineProps<{
@@ -112,23 +114,20 @@ const filteredItems = computed(() => {
 
 onMounted(() => {
   // 恢复 entered：actual_qty!==system_qty 或本地集合有录入痕迹（幂等）
+  // 步进器默认值：已录入项显示实际已录值 actual_qty；未录入项默认=现有库存 system_qty（账实相符无需操作）
   items.value = (props.check.items || []).map((i: InventoryCheckItem) => {
     const entered = isItemEntered(checkId.value, i)
     return {
       ...i,
       entered,
-      actualInput: entered ? String(i.actual_qty) : ''
+      actualInput: entered ? i.actual_qty : i.system_qty
     }
   })
 })
 
-/** 解析 digit 输入：空白返回 null（不提交），非法返回 null */
-function parseQty(v: string): number | null {
-  const s = v.trim()
-  if (s === '') return null
-  const n = parseFloat(s)
-  if (isNaN(n) || n < 0) return null
-  return Math.floor(n)
+/** 步进器数量归一：非法恢复原值，合法钳制到 [0, 999999] 整数 */
+function clampQty(v: number): number {
+  return Math.max(0, Math.min(999999, Math.floor(v)))
 }
 
 /** 编码前缀门禁（决策 #7）：仅 BJ-/XH- 属盘点范围，G-/BX-/未知一律拦截 */
@@ -139,7 +138,7 @@ function detectPrefix(code: string): 'spare' | 'consumable' | 'tool' | '' {
   return ''
 }
 
-/** 扫码命中处理：预填 system_qty（可改）→ 提交 → markEntered → 定位高亮滚动 */
+/** 扫码命中处理：预填 system_qty（与步进器默认一致）→ 提交 → markEntered → 定位高亮滚动 */
 async function onScannedCode(raw: string): Promise<void> {
   const code = raw.trim()
   if (!code) return
@@ -153,36 +152,42 @@ async function onScannedCode(raw: string): Promise<void> {
     showFailToast('不在本次盘点范围')
     return
   }
-  // 预填系统量（可改）；扫码视为"确认以系统量为准"，用户可修改后 blur 再次提交覆盖
-  target.actualInput = String(target.system_qty)
+  // 扫码视为"确认以系统量为准"（可再改步进器覆盖）；预填与步进器默认值一致
+  target.actualInput = target.system_qty
   await submitItem(target, target.system_qty)
   scrollToItem(code)
 }
 
-/** 提交单个明细（调 scan 接口 + markEntered，幂等） */
-async function submitItem(item: ScanItem, actual: number): Promise<void> {
+/**
+ * 提交单个明细（调 scan 接口 + markEntered，幂等）。
+ * @returns true=成功 false=失败（失败已 toast，不抛出，避免阻断批量补齐）
+ */
+async function submitItem(item: ScanItem, actual: number, opts: { silent?: boolean } = {}): Promise<boolean> {
   try {
     const res = await scanInventoryCheck(checkId.value, item.item_code, actual)
     item.actual_qty = actual
     if (res?.item?.diff != null) item.diff = res.item.diff
     item.entered = true
     markEntered(checkId.value, item.item_code)
-    showSuccessToast(`已录入：${item.item_name}`)
+    if (!opts.silent) showSuccessToast(`已录入：${item.item_name}`)
+    return true
   } catch (err: any) {
     showFailToast(err?.response?.data?.message || err?.message || '录入失败')
+    return false
   }
 }
 
-/** blur 提交：空白=未录入不提交；非法值恢复上次值 */
-async function onInputBlur(item: ScanItem): Promise<void> {
-  if (item.actualInput.trim() === '') return
-  const n = parseQty(item.actualInput)
-  if (n == null) {
-    showFailToast('请输入有效数量')
-    item.actualInput = item.actual_qty !== 0 ? String(item.actual_qty) : ''
+/** 步进器值变化即提交：加减/手输均触发；静默提交避免每步 toast 轰炸，失败仍 toast */
+async function onStepperChange(item: ScanItem, value: number | string): Promise<void> {
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    // 非法输入（如清空）恢复当前已录值，不提交
+    item.actualInput = item.actual_qty
     return
   }
-  await submitItem(item, n)
+  const q = clampQty(n)
+  item.actualInput = q
+  await submitItem(item, q, { silent: true })
 }
 
 /** 定位 DOM(data-code) → 高亮 → scrollIntoView */
@@ -201,8 +206,29 @@ function onScannerClosed(): void {
   // 弹窗关闭后无需额外处理；若需恢复扫码由弹窗内部管理
 }
 
-function finish(): void {
-  emit('complete', props.check)
+/**
+ * 完成盘库：先把未录入项按 system_qty 批量提交（实际=系统量，diff=0，账实相符），
+ * 再进入 complete 流程，避免后端将未扫描项判为全亏清零（历史坑）。
+ * 失败项不阻塞完成，toast 汇总失败数。
+ */
+async function finish(): Promise<void> {
+  if (finishing.value) return
+  finishing.value = true
+  try {
+    const pending = items.value.filter((i) => !i.entered)
+    if (pending.length > 0) {
+      const results = await Promise.all(
+        pending.map((i) => submitItem(i, i.system_qty, { silent: true }))
+      )
+      const failed = results.filter((ok) => !ok).length
+      if (failed > 0) {
+        showFailToast(`${failed} 项补齐失败，请检查网络后重试`)
+      }
+    }
+    emit('complete', props.check)
+  } finally {
+    finishing.value = false
+  }
 }
 
 function onRefresh(): void {
@@ -226,7 +252,16 @@ function onRefresh(): void {
 .scan-item-head { display: flex; align-items: center; gap: 8px; }
 .scan-item-name { font-size: 15px; font-weight: 600; color: #323233; }
 .scan-item-code { font-size: 12px; color: #969799; margin-top: 4px; }
-.scan-item-edit { margin-top: 8px; }
+.scan-item-stock {
+  margin-top: 6px; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 13px; color: #576b95; background: #f0f5ff; border-radius: 6px;
+  padding: 4px 10px; font-weight: 500;
+}
+.scan-item-stock b { font-size: 16px; color: #1989fa; font-weight: 600; }
+.scan-item-edit {
+  margin-top: 10px; display: flex; align-items: center; justify-content: space-between;
+}
+.stepper-label { font-size: 13px; color: #646566; font-weight: 500; }
 .scan-float {
   position: fixed; right: 16px; bottom: 70px; width: 56px; height: 56px;
   background: #07c160; border-radius: 50%; display: flex; align-items: center; justify-content: center;
