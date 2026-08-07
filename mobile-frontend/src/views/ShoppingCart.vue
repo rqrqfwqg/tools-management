@@ -64,7 +64,6 @@ const cartStore = useCartStore()
 const authStore = useAuthStore()
 
 const submitting = ref(false)
-const needApproval = ref(true)
 
 async function checkout() {
   if (cartStore.items.length === 0) {

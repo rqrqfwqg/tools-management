@@ -42,7 +42,7 @@ function initDB() {
         { role_id: 4, role_name: '物料管理员', role_code: 'material_manager', description: '管理仓库、工具及工具类型', is_system: true, permissions: { approve_orders: false, manage_tools: true, manage_warehouses: true, manage_users: false, manage_categories: true } }
       ],
       warehouses: [
-        { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, is_restricted: true, dept_id: null }
+        { warehouse_id: 1, warehouse_name: '主仓库', warehouse_code: 'WH001', description: '主要工器具存放仓库', is_active: true, dept_id: null }
       ],
       shelves: [
         { shelf_id: 1, warehouse_id: 1, shelf_name: 'A区', shelf_code: 'A', description: 'A区货架', is_active: true },
@@ -120,6 +120,14 @@ function migrateDB() {
       adminUser.role_name = '管理员';
       changed = true;
     }
+  }
+  // 2.5 给已有用户幂等补微信字段（微信小程序登录 v3.1.0，旧库启动不报错）
+  if (db.users && Array.isArray(db.users)) {
+    db.users.forEach(u => {
+      if (u.wx_openid === undefined || u.wx_openid === null) { u.wx_openid = ''; changed = true; }
+      if (u.wx_nickname === undefined || u.wx_nickname === null) { u.wx_nickname = ''; changed = true; }
+      if (u.wx_avatar === undefined || u.wx_avatar === null) { u.wx_avatar = ''; changed = true; }
+    });
   }
   // 3. 给已有 toolkits 补 toolkit_code（格式 BX-{toolkit_id}）
   if (db.toolkits && Array.isArray(db.toolkits)) {

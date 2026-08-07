@@ -1,0 +1,217 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/Login",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/dashboard/Dashboard",
+      "style": {
+        "navigationBarTitleText": "首页"
+      }
+    },
+    {
+      "path": "pages/tools/ToolManagement",
+      "style": {
+        "navigationBarTitleText": "工器具"
+      }
+    },
+    {
+      "path": "pages/material/MaterialCenter",
+      "style": {
+        "navigationBarTitleText": "物料中心"
+      }
+    },
+    {
+      "path": "pages/orders/OrderManagement",
+      "style": {
+        "navigationBarTitleText": "领用工单"
+      }
+    },
+    {
+      "path": "pages/profile/Profile",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/scan/ScanTool",
+      "style": {
+        "navigationBarTitleText": "扫码"
+      }
+    },
+    {
+      "path": "pages/cart/ShoppingCart",
+      "style": {
+        "navigationBarTitleText": "领用篮"
+      }
+    },
+    {
+      "path": "pages/material/SparePartList",
+      "style": {
+        "navigationBarTitleText": "备件列表"
+      }
+    },
+    {
+      "path": "pages/material/ConsumableList",
+      "style": {
+        "navigationBarTitleText": "消耗品列表"
+      }
+    },
+    {
+      "path": "pages/material/MaterialDispense",
+      "style": {
+        "navigationBarTitleText": "物料领用"
+      }
+    },
+    {
+      "path": "pages/inventory/Inventory",
+      "style": {
+        "navigationBarTitleText": "盘点"
+      }
+    },
+    {
+      "path": "pages/inventory/InventoryCreate",
+      "style": {
+        "navigationBarTitleText": "新建盘点"
+      }
+    },
+    {
+      "path": "pages/inventory/InventoryScan",
+      "style": {
+        "navigationBarTitleText": "扫码录入"
+      }
+    },
+    {
+      "path": "pages/inventory/InventoryResult",
+      "style": {
+        "navigationBarTitleText": "盘点结果"
+      }
+    },
+    {
+      "path": "pages/inventory/InventoryShelf",
+      "style": {
+        "navigationBarTitleText": "货架导航盘点"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "工器具管理",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f7f8fa"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#1989fa",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/dashboard/Dashboard",
+        "text": "首页",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/tools/ToolManagement",
+        "text": "工具",
+        "iconPath": "static/tabbar/tools.png",
+        "selectedIconPath": "static/tabbar/tools-active.png"
+      },
+      {
+        "pagePath": "pages/material/MaterialCenter",
+        "text": "物料",
+        "iconPath": "static/tabbar/material.png",
+        "selectedIconPath": "static/tabbar/material-active.png"
+      },
+      {
+        "pagePath": "pages/orders/OrderManagement",
+        "text": "工单",
+        "iconPath": "static/tabbar/orders.png",
+        "selectedIconPath": "static/tabbar/orders-active.png"
+      },
+      {
+        "pagePath": "pages/profile/Profile",
+        "text": "我的",
+        "iconPath": "static/tabbar/profile.png",
+        "selectedIconPath": "static/tabbar/profile-active.png"
+      }
+    ]
+  },
+  "subPackages": [
+    {
+      "root": "pagesAdmin",
+      "pages": [
+        {
+          "path": "CategoryManagement",
+          "style": {
+            "navigationBarTitleText": "分类管理"
+          }
+        },
+        {
+          "path": "DeptManagement",
+          "style": {
+            "navigationBarTitleText": "部门管理"
+          }
+        },
+        {
+          "path": "LocationManagement",
+          "style": {
+            "navigationBarTitleText": "库位管理"
+          }
+        },
+        {
+          "path": "ShelfManagement",
+          "style": {
+            "navigationBarTitleText": "货架管理"
+          }
+        },
+        {
+          "path": "UserManagement",
+          "style": {
+            "navigationBarTitleText": "用户管理"
+          }
+        },
+        {
+          "path": "WarehouseManagement",
+          "style": {
+            "navigationBarTitleText": "仓库管理"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pagesStock",
+      "pages": [
+        {
+          "path": "StockMovement",
+          "style": {
+            "navigationBarTitleText": "出入库流水"
+          }
+        },
+        {
+          "path": "stock/StockCell",
+          "style": {
+            "navigationBarTitleText": "库存明细"
+          }
+        },
+        {
+          "path": "stock/StockFilter",
+          "style": {
+            "navigationBarTitleText": "流水筛选"
+          }
+        }
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/dashboard/Dashboard": {
+      "network": "all",
+      "packages": ["pagesAdmin"]
+    }
+  }
+}

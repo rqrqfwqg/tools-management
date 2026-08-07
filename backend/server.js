@@ -175,8 +175,11 @@ app.use((req, res) => {
 // ============ 启动 ============
 initDB();
 migrateDB();
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`✅ 物料管理系统后端运行在 http://127.0.0.1:${PORT}`);
+// HOST 环境变量：默认 127.0.0.1（本机安全绑定）；
+// 小程序/真机调试实例请用 HOST=0.0.0.0（如 PORT=3300 HOST=0.0.0.0 node server.js）
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  console.log(`✅ 物料管理系统后端运行在 http://${HOST}:${PORT}`);
   console.log(`   环境: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   API 文档: http://localhost:${PORT}/api/health`);
 });

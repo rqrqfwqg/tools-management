@@ -4,10 +4,6 @@
     <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
       <el-button type="primary" @click="openDialog()">新增仓库</el-button>
       <el-input v-model="keyword" placeholder="搜索名称/编码" clearable prefix-icon="Search" style="width:180px" />
-      <el-select v-model="restrictedFilter" placeholder="全部区域" clearable style="width:120px">
-        <el-option label="隔离区内" value="yes" />
-        <el-option label="隔离区外" value="no" />
-      </el-select>
       <el-select v-model="activeFilter" placeholder="全部状态" clearable style="width:120px">
         <el-option label="启用" value="yes" />
         <el-option label="停用" value="no" />
@@ -22,13 +18,6 @@
         <template #default="{row}">
           <el-tag :type="row.dept_id ? 'primary' : 'success'" size="small">
             {{ row.dept_name || (row.dept_id ? '未知部门' : '共享') }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="隔离区" width="100">
-        <template #default="{row}">
-          <el-tag :type="row.is_restricted !== false ? 'danger' : 'success'" size="small">
-            {{ row.is_restricted !== false ? '隔离区内' : '隔离区外' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -60,10 +49,6 @@
           </el-select>
           <div style="color:#909399;font-size:12px;margin-top:4px">共享仓库所有部门均可借出，指定部门后仅该部门和管理员可借出</div>
         </el-form-item>
-        <el-form-item label="隔离区">
-          <el-switch v-model="form.is_restricted" active-text="隔离区内" inactive-text="隔离区外" />
-          <div style="color:#909399;font-size:12px;margin-top:4px">隔离区外的仓库领用工器具无需审批</div>
-        </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="form.is_active" active-text="启用" inactive-text="停用" />
         </el-form-item>
@@ -86,13 +71,10 @@ const departments = ref<any[]>([])
 const dialogVisible = ref(false)
 const form = ref<any>({})
 const keyword = ref('')
-const restrictedFilter = ref('')
 const activeFilter = ref('')
 
 const filteredList = computed(() => {
   return list.value.filter(w => {
-    if (restrictedFilter.value === 'yes' && w.is_restricted === false) return false
-    if (restrictedFilter.value === 'no' && w.is_restricted !== false) return false
     if (activeFilter.value === 'yes' && !w.is_active) return false
     if (activeFilter.value === 'no' && w.is_active) return false
     if (keyword.value) {
@@ -109,7 +91,7 @@ const load = async () => {
 }
 
 const openDialog = (row?: any) => {
-  form.value = row ? { ...row } : { is_active: true, description: '', is_restricted: true, dept_id: null }
+  form.value = row ? { ...row } : { is_active: true, description: '', dept_id: null }
   dialogVisible.value = true
 }
 

@@ -4,7 +4,6 @@
 
     <van-search v-model="keyword" placeholder="搜索名称/编码" shape="round" />
     <van-dropdown-menu>
-      <van-dropdown-item v-model="restrictedFilter" :options="[{text:'全部区域',value:''},{text:'隔离区内',value:'yes'},{text:'隔离区外',value:'no'}]" />
       <van-dropdown-item v-model="activeFilter" :options="[{text:'全部状态',value:''},{text:'启用',value:'yes'},{text:'停用',value:'no'}]" />
     </van-dropdown-menu>
 
@@ -19,9 +18,6 @@
           <div style="font-size:12px;color:#999">{{ w.warehouse_code }}</div>
         </div>
         <div style="display:flex;gap:4px;align-items:center">
-          <van-tag :type="w.is_restricted !== false ? 'danger' : 'success'">
-            {{ w.is_restricted !== false ? '隔离区' : '非隔离区' }}
-          </van-tag>
           <van-tag :type="w.is_active ? 'success' : 'danger'">
             {{ w.is_active ? '启用' : '停用' }}
           </van-tag>
@@ -35,11 +31,6 @@
     <van-dialog v-model:show="dialogVisible" title="仓库信息" show-cancel-button @confirm="handleSave">
       <van-field v-model="form.warehouse_name" label="仓库名称" required />
       <van-field v-model="form.warehouse_code" label="仓库编码" required />
-      <van-field name="is_restricted" label="隔离区">
-        <template #input>
-          <van-switch v-model="form.is_restricted" active-text="是" inactive-text="否" />
-        </template>
-      </van-field>
       <van-field name="is_active" label="启用">
         <template #input>
           <van-switch v-model="form.is_active" active-text="是" inactive-text="否" />
@@ -56,15 +47,12 @@ import { showToast, showConfirmDialog } from 'vant'
 
 const list = ref<any[]>([])
 const keyword = ref('')
-const restrictedFilter = ref('')
 const activeFilter = ref('')
 const dialogVisible = ref(false)
-const form = ref<any>({ is_restricted: true, is_active: true })
+const form = ref<any>({ is_active: true })
 
 const filteredList = computed(() => {
   return list.value.filter(w => {
-    if (restrictedFilter.value === 'yes' && w.is_restricted === false) return false
-    if (restrictedFilter.value === 'no' && w.is_restricted !== false) return false
     if (activeFilter.value === 'yes' && !w.is_active) return false
     if (activeFilter.value === 'no' && w.is_active) return false
     if (keyword.value) {
@@ -79,7 +67,7 @@ function openDialog(data?: any) {
   if (data) {
     form.value = { ...data }
   } else {
-    form.value = { warehouse_name: '', warehouse_code: '', is_restricted: true, is_active: true }
+    form.value = { warehouse_name: '', warehouse_code: '', is_active: true }
   }
   dialogVisible.value = true
 }

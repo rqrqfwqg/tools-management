@@ -43,7 +43,7 @@ router.post('/warehouses', authenticate, requireMaterialManager, (req, res) => {
   const newWarehouse = {
     warehouse_id: nextId(db.warehouses, 'warehouse_id'),
     warehouse_name, warehouse_code, description: description || '',
-    is_active: true, is_restricted: req.body.is_restricted !== undefined ? req.body.is_restricted : true,
+    is_active: true,
     dept_id: req.body.dept_id !== undefined ? req.body.dept_id : null
   };
   db.warehouses.push(newWarehouse);

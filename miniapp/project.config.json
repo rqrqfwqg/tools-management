@@ -1,0 +1,26 @@
+{
+  "description": "工器具管理系统微信小程序",
+  "projectname": "tools-management-miniapp",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "dist/dev/mp-weixin/",
+  "srcMiniprogramRoot": "dist/dev/mp-weixin/",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": false,
+    "compileHotReLoad": true,
+    "coverView": true,
+    "lazyloadPlaceholderEnable": false,
+    "preloadBackgroundData": false,
+    "autoAudits": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "useIsolateContext": true,
+    "nodeModules": false
+  },
+  "libVersion": "3.0.0",
+  "condition": {}
+}

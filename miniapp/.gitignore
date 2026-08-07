@@ -1,0 +1,20 @@
+# 依赖与构建产物
+node_modules/
+dist/
+unpackage/
+.npm-cache/
+.npm-cache-fresh/
+
+# 编辑器
+.hbuilderx/
+.idea/
+.vscode/
+*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 环境变量（含密钥的本地覆盖文件）
+.env.local
+.env.*.local
