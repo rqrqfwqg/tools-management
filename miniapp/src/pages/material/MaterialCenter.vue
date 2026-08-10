@@ -2,7 +2,10 @@
   <view class="page">
     <view class="bar">
       <text class="bar__title">物料中心</text>
-      <text class="bar__refresh" @tap="load">刷新</text>
+      <view class="bar__actions">
+        <text class="bar__dispense" @tap="goDispense">物料领用</text>
+        <text class="bar__refresh" @tap="load">刷新</text>
+      </view>
     </view>
 
     <scroll-view scroll-y class="list">
@@ -59,6 +62,10 @@ function isLow(c: Consumable): boolean {
   return (c.stock_qty ?? 0) <= c.warning_qty
 }
 
+function goDispense() {
+  uni.navigateTo({ url: '/pages/material/MaterialDispense' })
+}
+
 async function load() {
   loaded.value = false
   try {
@@ -102,6 +109,18 @@ onShow(() => {
   &__refresh {
     font-size: 26rpx;
     color: $tm-primary;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 32rpx;
+  }
+
+  &__dispense {
+    font-size: 26rpx;
+    color: $tm-success;
+    font-weight: 500;
   }
 }
 

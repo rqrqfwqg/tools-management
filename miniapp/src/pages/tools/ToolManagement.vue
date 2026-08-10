@@ -16,6 +16,7 @@
             {{ meta(t.status).label }}
           </text>
           <text class="card__loc" v-if="t.location_name || t.warehouse">{{ t.location_name || t.warehouse }}</text>
+          <view v-if="t.status === 'available'" class="card__btn" @tap.stop="addToCart(t)">领用</view>
         </view>
       </view>
     </scroll-view>
@@ -23,6 +24,15 @@
     <view class="empty" v-else>
       <text class="empty__icon">工</text>
       <text class="empty__text">{{ loaded ? '暂无工具数据' : '加载中…' }}</text>
+    </view>
+
+    <!-- 底部领用篮（仅选中有工具时显示） -->
+    <view class="cart-bar" v-if="cartStore.count > 0" @tap="goCart">
+      <view class="cart-bar__info">
+        <text class="cart-bar__dot">{{ cartStore.count }}</text>
+        <text class="cart-bar__text">已选 {{ cartStore.count }} 件工具</text>
+      </view>
+      <view class="cart-bar__btn">去领用</view>
     </view>
   </view>
 </template>
@@ -32,10 +42,12 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getTools } from '@/api'
 import { toolStatusMeta, toArray } from '@/utils/status'
+import { useCartStore } from '@/store/cart'
 import type { Tool } from '@/types'
 
 const tools = ref<Tool[]>([])
 const loaded = ref(false)
+const cartStore = useCartStore()
 
 function meta(status?: string) {
   return toolStatusMeta(status)
@@ -53,6 +65,20 @@ async function load() {
 
 function onTap(t: Tool) {
   uni.showToast({ title: `${t.tool_name || t.tool_code}\n状态：${meta(t.status).label}`, icon: 'none' })
+}
+
+function addToCart(t: Tool) {
+  cartStore.addItem({
+    tool_id: t.tool_id,
+    tool_name: t.tool_name || t.tool_code,
+    tool_code: t.tool_code,
+    warehouse: t.warehouse || t.location_name || ''
+  })
+  uni.showToast({ title: '已加入领用篮', icon: 'success' })
+}
+
+function goCart() {
+  uni.navigateTo({ url: '/pages/cart/ShoppingCart' })
 }
 
 onShow(() => {
@@ -89,7 +115,7 @@ onShow(() => {
 
 .list {
   flex: 1;
-  padding: 16rpx 24rpx;
+  padding: 16rpx 24rpx 120rpx;
   box-sizing: border-box;
 }
 
@@ -133,6 +159,15 @@ onShow(() => {
     font-size: 22rpx;
     color: $tm-text-secondary;
   }
+
+  &__btn {
+    margin-top: 12rpx;
+    padding: 6rpx 24rpx;
+    border-radius: 999rpx;
+    background: $tm-primary;
+    color: #ffffff;
+    font-size: 24rpx;
+  }
 }
 
 .badge {
@@ -164,6 +199,50 @@ onShow(() => {
 
   &__text {
     font-size: 26rpx;
+  }
+}
+
+.cart-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 32rpx;
+  background: $tm-card-bg;
+  border-top: 1rpx solid $tm-border;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
+
+  &__info {
+    display: flex;
+    align-items: center;
+  }
+
+  &__dot {
+    min-width: 40rpx;
+    height: 40rpx;
+    line-height: 40rpx;
+    text-align: center;
+    border-radius: 999rpx;
+    background: $tm-danger;
+    color: #ffffff;
+    font-size: 24rpx;
+    margin-right: 16rpx;
+  }
+
+  &__text {
+    font-size: 28rpx;
+    color: $tm-text;
+  }
+
+  &__btn {
+    padding: 14rpx 40rpx;
+    border-radius: 999rpx;
+    background: $tm-primary;
+    color: #ffffff;
+    font-size: 28rpx;
   }
 }
 </style>

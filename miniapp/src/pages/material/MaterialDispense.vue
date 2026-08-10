@@ -1,14 +1,385 @@
 <template>
-  <view class="page" />
+  <view class="page">
+    <view class="bar">
+      <text class="bar__title">物料领用</text>
+      <text class="bar__refresh" @tap="load">刷新</text>
+    </view>
+
+    <!-- 页签 -->
+    <view class="tabs">
+      <view
+        class="tabs__item"
+        :class="{ 'tabs__item--active': tab === 'spare' }"
+        @tap="switchTab('spare')"
+      >备件</view>
+      <view
+        class="tabs__item"
+        :class="{ 'tabs__item--active': tab === 'consumable' }"
+        @tap="switchTab('consumable')"
+      >消耗品</view>
+    </view>
+
+    <!-- 搜索 -->
+    <view class="search">
+      <input
+        v-model="keyword"
+        class="search__input"
+        placeholder="搜索名称/编码"
+        placeholder-class="search__ph"
+        confirm-type="search"
+      />
+    </view>
+
+    <scroll-view scroll-y class="list">
+      <view class="card" v-for="item in displayList" :key="itemKey(item)">
+        <view class="card__main">
+          <text class="card__name">{{ nameOf(item) }}</text>
+          <text class="card__code">{{ codeOf(item) }}</text>
+          <text class="card__stock" :class="{ 'card__stock--low': isLowStock(item) }">
+            库存 {{ stockOf(item) }}{{ unitOf(item) }}
+          </text>
+        </view>
+        <view class="card__side">
+          <view v-if="stockOf(item) > 0" class="stepper">
+            <view class="stepper__btn" @tap="dec(item)">−</view>
+            <text class="stepper__val">{{ qtyOf(item) }}</text>
+            <view class="stepper__btn" @tap="inc(item)">＋</view>
+          </view>
+          <text v-else class="card__soldout">无库存</text>
+        </view>
+      </view>
+      <view class="tip" v-if="loaded && !displayList.length">暂无数据</view>
+      <view class="tip" v-if="!loaded">加载中…</view>
+    </scroll-view>
+
+    <!-- 底部提交栏 -->
+    <view class="submit-bar" v-if="selectedCount > 0">
+      <text class="submit-bar__text">已选 {{ selectedCount }} 项</text>
+      <view class="submit-bar__btn" @tap="submit">{{ submitting ? '提交中…' : '提交领用' }}</view>
+    </view>
+  </view>
 </template>
 
 <script setup lang="ts">
-// 物料领用（T11 实现）
+import { ref, computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { getSpareParts, getConsumables, takeConsumableByCode } from '@/api/material'
+import { createOrder } from '@/api'
+import { toArray } from '@/utils/status'
+import { showToast, showModal } from '@/utils/feedback'
+
+type Tab = 'spare' | 'consumable'
+
+const tab = ref<Tab>('spare')
+const keyword = ref('')
+const spares = ref<any[]>([])
+const consumables = ref<any[]>([])
+const loaded = ref(false)
+const submitting = ref(false)
+/** 数量选择：key=`spare:{id}` / `cons:{id}`，切换页签保留已选数量 */
+const qtyMap = ref<Record<string, number>>({})
+
+const displayList = computed<any[]>(() => (tab.value === 'spare' ? spares.value : consumables.value))
+
+const filtered = computed<any[]>(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (!kw) return displayList.value
+  return displayList.value.filter((item) => {
+    const name = (item.spare_name || item.consumable_name || item.name || '').toLowerCase()
+    const code = (item.spare_code || item.consumable_code || item.code || '').toLowerCase()
+    return name.includes(kw) || code.includes(kw)
+  })
+})
+
+const selectedCount = computed<number>(() =>
+  Object.keys(qtyMap.value).reduce((n, k) => n + (qtyMap.value[k] > 0 ? 1 : 0), 0)
+)
+
+function itemKey(item: any): string {
+  return item.spare_id != null ? `spare:${item.spare_id}` : `cons:${item.consumable_id}`
+}
+function nameOf(item: any): string {
+  return item.spare_name || item.consumable_name || ''
+}
+function codeOf(item: any): string {
+  return item.spare_code || item.consumable_code || ''
+}
+function stockOf(item: any): number {
+  return Number(item.stock_qty ?? 0)
+}
+function unitOf(item: any): string {
+  return item.unit || ''
+}
+function isLowStock(item: any): boolean {
+  return item.warning_qty != null && stockOf(item) <= item.warning_qty
+}
+function qtyOf(item: any): number {
+  return qtyMap.value[itemKey(item)] || 0
+}
+function setQty(key: string, qty: number): void {
+  qtyMap.value = { ...qtyMap.value, [key]: qty }
+}
+
+function inc(item: any): void {
+  const key = itemKey(item)
+  const max = stockOf(item)
+  const cur = qtyOf(item)
+  if (cur >= max) {
+    showToast(`最多可领 ${max}${unitOf(item)}`, 'none')
+    return
+  }
+  setQty(key, cur + 1)
+}
+
+function dec(item: any): void {
+  const key = itemKey(item)
+  const cur = qtyOf(item)
+  if (cur <= 0) return
+  setQty(key, cur - 1)
+}
+
+async function load(): Promise<void> {
+  loaded.value = false
+  try {
+    const [sp, co] = await Promise.all([
+      getSpareParts().catch(() => []),
+      getConsumables().catch(() => [])
+    ])
+    spares.value = toArray(sp)
+    consumables.value = toArray(co)
+  } finally {
+    loaded.value = true
+  }
+}
+
+function switchTab(t: Tab): void {
+  if (tab.value === t) return
+  tab.value = t
+}
+
+async function submit(): Promise<void> {
+  const spareItems = spares.value
+    .filter((s) => qtyOf(s) > 0)
+    .map((s) => ({ spare_id: s.spare_id, qty: qtyOf(s) }))
+  const consItems = consumables.value.filter((c) => qtyOf(c) > 0)
+  if (!spareItems.length && !consItems.length) {
+    showToast('请先选择要领用的物料', 'none')
+    return
+  }
+  const parts = [
+    spareItems.length ? `备件 ${spareItems.length} 项` : '',
+    consItems.length ? `消耗品 ${consItems.length} 项` : ''
+  ].filter(Boolean).join('、')
+  const ok = await showModal({
+    title: '确认领用',
+    content: `确认提交${parts}？备件将生成领用单等待审批，消耗品直接领取。`
+  })
+  if (!ok) return
+
+  submitting.value = true
+  try {
+    let msg = ''
+    if (spareItems.length) {
+      const res = await createOrder({ spare_items: spareItems })
+      msg = `备件申请已提交${res?.order_no ? `（${res.order_no}）` : ''}，等待审批`
+    }
+    if (consItems.length) {
+      await Promise.all(
+        consItems.map((c) => takeConsumableByCode(codeOf(c), qtyOf(c)))
+      )
+      msg = msg ? `${msg}；消耗品已领取` : '消耗品已领取'
+    }
+    qtyMap.value = {}
+    await showToast(msg, 'success')
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '提交失败', 'none')
+  } finally {
+    submitting.value = false
+  }
+}
+
+onShow(() => {
+  load()
+})
 </script>
 
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
   background-color: $tm-bg;
+  display: flex;
+  flex-direction: column;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 32rpx;
+  background: $tm-card-bg;
+
+  &__title {
+    font-size: 32rpx;
+    font-weight: 600;
+    color: $tm-text;
+  }
+
+  &__refresh {
+    font-size: 26rpx;
+    color: $tm-primary;
+  }
+}
+
+.tabs {
+  display: flex;
+  margin: 20rpx 24rpx 0;
+  background: $tm-card-bg;
+  border-radius: $tm-radius-sm;
+
+  &__item {
+    flex: 1;
+    text-align: center;
+    padding: 18rpx 0;
+    font-size: 28rpx;
+    color: $tm-text-secondary;
+    border-radius: $tm-radius-sm;
+
+    &--active {
+      background: $tm-primary;
+      color: #ffffff;
+      font-weight: 600;
+    }
+  }
+}
+
+.search {
+  padding: 20rpx 24rpx 8rpx;
+
+  &__input {
+    background: $tm-card-bg;
+    border-radius: 999rpx;
+    padding: 16rpx 28rpx;
+    font-size: 26rpx;
+    color: $tm-text;
+  }
+
+  &__ph {
+    color: $tm-text-muted;
+  }
+}
+
+.list {
+  flex: 1;
+  padding: 8rpx 24rpx 120rpx;
+  box-sizing: border-box;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: $tm-card-bg;
+  border-radius: $tm-radius-sm;
+  padding: 24rpx 28rpx;
+  margin-top: 16rpx;
+  box-shadow: $tm-shadow-card;
+
+  &__main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__name {
+    font-size: 30rpx;
+    color: $tm-text;
+    font-weight: 500;
+  }
+
+  &__code {
+    margin-top: 6rpx;
+    font-size: 24rpx;
+    color: $tm-text-muted;
+  }
+
+  &__stock {
+    margin-top: 10rpx;
+    font-size: 22rpx;
+    color: $tm-text-secondary;
+
+    &--low {
+      color: $tm-danger;
+    }
+  }
+
+  &__side {
+    display: flex;
+    align-items: center;
+  }
+
+  &__soldout {
+    font-size: 24rpx;
+    color: $tm-text-muted;
+  }
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+
+  &__btn {
+    width: 56rpx;
+    height: 56rpx;
+    line-height: 52rpx;
+    text-align: center;
+    border-radius: $tm-radius-sm;
+    background: $tm-primary-bg;
+    color: $tm-primary;
+    font-size: 36rpx;
+  }
+
+  &__val {
+    min-width: 48rpx;
+    text-align: center;
+    font-size: 30rpx;
+    font-weight: 600;
+    color: $tm-text;
+  }
+}
+
+.tip {
+  padding: 48rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: $tm-text-muted;
+}
+
+.submit-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 32rpx;
+  background: $tm-card-bg;
+  border-top: 1rpx solid $tm-border;
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
+
+  &__text {
+    font-size: 28rpx;
+    color: $tm-text;
+  }
+
+  &__btn {
+    padding: 14rpx 48rpx;
+    border-radius: 999rpx;
+    background: $tm-primary;
+    color: #ffffff;
+    font-size: 28rpx;
+  }
 }
 </style>
