@@ -1,7 +1,7 @@
 {
   "description": "工器具管理系统微信小程序",
   "projectname": "tools-management-miniapp",
-  "appid": "touristappid",
+  "appid": "wx43639b45152d6754",
   "compileType": "miniprogram",
   "miniprogramRoot": "dist/dev/mp-weixin/",
   "srcMiniprogramRoot": "dist/dev/mp-weixin/",
