@@ -23,7 +23,7 @@
       "bigPackageSizeSupport": true
     },
     "usingComponents": true,
-    "requiredPrivateInfos": ["scanCode", "getLocation"],
+    "requiredPrivateInfos": ["getLocation"],
     "permission": {
       "scope.userLocation": {
         "desc": "用于定位当前仓库/货架位置"
