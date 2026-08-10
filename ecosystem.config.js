@@ -34,12 +34,14 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         PORT: 3300,
-        HOST: '0.0.0.0'
+        HOST: '0.0.0.0',
+        WX_APPID: 'wxd3f79993e8a43ac2'
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3300,
-        HOST: '0.0.0.0'
+        HOST: '0.0.0.0',
+        WX_APPID: 'wxd3f79993e8a43ac2'
       },
       error_file: './logs/pm2-miniapp-error.log',
       out_file: './logs/pm2-miniapp-out.log',

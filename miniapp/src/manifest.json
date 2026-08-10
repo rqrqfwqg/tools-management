@@ -1,6 +1,6 @@
 {
   "name": "工器具管理",
-  "appid": "wx43639b45152d6754",
+  "appid": "wxd3f79993e8a43ac2",
   "description": "工器具管理系统微信小程序",
   "versionName": "1.0.0",
   "versionCode": "100",
@@ -14,7 +14,7 @@
     }
   },
   "mp-weixin": {
-    "appid": "wx43639b45152d6754",
+    "appid": "wxd3f79993e8a43ac2",
     "setting": {
       "urlCheck": false,
       "es6": true,
