@@ -1,5 +1,6 @@
 # 依赖与构建产物
 node_modules/
+node_modules_bak/
 dist/
 unpackage/
 .npm-cache/

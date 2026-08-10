@@ -48,7 +48,7 @@ cd /opt/tools-management/backend
 npm install
 cat > .env << 'ENVEOF'
 NODE_ENV=production
-PORT=3000
+PORT=3300
 CORS_ORIGIN=*
 JWT_SECRET=tools2024securekeychangeinproduction
 ENVEOF
@@ -95,7 +95,7 @@ server {
 
     # 后端 API
     location /api/ {
-        proxy_pass http://127.0.0.1:3000/api/;
+        proxy_pass http://127.0.0.1:3300/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -103,7 +103,7 @@ server {
 
     # 上传文件
     location /uploads/ {
-        proxy_pass http://127.0.0.1:3000/uploads/;
+        proxy_pass http://127.0.0.1:3300/uploads/;
         proxy_set_header Host $host;
     }
 

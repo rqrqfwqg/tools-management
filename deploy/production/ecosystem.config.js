@@ -6,6 +6,7 @@
 module.exports = {
   apps: [
     {
+      // 唯一后端实例（3300 单实例，与 nginx /api/ → 3300 对齐，避免双实例并发写 db.json）
       name: 'tools-backend',
       script: './server.js',
       cwd: '/opt/tools-management/backend',
@@ -14,7 +15,7 @@ module.exports = {
       max_memory_restart: '300M',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3300,
         CORS_ORIGIN: '*'
       },
       // 日志

@@ -119,7 +119,7 @@ log "✅ 后端重启完成"
 
 # 7. 健康检查
 sleep 2
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/auth/login 2>/dev/null || echo "000")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3300/api/auth/login 2>/dev/null || echo "000")
 
 if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "200" ]; then
   log "✅ 健康检查通过 (HTTP $HTTP_CODE)"

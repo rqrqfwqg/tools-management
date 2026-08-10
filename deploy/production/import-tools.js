@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const HOST = '127.0.0.1';
-const PORT = 3000;
+const PORT = 3300;
 
 // 读取工具数据
 const dataPath = path.join(__dirname, 'tools-data.json');

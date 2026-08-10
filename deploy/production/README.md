@@ -22,7 +22,7 @@ ssh root@你的服务器公网IP
 |------|------|------|
 | 80 | TCP | HTTP 网站访问 |
 | 443 | TCP | HTTPS（后续配 SSL） |
-| 3000 | TCP | 后端 API（仅调试用，后续可关） |
+| 3300 | TCP | 后端 API（单实例网关，全端共用） |
 
 ### 1.3 确认基础环境
 
@@ -60,7 +60,7 @@ cd /opt/tools-management/backend
 # 生成 .env 文件
 cat > .env << 'EOF'
 NODE_ENV=production
-PORT=3000
+PORT=3300
 CORS_ORIGIN=*
 JWT_SECRET=$(openssl rand -hex 32)
 EOF
@@ -153,7 +153,7 @@ bash deploy/production/deploy.sh
 │                                 │
 │  /          → PC 前端静态文件    │
 │  /m/        → 手机前端静态文件   │
-│  /api/*     → 后端 127.0.0.1:3000 │
+│  /api/*     → 后端 127.0.0.1:3300 │
 │  /uploads/* → 图片文件          │
 └─────────────────────────────────┘
          │
@@ -161,7 +161,7 @@ bash deploy/production/deploy.sh
 ┌─────────────────┐
 │ PM2 管理        │
 │ tools-backend   │
-│ (端口 3000)     │
+│ (端口 3300)     │
 │ Node.js Express │
 └─────────────────┘
          │

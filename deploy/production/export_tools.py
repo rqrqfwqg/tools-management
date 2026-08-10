@@ -2,7 +2,7 @@
 """Export 131 tools from local API with names instead of IDs"""
 import json, urllib.request, urllib.error
 
-BASE = "http://localhost:3000/api"
+BASE = "http://localhost:3300/api"
 TOKEN = None
 
 def api(path):

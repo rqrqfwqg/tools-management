@@ -1,5 +1,8 @@
 module.exports = {
   apps: [
+    /* ── 已停用：原 tools-backend (PORT 3000) ──
+       落实“3300 单实例”：全环境仅保留下方 tools-backend-miniapp (PORT 3300) 一个后端实例，
+       统一读写同一份 backend/db.json，避免 3000/3300 双实例并发写导致数据丢失。
     {
       name: 'tools-backend',
       script: 'backend/server.js',
@@ -8,21 +11,17 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'development',
-        PORT: 3000
-      },
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 3000
-      },
+      env: { NODE_ENV: 'development', PORT: 3000 },
+      env_production: { NODE_ENV: 'production', PORT: 3000 },
       error_file: './logs/pm2-backend-error.log',
       out_file: './logs/pm2-backend-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true
     },
+    */
     {
-      // 微信小程序专用 API 网关（独立端口 3300，不与 3000/3100/3200 冲突）
+      // 唯一后端实例（原“微信小程序 API 网关”，现收口为全端共用网关，端口 3300）
+      // 监听 0.0.0.0 供小程序真机预览/体验版访问；本地 dev 代理与 nginx 统一指向 3300
       // 监听 0.0.0.0 供小程序真机预览/体验版访问（真机不能访问 127.0.0.1）
       // 同一份 server.js + db.json，与 tools-backend 共享数据
       name: 'tools-backend-miniapp',
