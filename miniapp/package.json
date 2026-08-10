@@ -6,6 +6,8 @@
   "scripts": {
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin",
+    "dev:mp-weixin:exp": "uni -p mp-weixin --mode experience",
+    "build:mp-weixin:exp": "uni build -p mp-weixin --mode experience",
     "type-check": "vue-tsc --noEmit",
     "gen:tabbar-icons": "node scripts/gen-tabbar-icons.mjs"
   },
