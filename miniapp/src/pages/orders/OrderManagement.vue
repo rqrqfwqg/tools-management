@@ -25,6 +25,11 @@
           <text class="card__label">预计归还</text>
           <text class="card__value">{{ formatTime(o.expected_return) }}</text>
         </view>
+        <!-- 审核操作：仅审批人（管理员/分队长）对待审批工单可见 -->
+        <view class="card__actions" v-if="o.status === 'pending' && auth.isApprover">
+          <view class="btn btn--reject" @tap="reject(o)">拒绝</view>
+          <view class="btn btn--approve" @tap="approve(o)">批准</view>
+        </view>
       </view>
     </scroll-view>
 
@@ -38,12 +43,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getOrders } from '@/api'
+import { getOrders, updateOrderStatus } from '@/api'
 import { orderStatusMeta, toArray } from '@/utils/status'
+import { showToast, showModal } from '@/utils/feedback'
+import { useAuthStore } from '@/store/auth'
 import type { Order } from '@/types'
 
 const orders = ref<Order[]>([])
 const loaded = ref(false)
+const auth = useAuthStore()
 
 function meta(status?: string) {
   return orderStatusMeta(status)
@@ -61,6 +69,32 @@ async function load() {
     orders.value = toArray(data) as Order[]
   } finally {
     loaded.value = true
+  }
+}
+
+/** 批准工单（后端 PUT /orders/:id/status approved，物料单自动扣库存） */
+async function approve(o: Order) {
+  const ok = await showModal({ title: '批准工单', content: `确认批准 ${o.order_no}？`, confirmText: '批准' })
+  if (!ok) return
+  try {
+    await updateOrderStatus(o.order_id, 'approved')
+    await showToast('已批准', 'success')
+    load()
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '操作失败', 'none')
+  }
+}
+
+/** 拒绝工单 */
+async function reject(o: Order) {
+  const ok = await showModal({ title: '拒绝工单', content: `确认拒绝 ${o.order_no}？`, confirmText: '拒绝' })
+  if (!ok) return
+  try {
+    await updateOrderStatus(o.order_id, 'rejected')
+    await showToast('已拒绝', 'success')
+    load()
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '操作失败', 'none')
   }
 }
 
@@ -137,6 +171,33 @@ onShow(() => {
   &__value {
     font-size: 26rpx;
     color: $tm-text-secondary;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 20rpx;
+    margin-top: 20rpx;
+    padding-top: 20rpx;
+    border-top: 1rpx solid $tm-border-light;
+  }
+}
+
+.btn {
+  padding: 10rpx 40rpx;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+
+  &--approve {
+    background: $tm-success;
+    color: #ffffff;
+  }
+
+  &--reject {
+    background: $tm-card-bg;
+    color: $tm-danger;
+    border: 1rpx solid $tm-danger;
   }
 }
 
