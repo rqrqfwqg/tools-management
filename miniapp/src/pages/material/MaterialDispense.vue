@@ -42,11 +42,12 @@
           </text>
         </view>
         <view class="card__side">
-          <view v-if="stockOf(item) > 0" class="stepper">
+          <view v-if="stockOf(item) > 0 && !auth.isGuest" class="stepper">
             <view class="stepper__btn" @tap="dec(item)">−</view>
             <text class="stepper__val">{{ qtyOf(item) }}</text>
             <view class="stepper__btn" @tap="inc(item)">＋</view>
           </view>
+          <text v-else-if="stockOf(item) > 0" class="card__soldout">可查看</text>
           <text v-else class="card__soldout">无库存</text>
         </view>
       </view>
@@ -54,8 +55,8 @@
       <view class="tip" v-if="!loaded">加载中…</view>
     </scroll-view>
 
-    <!-- 底部提交栏 -->
-    <view class="submit-bar" v-if="selectedCount > 0">
+    <!-- 底部提交栏（游客隐藏） -->
+    <view class="submit-bar" v-if="selectedCount > 0 && !auth.isGuest">
       <text class="submit-bar__text">已选 {{ selectedCount }} 项</text>
       <view class="submit-bar__btn" @tap="submit">{{ submitting ? '提交中…' : '提交领用' }}</view>
     </view>
@@ -70,6 +71,7 @@ import { createOrder } from '@/api'
 import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { showToast, showModal } from '@/utils/feedback'
+import { useAuthStore } from '@/store/auth'
 
 type Tab = 'spare' | 'consumable'
 
@@ -79,6 +81,7 @@ const spares = ref<any[]>([])
 const consumables = ref<any[]>([])
 const loaded = ref(false)
 const submitting = ref(false)
+const auth = useAuthStore()
 /** 数量选择：key=`spare:{id}` / `cons:{id}`，切换页签保留已选数量 */
 const qtyMap = ref<Record<string, number>>({})
 

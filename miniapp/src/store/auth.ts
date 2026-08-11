@@ -17,6 +17,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isApprover = computed(() => user.value?.role === 'admin' || user.value?.role === 'team_leader')
+  /** 游客模式（只读）：未匹配到系统账号的微信用户 */
+  const isGuest = computed(() => user.value?.role === 'guest')
 
   function setToken(t: string) {
     token.value = t
@@ -49,5 +51,5 @@ export const useAuthStore = defineStore('auth', () => {
     return result
   }
 
-  return { token, user, isLoggedIn, isAdmin, isApprover, setToken, setUser, logout, wxLogin }
+  return { token, user, isLoggedIn, isAdmin, isApprover, isGuest, setToken, setUser, logout, wxLogin }
 })

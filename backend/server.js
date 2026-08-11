@@ -4,9 +4,11 @@ const helmet = require('helmet');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const { initDB, migrateDB, nowCST } = require('./routes/db');
+const { JWT_SECRET } = require('./middleware/auth');
 
 const app = express();
 app.set('trust proxy', 1);  // nginx 反向代理，express-rate-limit 需要此配置
@@ -126,6 +128,24 @@ app.get('/api/dashboard', require('./middleware/auth').authenticate, (req, res) 
     orders_returned: orders.filter(o => o.status === 'returned').length,
     users_total: (db.users || []).length
   });
+});
+
+// 游客只读守卫：游客（role=guest）禁止一切写操作（非 GET 一律 403）
+// 依据请求头 Bearer token 中的 role；无 token/无效 token 放行，交给下游 authenticate 统一处理
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET') return next();
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return next();
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role === 'guest') {
+      return res.status(403).json({ message: '游客模式仅可查看，请使用手机号登录后操作' });
+    }
+  } catch (err) {
+    // token 无效/过期：放行，由各路由 authenticate 统一返回 401
+  }
+  next();
 });
 
 // 模块化路由

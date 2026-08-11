@@ -65,6 +65,11 @@ async function checkout() {
     showToast('领用篮为空', 'none')
     return
   }
+  // 游客只读：双保险（后端亦会 403）
+  if (authStore.isGuest) {
+    showToast('游客模式仅可查看，请用手机号登录', 'none')
+    return
+  }
   submitting.value = true
   try {
     const tool_ids = cartStore.items.map((i) => i.tool_id)

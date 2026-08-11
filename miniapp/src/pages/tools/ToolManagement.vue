@@ -48,7 +48,7 @@
             {{ meta(t.status).label }}
           </text>
           <view
-            v-if="t.status === 'available'"
+            v-if="t.status === 'available' && !auth.isGuest"
             class="card__btn"
             :class="{ 'card__btn--added': cartStore.hasItem(t.tool_id) }"
             @tap.stop="addToCart(t)"
@@ -64,8 +64,8 @@
       <text class="empty__text">{{ loaded ? '没有符合条件的工具' : '加载中…' }}</text>
     </view>
 
-    <!-- 底部领用篮（仅选中有工具时显示） -->
-    <view class="cart-bar" v-if="cartStore.count > 0" @tap="goCart">
+    <!-- 底部领用篮（游客隐藏；仅选中有工具时显示） -->
+    <view class="cart-bar" v-if="cartStore.count > 0 && !auth.isGuest" @tap="goCart">
       <view class="cart-bar__info">
         <text class="cart-bar__dot">{{ cartStore.count }}</text>
         <text class="cart-bar__text">已选 {{ cartStore.count }} 件工具</text>
@@ -82,11 +82,13 @@ import { getTools, getShelves } from '@/api'
 import { toolStatusMeta, toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { useCartStore } from '@/store/cart'
+import { useAuthStore } from '@/store/auth'
 import type { Tool } from '@/types'
 
 const tools = ref<Tool[]>([])
 const loaded = ref(false)
 const cartStore = useCartStore()
+const auth = useAuthStore()
 
 // 搜索 + 货架筛选
 const keyword = ref('')

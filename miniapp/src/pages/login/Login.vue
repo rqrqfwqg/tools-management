@@ -7,21 +7,30 @@
     </view>
 
     <view class="actions">
+      <!-- 微信手机号授权登录：后端解析手机号匹配系统账号决定权限 -->
       <button
         class="wx-btn"
+        open-type="getPhoneNumber"
         :loading="loading"
         :disabled="loading"
-        @tap="handleWxLogin"
+        @getphonenumber="onGetPhone"
       >
         <text class="wx-icon">💬</text>
-        <text>{{ loading ? '登录中…' : '微信一键登录' }}</text>
+        <text>{{ loading ? '登录中…' : '微信手机号登录' }}</text>
       </button>
+
+      <!-- 游客模式（只读） -->
+      <view class="guest-btn" :class="{ 'guest-btn--disabled': loading }" @tap="guestLogin">
+        <text>{{ loading ? '登录中…' : '游客模式浏览（只读）' }}</text>
+      </view>
+
       <!-- 调试模式（开发版/开发者工具）提供管理员快捷登录 -->
-      <view v-if="isDebug" class="debug-btn" @tap="debugLogin">
+      <view v-if="isDebug" class="debug-btn" :class="{ 'debug-btn--disabled': loading }" @tap="debugLogin">
         <text class="debug-icon">⚙️</text>
         <text>{{ loading ? '登录中…' : '调试登录（管理员）' }}</text>
       </view>
-      <view class="tip">登录即表示同意《用户协议》与《隐私政策》</view>
+
+      <view class="tip">手机号需与系统员工档案匹配才能操作；未匹配仅可查看</view>
     </view>
   </view>
 </template>
@@ -29,7 +38,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/store/auth'
-import { login } from '@/api'
+import { login, wxPhoneLogin } from '@/api'
 import { DEBUG_ADMIN_PHONE, isDebugMode } from '@/constants/debug'
 
 const authStore = useAuthStore()
@@ -50,11 +59,24 @@ onMounted(() => {
   isDebug.value = isDebugMode()
 })
 
-async function handleWxLogin() {
+/** 微信手机号登录：getPhoneNumber 按钮回调 → 手机号 code + uni.login code → 后端匹配账号 */
+async function onGetPhone(e: any) {
   if (loading.value) return
+  const detail = e?.detail || {}
+  // 用户拒绝授权手机号
+  if (detail.errMsg && String(detail.errMsg).includes('fail')) {
+    uni.showToast({ title: '未授权手机号，可使用游客模式浏览', icon: 'none' })
+    return
+  }
+  const phoneCode = detail.code
+  if (!phoneCode) {
+    uni.showToast({ title: '获取手机号失败，请重试', icon: 'none' })
+    return
+  }
+
   loading.value = true
   try {
-    // 1. 取微信登录临时 code（mp-weixin 下 uni.login 直接返回 code，无需用户授权弹窗）
+    // 1. 取微信登录临时 code（mp-weixin 下 uni.login 直接返回 code，无需授权弹窗）
     const loginRes = await uni.login()
     const code = (loginRes as any).code
     if (!code) {
@@ -62,24 +84,48 @@ async function handleWxLogin() {
       return
     }
 
-    // 2. code → 后端 jscode2session 换 openid → 查找/自动注册 → 签发 JWT
-    //    authStore.wxLogin 内部已写入 token + user 到 storage
-    const result = await authStore.wxLogin(code)
+    // 2. 手机号解析 + 账号匹配（后端决定真实账号或游客）
+    const result = await wxPhoneLogin(code, phoneCode)
     if (result?.access_token) {
-      if (result.is_new_user) {
-        uni.showToast({ title: '账号已创建', icon: 'success' })
+      authStore.setToken(result.access_token)
+      authStore.setUser(result.user)
+      if (result.guest) {
+        uni.showToast({ title: '未匹配到账号，游客模式（只读）', icon: 'none' })
       } else {
         uni.showToast({ title: '登录成功', icon: 'success' })
       }
-      // 新用户可在「我的」页绑定手机号，这里不阻塞主流程
       goHome()
     } else {
       uni.showToast({ title: '登录失败，请重试', icon: 'none' })
     }
   } catch (err: any) {
-    // 后端未配置 WX_APPID/WX_SECRET 时会返回「微信登录未配置」
-    const msg = err?.message || err?.errMsg || '登录失败'
+    const msg = err?.data?.message || err?.message || err?.errMsg || '登录失败'
     uni.showToast({ title: msg, icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 游客模式：微信一键登录（不授权手机号）→ 后端未匹配账号返回游客（只读） */
+async function guestLogin() {
+  if (loading.value) return
+  loading.value = true
+  try {
+    const loginRes = await uni.login()
+    const code = (loginRes as any).code
+    if (!code) {
+      uni.showToast({ title: '获取登录凭证失败', icon: 'none' })
+      return
+    }
+    const result = await authStore.wxLogin(code)
+    if (result?.access_token) {
+      uni.showToast({ title: '游客模式（只读）', icon: 'none' })
+      goHome()
+    } else {
+      uni.showToast({ title: '登录失败，请重试', icon: 'none' })
+    }
+  } catch (err: any) {
+    uni.showToast({ title: err?.data?.message || err?.message || '登录失败', icon: 'none' })
   } finally {
     loading.value = false
   }
@@ -100,7 +146,7 @@ async function debugLogin() {
       uni.showToast({ title: '调试登录失败', icon: 'none' })
     }
   } catch (err: any) {
-    uni.showToast({ title: err?.message || '调试登录失败', icon: 'none' })
+    uni.showToast({ title: err?.data?.message || err?.message || '调试登录失败', icon: 'none' })
   } finally {
     loading.value = false
   }
@@ -186,6 +232,25 @@ async function debugLogin() {
   font-size: 36rpx;
 }
 
+.guest-btn {
+  width: 100%;
+  margin-top: 24rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+  background: $tm-card-bg;
+  color: $tm-text-secondary;
+  font-size: 30rpx;
+  font-weight: 500;
+  border: 1rpx solid $tm-border;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &--disabled {
+    opacity: 0.7;
+  }
+}
+
 .debug-btn {
   width: 100%;
   margin-top: 24rpx;
@@ -200,6 +265,10 @@ async function debugLogin() {
   align-items: center;
   justify-content: center;
   gap: 12rpx;
+
+  &--disabled {
+    opacity: 0.7;
+  }
 }
 
 .debug-icon {

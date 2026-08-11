@@ -3,7 +3,7 @@
     <view class="bar">
       <text class="bar__title">物料中心</text>
       <view class="bar__actions">
-        <text class="bar__dispense" @tap="goDispense">物料领用</text>
+        <text v-if="!auth.isGuest" class="bar__dispense" @tap="goDispense">物料领用</text>
         <text class="bar__refresh" @tap="load">刷新</text>
       </view>
     </view>
@@ -56,11 +56,13 @@ import { onShow } from '@dcloudio/uni-app'
 import { getSpareParts, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
+import { useAuthStore } from '@/store/auth'
 import type { SparePart, Consumable } from '@/types'
 
 const spares = ref<SparePart[]>([])
 const consumables = ref<Consumable[]>([])
 const loaded = ref(false)
+const auth = useAuthStore()
 
 function isLow(c: Consumable): boolean {
   if (c.warning_qty == null) return false

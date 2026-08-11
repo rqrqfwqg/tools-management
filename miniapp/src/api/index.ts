@@ -24,6 +24,13 @@ export const wxLogin = (code: string, nickname?: string, avatar?: string) =>
  */
 export const wxBindPhone = (phone: string) => post('/auth/wx-bind-phone', { phone })
 
+/**
+ * 微信手机号登录：phoneCode 来自 <button open-type="getPhoneNumber"> 的 e.detail.code，
+ * code 来自 uni.login。后端解析手机号匹配系统账号决定权限；未匹配返回游客（只读）。
+ */
+export const wxPhoneLogin = (code: string, phoneCode: string) =>
+  post('/auth/wx-phone-login', { code, phoneCode })
+
 // ===== Users =====
 export const getUsers = () => get('/users')
 export const createUser = (data: any) => post('/users', data)

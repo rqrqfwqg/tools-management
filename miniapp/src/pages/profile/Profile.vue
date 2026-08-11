@@ -19,8 +19,8 @@
         <text class="cell__label">部门</text>
         <text class="cell__value">{{ deptName || '—' }}</text>
       </view>
-      <!-- 微信新用户：绑定手机号后合并为正式员工档案 -->
-      <view class="cell cell--link" v-if="!phone" @tap="bindPhone">
+      <!-- 微信新用户：绑定手机号后合并为正式员工档案（游客不展示，需用手机号重新登录） -->
+      <view class="cell cell--link" v-if="!phone && !auth.isGuest" @tap="bindPhone">
         <text class="cell__label cell__label--primary">绑定手机号</text>
         <text class="cell__arrow">›</text>
       </view>

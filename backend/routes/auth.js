@@ -129,9 +129,101 @@ function wxCode2Session(code, appid, secret) {
   });
 }
 
-// 微信小程序登录：code2session 换取 openid → 查找或自动注册用户 → 签发 JWT
+// ---------- 微信 access_token 与手机号解析 ----------
+
+// access_token 缓存（微信 7200s 有效期，提前 300s 刷新）
+let wxAccessToken = null;
+let wxAccessTokenExpireAt = 0;
+
+function getWxAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (wxAccessToken && Date.now() < wxAccessTokenExpireAt) return resolve(wxAccessToken);
+    const appid = process.env.WX_APPID;
+    const secret = process.env.WX_SECRET;
+    if (!appid || !secret) return reject(new Error('WX_APPID/WX_SECRET 未配置'));
+    const url =
+      `https://api.weixin.qq.com/cgi-bin/token` +
+      `?grant_type=client_credential` +
+      `&appid=${encodeURIComponent(appid)}` +
+      `&secret=${encodeURIComponent(secret)}`;
+    const req = https.get(url, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { raw += chunk; });
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(raw);
+          if (data.errcode) return reject(new Error(`微信 token 获取失败 errcode=${data.errcode} ${data.errmsg || ''}`));
+          wxAccessToken = data.access_token;
+          wxAccessTokenExpireAt = Date.now() + (Number(data.expires_in) - 300) * 1000;
+          resolve(wxAccessToken);
+        } catch (err) {
+          reject(new Error(`微信 token 接口返回非 JSON: ${raw.slice(0, 200)}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(8000, () => req.destroy(new Error('微信 token 接口请求超时')));
+  });
+}
+
+// 用 getPhoneNumber 按钮的 code 换手机号（新 API，凭 access_token 调用，无需 session_key）
+function wxPhoneCode2Number(phoneCode, accessToken) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ code: phoneCode });
+    const url =
+      `https://api.weixin.qq.com/wxa/business/getuserphonenumber` +
+      `?access_token=${encodeURIComponent(accessToken)}`;
+    const req = https.request(
+      url,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      (res) => {
+        let raw = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { raw += chunk; });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(raw);
+            if (data.errcode) return reject(new Error(`手机号解析失败 errcode=${data.errcode} ${data.errmsg || ''}`));
+            resolve(data.phone_info || {});
+          } catch (err) {
+            reject(new Error(`手机号接口返回非 JSON: ${raw.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.setTimeout(8000, () => req.destroy(new Error('微信手机号接口请求超时')));
+    req.write(body);
+    req.end();
+  });
+}
+
+/** 游客身份（只读：可查看数据，禁止一切写操作，server.js 全局守卫） */
+function guestUser() {
+  return {
+    user_id: 0,
+    username: 'guest',
+    real_name: '游客',
+    role: 'guest',
+    role_name: '游客',
+    is_active: true
+  };
+}
+
+/** 统一签发 JWT（7 天） */
+function signToken(user) {
+  return jwt.sign(
+    { user_id: user.user_id, username: user.username, role: user.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+// 微信小程序登录：code2session 换取 openid → 仅允许已绑定手机号的账号登录；
+// 未匹配一律游客模式（只读），不再自动注册员工账号
 router.post('/auth/wx-login', loginLimiter, async (req, res) => {
-  const { code, nickname, avatar } = req.body || {};
+  const { code } = req.body || {};
 
   if (!code) {
     return res.status(400).json({ message: 'code is required' });
@@ -166,49 +258,107 @@ router.post('/auth/wx-login', loginLimiter, async (req, res) => {
   }
 
   const db = readDB();
-  let user = db.users.find(u => u.wx_openid === openid);
-  let isNewUser = false;
-
-  if (!user) {
-    // 自动注册：默认普通员工，归属默认部门（技术部 dept_id=2）
-    isNewUser = true;
-    const deptId = 2;
-    const deptMap = (db.departments || []).reduce((m, d) => { m[d.dept_id] = d.dept_name; return m; }, {});
-    const baseUsername = `wx_${openid.slice(0, 12)}`;
-    let username = baseUsername;
-    let suffix = 1;
-    while (db.users.some(u => u.username === username)) {
-      username = `${baseUsername}_${suffix++}`;
-    }
-    const newUser = {
-      user_id: nextId(db.users, 'user_id'),
-      username,
-      password: bcrypt.hashSync(`wx_${openid}_${Date.now()}`, 10),
-      real_name: nickname || '微信用户',
-      dept_id: deptId,
-      role: 'staff',
-      role_id: 2,
-      role_name: '普通员工',
-      is_active: true,
-      phone: '',
-      wx_openid: openid,
-      wx_nickname: nickname || '',
-      wx_avatar: avatar || '',
-      dept_name: deptMap[deptId] || ''
-    };
-    db.users.push(newUser);
-    writeDB(db);
-    user = newUser;
+  // 仅允许「已通过手机号匹配且绑定 wx_openid」的真实账号登录
+  const user = db.users.find(u => u.wx_openid === openid && (u.phone || '').trim());
+  if (user && user.is_active !== false) {
+    const token = signToken(user);
+    const { password: _, ...userWithoutPassword } = user;
+    return res.json({ access_token: token, user: userWithoutPassword, is_new_user: false, guest: false });
   }
 
-  const token = jwt.sign(
-    { user_id: user.user_id, username: user.username, role: user.role },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
+  // 未匹配 → 游客模式（只读）
+  const guest = guestUser();
+  const token = signToken(guest);
+  return res.json({
+    access_token: token,
+    user: guest,
+    is_new_user: false,
+    guest: true,
+    message: '未匹配到系统账号，已进入游客模式（只读）'
+  });
+});
 
-  const { password: _, ...userWithoutPassword } = user;
-  res.json({ access_token: token, user: userWithoutPassword, is_new_user: isNewUser });
+// 微信手机号登录：getPhoneNumber 的 code → 解析手机号 → 匹配系统账号 → 签发对应权限 token
+// 未匹配 → 游客模式（只读）。游客只能查看数据，写操作由 server.js 全局守卫拒绝。
+router.post('/auth/wx-phone-login', loginLimiter, async (req, res) => {
+  const { code, phoneCode } = req.body || {};
+  if (!phoneCode) {
+    return res.status(400).json({ message: 'phoneCode is required' });
+  }
+
+  const appid = process.env.WX_APPID;
+  const secret = process.env.WX_SECRET;
+  if (!appid || !secret) {
+    console.error('[WXPhoneLogin] WX_APPID/WX_SECRET 未配置，无法登录');
+    return res.status(500).json({ message: '微信登录未配置，请联系管理员' });
+  }
+
+  // 1) 微信登录 code → openid（用于给匹配账号绑定 wx_openid）
+  let session;
+  try {
+    session = await wxCode2Session(code, appid, secret);
+  } catch (err) {
+    console.error('[WXPhoneLogin] 调用微信接口失败:', err.message);
+    return res.status(502).json({ message: '微信服务暂不可用，请稍后再试' });
+  }
+  if (session.errcode || !session.openid) {
+    console.error(`[WXPhoneLogin] 微信返回错误 errcode=${session.errcode} errmsg=${session.errmsg}`);
+    return res.status(401).json({ message: 'wx login failed' });
+  }
+  const openid = session.openid;
+
+  // 2) getPhoneNumber code → 手机号（新 API，服务端凭 access_token 调用）
+  let accessToken;
+  try {
+    accessToken = await getWxAccessToken();
+  } catch (err) {
+    console.error('[WXPhoneLogin] 获取 access_token 失败:', err.message);
+    return res.status(502).json({ message: err.message });
+  }
+  let phoneInfo;
+  try {
+    phoneInfo = await wxPhoneCode2Number(phoneCode, accessToken);
+  } catch (err) {
+    console.error('[WXPhoneLogin] 解析手机号失败:', err.message);
+    return res.status(502).json({ message: err.message });
+  }
+  const phone = (phoneInfo.purePhoneNumber || phoneInfo.phoneNumber || '').trim();
+  if (!/^1\d{10}$/.test(phone)) {
+    return res.status(400).json({ message: '未能获取有效手机号' });
+  }
+
+  // 3) 手机号匹配系统账号（同号多账户防护）
+  const db = readDB();
+  const matched = db.users.filter(u => (u.phone || '').trim() === phone);
+  if (matched.length > 1) {
+    return res.status(403).json({ message: '该手机号关联多个账户，请联系管理员' });
+  }
+  const target = matched[0];
+  if (target && target.is_active === false) {
+    return res.status(403).json({ message: '用户已被禁用' });
+  }
+
+  if (target) {
+    // 绑定 wx_openid：下次微信一键登录可直接进入该账号
+    if (openid && !target.wx_openid) {
+      target.wx_openid = openid;
+      writeDB(db);
+    }
+    const token = signToken(target);
+    const { password: _, ...userWithoutPassword } = target;
+    return res.json({ access_token: token, user: userWithoutPassword, is_new_user: false, guest: false });
+  }
+
+  // 4) 未匹配 → 游客模式（只读）
+  const guest = guestUser();
+  const token = signToken(guest);
+  return res.json({
+    access_token: token,
+    user: guest,
+    is_new_user: false,
+    guest: true,
+    message: '手机号未匹配到系统账号，已进入游客模式（只读）'
+  });
 });
 
 // 微信绑定手机号：把当前微信账户的 wx_openid 关联到已有手机号账户
