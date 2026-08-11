@@ -17,6 +17,13 @@ export const login = (phone: string) => post('/auth/login', { phone })
 export const wxLogin = (code: string, nickname?: string, avatar?: string) =>
   post<WxLoginResult>('/auth/wx-login', { code, nickname, avatar })
 
+/**
+ * 微信绑定手机号：把当前微信账号关联到已有手机号账户（同名员工档案合并）。
+ * 有匹配账户→合并（临时微信账号被移除，返回目标 user）；无匹配→给当前账号补手机号。
+ * 注意：合并后旧 token 失效（临时账号已删），调用方需重新 wx-login 换新 token。
+ */
+export const wxBindPhone = (phone: string) => post('/auth/wx-bind-phone', { phone })
+
 // ===== Users =====
 export const getUsers = () => get('/users')
 export const createUser = (data: any) => post('/users', data)

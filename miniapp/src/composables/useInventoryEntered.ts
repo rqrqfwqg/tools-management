@@ -30,9 +30,9 @@ export function getEnteredCodes(checkId: number): Set<string> {
 /** 标记某编码已录入（幂等；存储不可用时静默降级，仅影响标记不影响盘库正确性） */
 export function markEntered(checkId: number, code: string): void {
   try {
-    const set = getEnteredCodes(checkId)
-    set.add(code)
-    set(`${KEY_PREFIX}${checkId}`, [...set])
+    const codes = getEnteredCodes(checkId)
+    codes.add(code)
+    set(`${KEY_PREFIX}${checkId}`, [...codes])
   } catch {
     // 忽略写入异常（隐私模式等场景），不影响主流程
   }

@@ -67,9 +67,9 @@ export function showInputModal(options: InputModalOptions): Promise<{ confirm: b
       placeholderText: options.placeholderText || '请输入编码',
       confirmText: options.confirmText || '确定',
       editable: true,
-      success: (res) => {
-        const content = (res as any).content || ''
-        resolve({ confirm: !!res.confirm, content: String(content).trim() })
+      success: (res: any) => {
+        const content = res?.content || ''
+        resolve({ confirm: !!res?.confirm, content: String(content).trim() })
       },
       fail: () => resolve({ confirm: false, content: '' })
     } as any)
