@@ -17,7 +17,10 @@ const PORT = process.env.PORT || 3000;
 // 安全头
 app.use(helmet({
   contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  // 允许跨域嵌入资源（小程序 <image>、H5 跨端口加载 /uploads 图片需要；
+  // 默认 same-origin 会导致小程序图片加载报 ERR_BLOCKED_BY_RESPONSE）
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
 // CORS
