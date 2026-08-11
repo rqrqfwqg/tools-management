@@ -28,6 +28,7 @@
       "scope.userLocation": {
         "desc": "用于定位当前仓库/货架位置"
       }
-    }
+    },
+    "lazyCodeLoading": "requiredComponents"
   }
 }
