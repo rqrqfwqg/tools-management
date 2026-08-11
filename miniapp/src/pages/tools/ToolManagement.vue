@@ -47,7 +47,14 @@
           <text class="badge" :style="{ color: meta(t.status).color, background: meta(t.status).bg }">
             {{ meta(t.status).label }}
           </text>
-          <view v-if="t.status === 'available'" class="card__btn" @tap.stop="addToCart(t)">领用</view>
+          <view
+            v-if="t.status === 'available'"
+            class="card__btn"
+            :class="{ 'card__btn--added': cartStore.hasItem(t.tool_id) }"
+            @tap.stop="addToCart(t)"
+          >
+            {{ cartStore.hasItem(t.tool_id) ? '已加入' : '领用' }}
+          </view>
         </view>
       </view>
     </scroll-view>
@@ -124,6 +131,11 @@ function onTap(t: Tool) {
 }
 
 function addToCart(t: Tool) {
+  // 已在领用篮：不重复添加，提示可直接去提交
+  if (cartStore.hasItem(t.tool_id)) {
+    uni.showToast({ title: '已在领用篮，可去提交', icon: 'none' })
+    return
+  }
   cartStore.addItem({
     tool_id: t.tool_id,
     tool_name: t.tool_name || t.tool_code,
@@ -279,6 +291,11 @@ onShow(() => {
     background: $tm-primary;
     color: #ffffff;
     font-size: 24rpx;
+
+    &--added {
+      background: $tm-success;
+      color: #ffffff;
+    }
   }
 }
 
