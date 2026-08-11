@@ -5,17 +5,46 @@
       <text class="bar__refresh" @tap="load">刷新</text>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="tools.length">
-      <view class="card" v-for="t in tools" :key="t.tool_id" @tap="onTap(t)">
+    <!-- 搜索 -->
+    <view class="search">
+      <input
+        v-model="keyword"
+        class="search__input"
+        placeholder="搜索名称/编码"
+        placeholder-class="search__ph"
+        confirm-type="search"
+      />
+    </view>
+
+    <!-- 按货架筛选 -->
+    <scroll-view scroll-x class="shelves" :show-scrollbar="false">
+      <view
+        class="shelves__item"
+        :class="{ 'shelves__item--active': shelfId === 0 }"
+        @tap="shelfId = 0"
+      >全部</view>
+      <view
+        v-for="s in shelves"
+        :key="s.shelf_id"
+        class="shelves__item"
+        :class="{ 'shelves__item--active': shelfId === s.shelf_id }"
+        @tap="shelfId = s.shelf_id"
+      >{{ s.shelf_name }}</view>
+    </scroll-view>
+
+    <scroll-view scroll-y class="list" v-if="filtered.length">
+      <view class="card" v-for="t in filtered" :key="t.tool_id" @tap="onTap(t)">
         <view class="card__main">
           <text class="card__name">{{ t.tool_name || t.tool_code }}</text>
           <text class="card__code">{{ t.tool_code }}</text>
+          <text class="card__loc" v-if="t.shelf_name || t.warehouse || t.location_name">
+            {{ [t.shelf_name, t.location_name, t.warehouse].filter(Boolean).join(' · ') }}
+          </text>
         </view>
         <view class="card__side">
           <text class="badge" :style="{ color: meta(t.status).color, background: meta(t.status).bg }">
             {{ meta(t.status).label }}
           </text>
-          <text class="card__loc" v-if="t.location_name || t.warehouse">{{ t.location_name || t.warehouse }}</text>
           <view v-if="t.status === 'available'" class="card__btn" @tap.stop="addToCart(t)">领用</view>
         </view>
       </view>
@@ -23,7 +52,7 @@
 
     <view class="empty" v-else>
       <text class="empty__icon">工</text>
-      <text class="empty__text">{{ loaded ? '暂无工具数据' : '加载中…' }}</text>
+      <text class="empty__text">{{ loaded ? '没有符合条件的工具' : '加载中…' }}</text>
     </view>
 
     <!-- 底部领用篮（仅选中有工具时显示） -->
@@ -38,9 +67,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getTools } from '@/api'
+import { getTools, getShelves } from '@/api'
 import { toolStatusMeta, toArray } from '@/utils/status'
 import { useCartStore } from '@/store/cart'
 import type { Tool } from '@/types'
@@ -48,6 +77,22 @@ import type { Tool } from '@/types'
 const tools = ref<Tool[]>([])
 const loaded = ref(false)
 const cartStore = useCartStore()
+
+// 搜索 + 货架筛选
+const keyword = ref('')
+const shelves = ref<any[]>([])
+const shelfId = ref(0)
+
+const filtered = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  return tools.value.filter((t) => {
+    if (shelfId.value !== 0 && t.shelf_id !== shelfId.value) return false
+    if (!kw) return true
+    const name = (t.tool_name || '').toLowerCase()
+    const code = (t.tool_code || '').toLowerCase()
+    return name.includes(kw) || code.includes(kw)
+  })
+})
 
 function meta(status?: string) {
   return toolStatusMeta(status)
@@ -60,6 +105,14 @@ async function load() {
     tools.value = toArray(data) as Tool[]
   } finally {
     loaded.value = true
+  }
+  // 货架列表首次加载后缓存（刷新工具不动货架）
+  if (!shelves.value.length) {
+    getShelves()
+      .then((d) => {
+        shelves.value = toArray(d)
+      })
+      .catch(() => {})
   }
 }
 
@@ -113,6 +166,43 @@ onShow(() => {
   }
 }
 
+.search {
+  padding: 16rpx 24rpx 0;
+
+  &__input {
+    background: $tm-card-bg;
+    border-radius: 999rpx;
+    padding: 16rpx 28rpx;
+    font-size: 26rpx;
+    color: $tm-text;
+  }
+
+  &__ph {
+    color: $tm-text-muted;
+  }
+}
+
+.shelves {
+  white-space: nowrap;
+  padding: 16rpx 24rpx 4rpx;
+
+  &__item {
+    display: inline-block;
+    padding: 10rpx 28rpx;
+    margin-right: 16rpx;
+    border-radius: 999rpx;
+    background: $tm-card-bg;
+    color: $tm-text-secondary;
+    font-size: 24rpx;
+
+    &--active {
+      background: $tm-primary;
+      color: #ffffff;
+      font-weight: 600;
+    }
+  }
+}
+
 .list {
   flex: 1;
   padding: 16rpx 24rpx 120rpx;
@@ -148,16 +238,16 @@ onShow(() => {
     color: $tm-text-muted;
   }
 
-  &__side {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
   &__loc {
     margin-top: 10rpx;
     font-size: 22rpx;
     color: $tm-text-secondary;
+  }
+
+  &__side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
   }
 
   &__btn {
