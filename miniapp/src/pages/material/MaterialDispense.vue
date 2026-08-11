@@ -32,6 +32,8 @@
 
     <scroll-view scroll-y class="list">
       <view class="card" v-for="item in displayList" :key="itemKey(item)">
+        <image v-if="item.image_url" class="card__thumb" :src="resolveImage(item.image_url)" mode="aspectFill" />
+        <view v-else class="card__thumb card__thumb--text">{{ nameOf(item).charAt(0) }}</view>
         <view class="card__main">
           <text class="card__name">{{ nameOf(item) }}</text>
           <text class="card__code">{{ codeOf(item) }}</text>
@@ -66,6 +68,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { getSpareParts, getConsumables, takeConsumableByCode } from '@/api/material'
 import { createOrder } from '@/api'
 import { toArray } from '@/utils/status'
+import { resolveImage } from '@/utils/image'
 import { showToast, showModal } from '@/utils/feedback'
 
 type Tab = 'spare' | 'consumable'
@@ -283,6 +286,25 @@ onShow(() => {
   padding: 24rpx 28rpx;
   margin-top: 16rpx;
   box-shadow: $tm-shadow-card;
+
+  &__thumb {
+    width: 88rpx;
+    height: 88rpx;
+    border-radius: $tm-radius-sm;
+    margin-right: 20rpx;
+    flex-shrink: 0;
+    background: $tm-border-light;
+
+    &--text {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: $tm-primary-bg;
+      color: $tm-primary;
+      font-size: 36rpx;
+      font-weight: 600;
+    }
+  }
 
   &__main {
     display: flex;

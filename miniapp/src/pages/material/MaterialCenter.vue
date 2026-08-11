@@ -13,6 +13,8 @@
       <view class="group-title">备件（{{ spares.length }}）</view>
       <view v-if="spares.length">
         <view class="card" v-for="s in spares" :key="'s' + s.spare_id">
+          <image v-if="s.image_url" class="card__thumb" :src="resolveImage(s.image_url)" mode="aspectFill" />
+          <view v-else class="card__thumb card__thumb--text">{{ (s.spare_name || s.spare_code).charAt(0) }}</view>
           <view class="card__main">
             <text class="card__name">{{ s.spare_name || s.spare_code }}</text>
             <text class="card__code">{{ s.spare_code }}</text>
@@ -29,6 +31,8 @@
       <view class="group-title">消耗品（{{ consumables.length }}）</view>
       <view v-if="consumables.length">
         <view class="card" v-for="c in consumables" :key="'c' + c.consumable_id">
+          <image v-if="c.image_url" class="card__thumb" :src="resolveImage(c.image_url)" mode="aspectFill" />
+          <view v-else class="card__thumb card__thumb--text">{{ (c.consumable_name || c.consumable_code).charAt(0) }}</view>
           <view class="card__main">
             <text class="card__name">{{ c.consumable_name || c.consumable_code }}</text>
             <text class="card__code">{{ c.consumable_code }}</text>
@@ -51,6 +55,7 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getSpareParts, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
+import { resolveImage } from '@/utils/image'
 import type { SparePart, Consumable } from '@/types'
 
 const spares = ref<SparePart[]>([])
@@ -152,6 +157,25 @@ onShow(() => {
   padding: 28rpx 28rpx;
   margin-bottom: 16rpx;
   box-shadow: $tm-shadow-card;
+
+  &__thumb {
+    width: 88rpx;
+    height: 88rpx;
+    border-radius: $tm-radius-sm;
+    margin-right: 20rpx;
+    flex-shrink: 0;
+    background: $tm-border-light;
+
+    &--text {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: $tm-primary-bg;
+      color: $tm-primary;
+      font-size: 36rpx;
+      font-weight: 600;
+    }
+  }
 
   &__main {
     display: flex;
