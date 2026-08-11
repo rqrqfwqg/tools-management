@@ -62,11 +62,27 @@ function formatTime(s?: string): string {
   return String(s).replace('T', ' ').slice(0, 16)
 }
 
+/** 工单排序：需要操作的优先（待审批 > 借出中/已批准 > 终态），同级按借出时间倒序 */
+const ORDER_PRIORITY: Record<string, number> = {
+  pending: 0,
+  borrowed: 1,
+  approved: 2,
+  returned: 3,
+  rejected: 3,
+  cancelled: 3,
+  closed: 3
+}
+
 async function load() {
   loaded.value = false
   try {
     const data = await getOrders().catch(() => [])
-    orders.value = toArray(data) as Order[]
+    orders.value = (toArray(data) as Order[]).sort((a, b) => {
+      const pa = ORDER_PRIORITY[a.status] ?? 9
+      const pb = ORDER_PRIORITY[b.status] ?? 9
+      if (pa !== pb) return pa - pb
+      return String(b.borrow_time || '').localeCompare(String(a.borrow_time || ''))
+    })
   } finally {
     loaded.value = true
   }

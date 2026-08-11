@@ -114,7 +114,10 @@ async function load() {
   loaded.value = false
   try {
     const data = await getTools().catch(() => [])
-    tools.value = toArray(data) as Tool[]
+    // 按使用次数（borrow_count）降序：常用工具优先展示
+    tools.value = (toArray(data) as Tool[]).sort(
+      (a, b) => (b.borrow_count || 0) - (a.borrow_count || 0)
+    )
   } finally {
     loaded.value = true
   }
