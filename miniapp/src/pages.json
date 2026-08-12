@@ -111,10 +111,10 @@
     "backgroundColor": "#f7f8fa"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#1989fa",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "color": "#98A1B3",
+    "selectedColor": "#6D5CF9",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/dashboard/Dashboard",

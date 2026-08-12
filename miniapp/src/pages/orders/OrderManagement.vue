@@ -51,6 +51,7 @@ import { getOrders, updateOrderStatus } from '@/api'
 import { orderStatusMeta, toArray } from '@/utils/status'
 import { showToast, showModal } from '@/utils/feedback'
 import { useAuthStore } from '@/store/auth'
+import { refreshOrderBadge } from '@/composables/useOrderBadge'
 import type { Order } from '@/types'
 
 const orders = ref<Order[]>([])
@@ -87,6 +88,8 @@ async function load() {
       if (pa !== pb) return pa - pb
       return String(b.borrow_time || '').localeCompare(String(a.borrow_time || ''))
     })
+    // 同步工单 tab 未处理角标（复用已拉取列表）
+    refreshOrderBadge(orders.value)
   } finally {
     loaded.value = true
   }

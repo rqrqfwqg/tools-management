@@ -78,6 +78,7 @@ import { useAuthStore } from '@/store/auth'
 import { getTools, getOrders } from '@/api'
 import { getSpareParts, getConsumables, getLowStockConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
+import { refreshOrderBadge } from '@/composables/useOrderBadge'
 
 const auth = useAuthStore()
 const loaded = ref(false)
@@ -138,6 +139,8 @@ async function load() {
     borrowedCount.value = orderList
       .filter((o) => o.status === 'borrowed' || o.status === 'approved')
       .reduce((sum, o) => sum + ((o.items || []).length || 1), 0)
+    // 刷新工单 tab 未处理角标（pending + borrowed，复用已拉取列表）
+    refreshOrderBadge(orderList)
   } finally {
     loaded.value = true
   }
