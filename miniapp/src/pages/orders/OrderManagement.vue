@@ -6,7 +6,7 @@
     </view>
 
     <scroll-view scroll-y class="list" v-if="orders.length">
-      <view class="card" v-for="o in orders" :key="o.order_id">
+      <view class="card" v-for="o in orders" :key="o.order_id" @tap="goDetail(o)">
         <view class="card__top">
           <text class="card__no">{{ o.order_no }}</text>
           <text class="badge" :style="{ color: meta(o.status).color, background: meta(o.status).bg }">
@@ -25,8 +25,12 @@
           <text class="card__label">预计归还</text>
           <text class="card__value">{{ formatTime(o.expected_return) }}</text>
         </view>
+        <view class="card__row" v-if="(o.items || []).length">
+          <text class="card__label">物品数</text>
+          <text class="card__value">{{ o.items!.length }} 件</text>
+        </view>
         <!-- 审核操作：仅审批人（管理员/分队长）对待审批工单可见 -->
-        <view class="card__actions" v-if="o.status === 'pending' && auth.isApprover">
+        <view class="card__actions" v-if="o.status === 'pending' && auth.isApprover" @tap.stop>
           <view class="btn btn--reject" @tap="reject(o)">拒绝</view>
           <view class="btn btn--approve" @tap="approve(o)">批准</view>
         </view>
@@ -86,6 +90,11 @@ async function load() {
   } finally {
     loaded.value = true
   }
+}
+
+/** 点击工单 → 详情页 */
+function goDetail(o: Order) {
+  uni.navigateTo({ url: `/pages/orders/OrderDetail?id=${o.order_id}` })
 }
 
 /** 批准工单（后端 PUT /orders/:id/status approved，物料单自动扣库存） */

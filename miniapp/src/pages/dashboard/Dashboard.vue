@@ -51,6 +51,22 @@
       </view>
     </view>
 
+    <!-- 已借出工具快捷入口 -->
+    <view class="borrow-entry" @tap="goTab('orders')">
+      <view class="borrow-entry__left">
+        <view class="borrow-entry__icon">还</view>
+        <view class="borrow-entry__info">
+          <text class="borrow-entry__title">已借出工具</text>
+          <text class="borrow-entry__sub">归还前需逐件清点确认</text>
+        </view>
+      </view>
+      <view class="borrow-entry__right">
+        <text class="borrow-entry__count">{{ borrowedCount }}</text>
+        <text class="borrow-entry__unit">件待归还</text>
+        <text class="borrow-entry__arrow">›</text>
+      </view>
+    </view>
+
     <view class="tip" v-if="loaded && isEmpty">暂无数据，请先在管理后台录入工具 / 物料 / 工单。</view>
   </view>
 </template>
@@ -66,6 +82,8 @@ import { toArray } from '@/utils/status'
 const auth = useAuthStore()
 const loaded = ref(false)
 const stats = ref({ tools: 0, orders: 0, spare: 0, consumable: 0, lowStock: 0 })
+/** 已借出（借出中/已批准）工单中未归还的物品件数 */
+const borrowedCount = ref(0)
 
 const avatar = computed(() => auth.user?.wx_avatar || '')
 const greeting = computed(() => {
@@ -115,6 +133,11 @@ async function load() {
       consumable: toArray(consumables).length,
       lowStock: toArray(low).length
     }
+    // 统计借出中/已批准工单的物品件数（待归还）
+    const orderList = toArray(orders) as any[]
+    borrowedCount.value = orderList
+      .filter((o) => o.status === 'borrowed' || o.status === 'approved')
+      .reduce((sum, o) => sum + ((o.items || []).length || 1), 0)
   } finally {
     loaded.value = true
   }
@@ -272,5 +295,75 @@ onShow(() => {
   text-align: center;
   font-size: 24rpx;
   color: $tm-text-muted;
+}
+
+.borrow-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24rpx;
+  background: linear-gradient(135deg, $tm-warning, #ffb35c);
+  border-radius: $tm-radius;
+  padding: 28rpx 32rpx;
+  box-shadow: $tm-shadow-card;
+
+  &__left {
+    display: flex;
+    align-items: center;
+  }
+
+  &__icon {
+    width: 72rpx;
+    height: 72rpx;
+    border-radius: 20rpx;
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    font-size: 32rpx;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 20rpx;
+  }
+
+  &__info {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__title {
+    font-size: 30rpx;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  &__sub {
+    margin-top: 6rpx;
+    font-size: 22rpx;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  &__right {
+    display: flex;
+    align-items: baseline;
+  }
+
+  &__count {
+    font-size: 44rpx;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  &__unit {
+    margin-left: 8rpx;
+    font-size: 22rpx;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  &__arrow {
+    margin-left: 12rpx;
+    font-size: 40rpx;
+    color: rgba(255, 255, 255, 0.9);
+  }
 }
 </style>

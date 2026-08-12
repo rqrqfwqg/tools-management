@@ -32,6 +32,18 @@
       }
     },
     {
+      "path": "pages/orders/OrderDetail",
+      "style": {
+        "navigationBarTitleText": "工单详情"
+      }
+    },
+    {
+      "path": "pages/orders/OrderReturn",
+      "style": {
+        "navigationBarTitleText": "归还清点"
+      }
+    },
+    {
       "path": "pages/profile/Profile",
       "style": {
         "navigationBarTitleText": "我的"
