@@ -17,6 +17,10 @@ export const getSpareByCode = (code: string) =>
   get(`/spare-parts/code/${encodeURIComponent(code)}`)
 export const borrowSpareByCode = (code: string, data?: { scene?: string; expected_return?: string; purpose?: string }) =>
   post(`/spare-parts/code/${encodeURIComponent(code)}/borrow`, data || {})
+/** 备件即时领取：领走即扣库存，生成借出物料单（免审批） */
+export const claimSpareParts = (items: Array<{ spare_id: number; qty: number }>) =>
+  post('/spare-parts/claim', { items })
+
 
 // ===== 消耗品 =====
 export const getConsumables = () => get('/consumables')

@@ -45,28 +45,35 @@
 
       <!-- 明细 -->
       <view class="section-title">
-        工具 / 物料明细（{{ itemsCount }}）
-        <text v-if="order.status === 'borrowed'" class="section-title__hint">点击逐件清点</text>
+        {{ isMaterial ? '备件明细' : '工具 / 物料明细' }}（{{ itemsCount }}）
+        <text v-if="isToolBorrowed" class="section-title__hint">点击逐件清点</text>
+        <text v-else-if="isMaterial && order.status === 'borrowed'" class="section-title__hint">用剩备件可部分归还，库存自动加回</text>
       </view>
       <view class="items">
         <view
           class="item"
-          :class="{ 'item--clickable': order.status === 'borrowed', 'item--checked': isChecked(it) }"
+          :class="{ 'item--clickable': isToolBorrowed, 'item--checked': isChecked(it), 'item--material': isMaterial }"
           v-for="it in order.items || []"
-          :key="it.item_id || it.tool_id"
-          @tap="order.status === 'borrowed' ? toggleCheck(it) : undefined"
+          :key="it.item_id || it.tool_id || it.spare_id"
+          @tap="isToolBorrowed ? toggleCheck(it) : undefined"
         >
-          <!-- 清点勾选标记（借出中） -->
-          <view v-if="order.status === 'borrowed'" class="check" :class="{ 'check--on': isChecked(it) }">
+          <!-- 工具单清点标记 -->
+          <view v-if="isToolBorrowed" class="check" :class="{ 'check--on': isChecked(it) }">
             <text v-if="isChecked(it)" class="check__mark">✓</text>
           </view>
           <image v-else-if="thumb(it)" class="item__thumb" :src="thumb(it)" mode="aspectFill" />
-          <view v-else class="item__thumb item__thumb--text">{{ (it.tool_name || '?').charAt(0) }}</view>
+          <view v-else class="item__thumb item__thumb--text">{{ nameChar(it) }}</view>
           <view class="item__main">
-            <text class="item__name">{{ it.tool_name }}</text>
-            <text class="item__code">{{ it.tool_code }}</text>
+            <text class="item__name">{{ nameOf(it) }}</text>
+            <text class="item__code">{{ codeOf(it) }}</text>
+            <text v-if="isMaterial" class="item__qty">借 {{ borrowQty(it) }} / 已还 {{ returnedQty(it) }}</text>
           </view>
-          <text v-if="order.status === 'borrowed' && isChecked(it)" class="item__checked-tag">✓ 已清点</text>
+          <!-- 工具单：清点标签 -->
+          <text v-if="isToolBorrowed && isChecked(it)" class="item__checked-tag">✓ 已清点</text>
+          <!-- 物料单：逐项归还（用剩加回库存） -->
+          <view v-else-if="isMaterial && order.status === 'borrowed' && itemRemaining(it) > 0" class="item__return-btn" @tap.stop="spareReturn(it)">
+            归还
+          </view>
           <text v-else class="item__status" :style="itemStyle(it.item_status)">{{ itemLabel(it.item_status) }}</text>
         </view>
       </view>
@@ -78,7 +85,11 @@
           <view class="btn btn--reject" @tap="reject">拒绝</view>
           <view class="btn btn--approve" @tap="approve">批准</view>
         </template>
-        <!-- 借出中：逐件清点后归还（全部勾选才可提交） -->
+        <!-- 备件领取单（借出中）：全部归还 -->
+        <view v-else-if="order.status === 'borrowed' && isMaterial" class="btn btn--primary btn--block" @tap="materialReturnAll">
+          全部归还（{{ allReturned ? '已全部归还' : '未还 ' + remainingTotal + ' 件' }}）
+        </view>
+        <!-- 工具单（借出中）：逐件清点后归还 -->
         <view
           v-else-if="order.status === 'borrowed'"
           class="btn btn--primary btn--block"
@@ -116,6 +127,34 @@ const checkedMap = ref<Record<number, boolean>>({})
 const itemsCount = computed(() => (order.value?.items || []).length)
 const checkedCount = computed(() => (order.value?.items || []).filter(i => isChecked(i)).length)
 const allChecked = computed(() => itemsCount.value > 0 && checkedCount.value === itemsCount.value)
+
+/** 是否为备件领取单（物料单） */
+const isMaterial = computed(() => order.value?.order_type === 'material' || (order.value?.items || []).some((i: any) => i.item_type === 'spare'))
+/** 工具单且借出中（走逐件清点） */
+const isToolBorrowed = computed(() => order.value?.status === 'borrowed' && !isMaterial.value)
+
+function nameOf(it: any): string {
+  return it.tool_name || it.spare_name || '未知'
+}
+function codeOf(it: any): string {
+  return it.tool_code || it.spare_code || '—'
+}
+function nameChar(it: any): string {
+  return nameOf(it).charAt(0)
+}
+function borrowQty(it: any): number {
+  return Number(it.borrow_qty ?? 1)
+}
+function returnedQty(it: any): number {
+  return Number(it.returned_qty ?? 0)
+}
+function itemRemaining(it: any): number {
+  return borrowQty(it) - returnedQty(it)
+}
+const remainingTotal = computed(() =>
+  (order.value?.items || []).reduce((sum: number, it: any) => sum + (isMaterial.value ? itemRemaining(it) : 0), 0)
+)
+const allReturned = computed(() => remainingTotal.value <= 0)
 
 const showActions = computed(() => {
   if (!order.value) return false
@@ -179,18 +218,21 @@ async function loadChecks() {
 }
 
 function isChecked(it: OrderItem): boolean {
-  return !!checkedMap.value[it.tool_id]
+  const tid = it.tool_id ?? it.spare_id
+  return tid != null ? !!checkedMap.value[tid] : false
 }
 
 /** 点击单项清点（勾选/取消，后端持久化，失败回滚） */
 async function toggleCheck(it: OrderItem) {
   if (!order.value) return
+  const tid = it.tool_id ?? it.spare_id
+  if (tid == null) return
   const next = !isChecked(it)
-  checkedMap.value = { ...checkedMap.value, [it.tool_id]: next }
+  checkedMap.value = { ...checkedMap.value, [tid]: next }
   try {
-    await saveChecklistItem(order.value.order_id, it.tool_id, next)
+    await saveChecklistItem(order.value.order_id, tid, next)
   } catch (e: any) {
-    checkedMap.value = { ...checkedMap.value, [it.tool_id]: !next }
+    checkedMap.value = { ...checkedMap.value, [tid]: !next }
     await showToast(e?.data?.message || e?.message || '保存失败', 'none')
   }
 }
@@ -260,6 +302,52 @@ async function directReturn() {
   try {
     await returnOrder(order.value.order_id)
     await showToast('已归还', 'success')
+    load()
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '归还失败', 'none')
+  }
+}
+
+/** 备件领取单：逐项用剩归还（输入数量，库存加回） */
+async function spareReturn(it: any) {
+  if (!order.value) return
+  const remaining = itemRemaining(it)
+  if (remaining <= 0) return
+  const res = await uni.showModal({
+    title: `归还 ${nameOf(it)}`,
+    editable: true,
+    placeholderText: `剩余可还 ${remaining}`,
+    content: '',
+    confirmText: '归还'
+  })
+  if (!res.confirm) return
+  const qty = Number(String((res as any).content || '').trim())
+  if (!Number.isInteger(qty) || qty < 1 || qty > remaining) {
+    await showToast(`请输入 1-${remaining} 的整数`, 'none')
+    return
+  }
+  try {
+    await returnOrder(order.value.order_id, [{ spare_id: it.spare_id, return_qty: qty }])
+    await showToast(`已归还 ${qty} 件，库存已加回`, 'success')
+    load()
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '归还失败', 'none')
+  }
+}
+
+/** 备件领取单：全部归还 */
+async function materialReturnAll() {
+  if (!order.value) return
+  if (allReturned.value) return
+  const ok = await showModal({
+    title: '全部归还',
+    content: `确认归还 ${remainingTotal.value} 件备件？库存将全部加回。`,
+    confirmText: '归还'
+  })
+  if (!ok) return
+  try {
+    await returnOrder(order.value.order_id)
+    await showToast('已全部归还，库存已加回', 'success')
     load()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '归还失败', 'none')
@@ -415,6 +503,24 @@ async function directReturn() {
     margin-top: 6rpx;
     font-size: 22rpx;
     color: $tm-text-muted;
+  }
+
+  &__qty {
+    display: block;
+    margin-top: 6rpx;
+    font-size: 22rpx;
+    color: $tm-text-secondary;
+  }
+
+  &__return-btn {
+    margin-left: 16rpx;
+    padding: 8rpx 28rpx;
+    border-radius: 999rpx;
+    background: $tm-success;
+    color: #ffffff;
+    font-size: 24rpx;
+    font-weight: 500;
+    flex-shrink: 0;
   }
 
   &__status {

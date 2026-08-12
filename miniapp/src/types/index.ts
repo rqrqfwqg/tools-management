@@ -65,9 +65,16 @@ export interface Category {
 
 export interface OrderItem {
   item_id: number
-  tool_id: number
-  tool_code: string
-  tool_name: string
+  tool_id?: number
+  tool_code?: string
+  tool_name?: string
+  /** 物料单：备件字段 */
+  item_type?: string
+  spare_id?: number
+  spare_code?: string
+  spare_name?: string
+  borrow_qty?: number
+  returned_qty?: number
   item_status: string
   return_time?: string
   condition_note?: string
@@ -78,6 +85,8 @@ export interface Order {
   order_no: string
   borrower_name: string
   status: string
+  /** tool=工具单 / material=备件领取单 */
+  order_type?: string
   scene?: string
   warehouse?: string
   require_approval: boolean

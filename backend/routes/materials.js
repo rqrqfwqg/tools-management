@@ -260,6 +260,82 @@ router.get('/spare-parts', authenticate, (req, res) => {
   res.json(enriched);
 });
 
+// 备件即时领取：领走即扣库存（不经审批），同时生成借出中的物料单（order_type=material）
+router.post('/spare-parts/claim', authenticate, [
+  body('items').isArray({ min: 1 }).withMessage('items 不能为空'),
+  validate
+], (req, res) => {
+  const { items } = req.body || {};
+  const db = readDB();
+  const user = db.users.find(u => u.user_id === req.user.user_id);
+  if (!user) return res.status(404).json({ message: '用户不存在' });
+
+  // 1. 校验并解析
+  const resolved = [];
+  const seen = new Set();
+  for (const it of items) {
+    const spareId = Number(it?.spare_id);
+    const qty = Number(it?.qty);
+    if (!Number.isInteger(spareId) || spareId <= 0) return res.status(400).json({ message: '备件参数不合法' });
+    if (!Number.isInteger(qty) || qty < 1) return res.status(400).json({ message: '备件领用数量必须为正整数' });
+    if (seen.has(spareId)) return res.status(400).json({ message: '同一备件不可重复领取' });
+    seen.add(spareId);
+    const sp = (db.spare_parts || []).find(s => s.spare_id === spareId);
+    if (!sp) return res.status(404).json({ message: `备件ID ${spareId} 不存在` });
+    if (Number(sp.stock_qty) < qty) {
+      return res.status(400).json({ message: `备件「${sp.spare_name}」库存不足（需 ${qty}，现有 ${sp.stock_qty}）` });
+    }
+    resolved.push({ sp, qty });
+  }
+
+  // 2. 扣库存 + 生成借出物料单
+  let itemCounter = 1;
+  const orderItems = [];
+  for (const { sp, qty } of resolved) {
+    const randomPart = crypto.randomBytes(3).readUIntBE(0, 3);
+    orderItems.push({
+      item_id: (itemCounter++ << 12) | (randomPart & 0xFFF),
+      item_type: 'spare',
+      spare_id: sp.spare_id, spare_code: sp.spare_code, spare_name: sp.spare_name,
+      item_status: 'borrowed',
+      borrow_qty: qty, returned_qty: 0, return_records: []
+    });
+    const idx = (db.spare_parts || []).findIndex(s => s.spare_id === sp.spare_id);
+    if (idx > -1) {
+      db.spare_parts[idx].stock_qty = Number(db.spare_parts[idx].stock_qty) - qty;
+      db.spare_parts[idx].borrow_count = (db.spare_parts[idx].borrow_count || 0) + 1;
+      db.spare_parts[idx].status = 'borrowed';
+    }
+    writeMovement(db, {
+      item_type: 'spare', item_id: sp.spare_id, item_code: sp.spare_code, item_name: sp.spare_name,
+      movement_type: 'out', qty: -qty, operator_id: user.user_id, operator_name: user.real_name || user.username,
+      order_id: null, remark: '备件领取-即时扣减'
+    });
+  }
+
+  const orderNo = `ORD${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+  const order = {
+    order_id: nextId(db.orders || [], 'order_id'),
+    order_no: orderNo,
+    borrower_name: user.real_name || user.username,
+    borrower_phone: user.phone || '',
+    borrower_id: user.user_id,
+    status: 'borrowed',
+    order_type: 'material',
+    warehouse: '', scene: '',
+    borrow_time: nowCST(),
+    expected_return: null, actual_return: null, purpose: '备件即时领取',
+    require_approval: false,
+    created_at: nowCST(),
+    items: orderItems
+  };
+  if (!db.orders) db.orders = [];
+  db.orders.push(order);
+  writeDB(db);
+
+  res.json({ message: '领取成功，库存已扣减', order });
+});
+
 router.post('/spare-parts', authenticate, requireMaterialManager, [
   body('spare_code').notEmpty().withMessage('备件编码不能为空'),
   body('spare_name').notEmpty().withMessage('备件名称不能为空'),

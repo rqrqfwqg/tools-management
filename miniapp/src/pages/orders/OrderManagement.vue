@@ -5,10 +5,32 @@
       <text class="bar__refresh" @tap="load">刷新</text>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="orders.length">
-      <view class="card" v-for="o in orders" :key="o.order_id" @tap="goDetail(o)">
+    <!-- 类型筛选：领取工单（备件）与工具工单分开 -->
+    <view class="filters">
+      <view
+        class="filter"
+        :class="{ 'filter--on': typeFilter === 'all' }"
+        @tap="setFilter('all')"
+      >全部</view>
+      <view
+        class="filter"
+        :class="{ 'filter--on': typeFilter === 'tool' }"
+        @tap="setFilter('tool')"
+      >工具单</view>
+      <view
+        class="filter"
+        :class="{ 'filter--on': typeFilter === 'material' }"
+        @tap="setFilter('material')"
+      >备件领取单</view>
+    </view>
+
+    <scroll-view scroll-y class="list" v-if="shown.length">
+      <view class="card" v-for="o in shown" :key="o.order_id" @tap="goDetail(o)">
         <view class="card__top">
           <text class="card__no">{{ o.order_no }}</text>
+          <text class="type-tag" :class="o.order_type === 'material' ? 'type-tag--material' : 'type-tag--tool'">
+            {{ o.order_type === 'material' ? '备件' : '工具' }}
+          </text>
           <text class="badge" :style="{ color: meta(o.status).color, background: meta(o.status).bg }">
             {{ meta(o.status).label }}
           </text>
@@ -45,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getOrders, updateOrderStatus } from '@/api'
 import { orderStatusMeta, toArray } from '@/utils/status'
@@ -57,6 +79,16 @@ import type { Order } from '@/types'
 const orders = ref<Order[]>([])
 const loaded = ref(false)
 const auth = useAuthStore()
+/** 类型筛选：all / tool（工具单） / material（备件领取单） */
+const typeFilter = ref<'all' | 'tool' | 'material'>('all')
+
+const shown = computed(() =>
+  typeFilter.value === 'all' ? orders.value : orders.value.filter((o) => (o as any).order_type === typeFilter.value)
+)
+
+function setFilter(t: 'all' | 'tool' | 'material') {
+  typeFilter.value = t
+}
 
 function meta(status?: string) {
   return orderStatusMeta(status)
@@ -162,6 +194,45 @@ onShow(() => {
   flex: 1;
   padding: 16rpx 24rpx;
   box-sizing: border-box;
+}
+
+.filters {
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx 24rpx 0;
+  box-sizing: border-box;
+}
+
+.filter {
+  padding: 8rpx 28rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: $tm-text-secondary;
+  background: $tm-card-bg;
+  border: 1rpx solid $tm-border;
+
+  &--on {
+    color: #ffffff;
+    background: $tm-primary;
+    border-color: $tm-primary;
+  }
+}
+
+.type-tag {
+  margin-left: 12rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+
+  &--material {
+    color: $tm-success;
+    background: $tm-success-bg;
+  }
+
+  &--tool {
+    color: $tm-primary;
+    background: $tm-primary-bg;
+  }
 }
 
 .card {

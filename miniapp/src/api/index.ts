@@ -52,7 +52,8 @@ export const getOrders = () => get('/orders')
 export const createOrder = (data: any) => post('/orders', data)
 export const updateOrderStatus = (id: number, status: string) =>
   put(`/orders/${id}/status`, { status })
-export const returnOrder = (id: number) => post(`/orders/${id}/return`)
+export const returnOrder = (id: number, returns?: Array<{ spare_id?: number; item_id?: number; return_qty: number }>) =>
+  post(`/orders/${id}/return`, returns ? { returns } : {})
 
 // ===== Checklist — 现场清点 =====
 export const getChecklist = (orderId: number) => get(`/orders/${orderId}/checklist`)

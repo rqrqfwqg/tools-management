@@ -66,8 +66,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getSpareParts, getConsumables, takeConsumableByCode } from '@/api/material'
-import { createOrder } from '@/api'
+import { getSpareParts, getConsumables, takeConsumableByCode, claimSpareParts } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { showToast, showModal } from '@/utils/feedback'
@@ -178,7 +177,7 @@ async function submit(): Promise<void> {
   ].filter(Boolean).join('、')
   const ok = await showModal({
     title: '确认领用',
-    content: `确认提交${parts}？备件将生成领用单等待审批，消耗品直接领取。`
+    content: `确认提交${parts}？备件领走即扣库存，消耗品直接领取。`
   })
   if (!ok) return
 
@@ -186,8 +185,8 @@ async function submit(): Promise<void> {
   try {
     let msg = ''
     if (spareItems.length) {
-      const res = await createOrder({ spare_items: spareItems })
-      msg = `备件申请已提交${res?.order_no ? `（${res.order_no}）` : ''}，等待审批`
+      const res = await claimSpareParts(spareItems)
+      msg = `备件已领取${res?.order?.order_no ? `（${res.order.order_no}）` : ''}，库存已扣减`
     }
     if (consItems.length) {
       await Promise.all(
