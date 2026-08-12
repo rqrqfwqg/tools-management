@@ -226,7 +226,7 @@ onShow(() => {
 
   &--material {
     color: $tm-success;
-    background: $tm-success-bg;
+    background: #e8f8ef;
   }
 
   &--tool {
