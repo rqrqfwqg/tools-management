@@ -44,21 +44,30 @@
       </view>
 
       <!-- 明细 -->
-      <view class="section-title">工具 / 物料明细（{{ (order.items || []).length }}）</view>
+      <view class="section-title">
+        工具 / 物料明细（{{ itemsCount }}）
+        <text v-if="order.status === 'borrowed'" class="section-title__hint">点击逐件清点</text>
+      </view>
       <view class="items">
-        <view class="item" v-for="it in order.items || []" :key="it.item_id || it.tool_id">
-          <image
-            v-if="thumb(it)"
-            class="item__thumb"
-            :src="thumb(it)"
-            mode="aspectFill"
-          />
+        <view
+          class="item"
+          :class="{ 'item--clickable': order.status === 'borrowed', 'item--checked': isChecked(it) }"
+          v-for="it in order.items || []"
+          :key="it.item_id || it.tool_id"
+          @tap="order.status === 'borrowed' ? toggleCheck(it) : undefined"
+        >
+          <!-- 清点勾选标记（借出中） -->
+          <view v-if="order.status === 'borrowed'" class="check" :class="{ 'check--on': isChecked(it) }">
+            <text v-if="isChecked(it)" class="check__mark">✓</text>
+          </view>
+          <image v-else-if="thumb(it)" class="item__thumb" :src="thumb(it)" mode="aspectFill" />
           <view v-else class="item__thumb item__thumb--text">{{ (it.tool_name || '?').charAt(0) }}</view>
           <view class="item__main">
             <text class="item__name">{{ it.tool_name }}</text>
             <text class="item__code">{{ it.tool_code }}</text>
           </view>
-          <text class="item__status" :style="itemStyle(it.item_status)">{{ itemLabel(it.item_status) }}</text>
+          <text v-if="order.status === 'borrowed' && isChecked(it)" class="item__checked-tag">✓ 已清点</text>
+          <text v-else class="item__status" :style="itemStyle(it.item_status)">{{ itemLabel(it.item_status) }}</text>
         </view>
       </view>
 
@@ -69,9 +78,14 @@
           <view class="btn btn--reject" @tap="reject">拒绝</view>
           <view class="btn btn--approve" @tap="approve">批准</view>
         </template>
-        <!-- 借出中：归还需逐件清点 -->
-        <view v-else-if="order.status === 'borrowed'" class="btn btn--primary btn--block" @tap="goReturn">
-          归还（需逐件清点）
+        <!-- 借出中：逐件清点后归还（全部勾选才可提交） -->
+        <view
+          v-else-if="order.status === 'borrowed'"
+          class="btn btn--primary btn--block"
+          :class="{ 'btn--disabled': !allChecked }"
+          @tap="submitReturn"
+        >
+          {{ allChecked ? `确认归还（${checkedCount}/${itemsCount}）` : `请先逐件清点（${checkedCount}/${itemsCount}）` }}
         </view>
         <!-- 已批准：直接归还 -->
         <view v-else-if="order.status === 'approved'" class="btn btn--primary btn--block" @tap="directReturn">
@@ -85,7 +99,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getOrders, updateOrderStatus, returnOrder } from '@/api'
+import { getOrders, updateOrderStatus, returnOrder, getChecklist, saveChecklistItem } from '@/api'
 import { orderStatusMeta, toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { showToast, showModal } from '@/utils/feedback'
@@ -96,6 +110,12 @@ const auth = useAuthStore()
 const orderId = ref(0)
 const order = ref<Order | null>(null)
 const loaded = ref(false)
+/** 清点状态：tool_id -> checked（借出中工单逐件清点） */
+const checkedMap = ref<Record<number, boolean>>({})
+
+const itemsCount = computed(() => (order.value?.items || []).length)
+const checkedCount = computed(() => (order.value?.items || []).filter(i => isChecked(i)).length)
+const allChecked = computed(() => itemsCount.value > 0 && checkedCount.value === itemsCount.value)
 
 const showActions = computed(() => {
   if (!order.value) return false
@@ -135,8 +155,65 @@ async function load() {
     const data = await getOrders().catch(() => [])
     const list = toArray(data) as Order[]
     order.value = list.find(o => o.order_id === orderId.value) || null
+    // 借出中工单：拉取已保存的清点状态
+    if (order.value?.status === 'borrowed') {
+      await loadChecks()
+    } else {
+      checkedMap.value = {}
+    }
   } finally {
     loaded.value = true
+  }
+}
+
+/** 拉取该工单已保存的清点状态（后端 checklist 接口持久化） */
+async function loadChecks() {
+  if (!order.value) return
+  const data = await getChecklist(order.value.order_id).catch(() => null)
+  const list = Array.isArray(data) ? data : data?.items
+  const map: Record<number, boolean> = {}
+  ;(list || []).forEach((i: any) => {
+    if (i.tool_id != null) map[i.tool_id] = !!i.checked
+  })
+  checkedMap.value = map
+}
+
+function isChecked(it: OrderItem): boolean {
+  return !!checkedMap.value[it.tool_id]
+}
+
+/** 点击单项清点（勾选/取消，后端持久化，失败回滚） */
+async function toggleCheck(it: OrderItem) {
+  if (!order.value) return
+  const next = !isChecked(it)
+  checkedMap.value = { ...checkedMap.value, [it.tool_id]: next }
+  try {
+    await saveChecklistItem(order.value.order_id, it.tool_id, next)
+  } catch (e: any) {
+    checkedMap.value = { ...checkedMap.value, [it.tool_id]: !next }
+    await showToast(e?.data?.message || e?.message || '保存失败', 'none')
+  }
+}
+
+/** 借出中：全部清点后提交归还 */
+async function submitReturn() {
+  if (!order.value) return
+  if (!allChecked.value) {
+    await showToast(`请先逐件清点（${checkedCount.value}/${itemsCount.value}）`, 'none')
+    return
+  }
+  const ok = await showModal({
+    title: '确认归还',
+    content: `已清点 ${checkedCount.value} 件物品，确认全部归还？`,
+    confirmText: '归还'
+  })
+  if (!ok) return
+  try {
+    await returnOrder(order.value.order_id)
+    await showToast('已归还', 'success')
+    load()
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '归还失败', 'none')
   }
 }
 
@@ -173,12 +250,6 @@ async function reject() {
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '操作失败', 'none')
   }
-}
-
-/** 借出中 → 进入归还清点页 */
-function goReturn() {
-  if (!order.value) return
-  uni.navigateTo({ url: `/pages/orders/OrderReturn?id=${order.value.order_id}` })
 }
 
 /** 已批准 → 直接归还 */
@@ -264,6 +335,13 @@ async function directReturn() {
   font-size: 28rpx;
   font-weight: 600;
   color: $tm-text;
+
+  &__hint {
+    margin-left: 12rpx;
+    font-size: 22rpx;
+    font-weight: 400;
+    color: $tm-text-muted;
+  }
 }
 
 .items {
@@ -278,9 +356,24 @@ async function directReturn() {
   align-items: center;
   padding: 20rpx 0;
   border-bottom: 1rpx solid $tm-border-light;
+  transition: background 0.15s;
 
   &:last-child {
     border-bottom: none;
+  }
+
+  /* 借出中：可点击清点 */
+  &--clickable {
+    cursor: pointer;
+  }
+
+  /* 已清点：背景浅绿 */
+  &--checked {
+    background: rgba(7, 193, 96, 0.08);
+    margin: 0 -16rpx;
+    padding-left: 16rpx;
+    padding-right: 16rpx;
+    border-radius: $tm-radius-sm;
   }
 
   &__thumb {
@@ -329,6 +422,39 @@ async function directReturn() {
     font-size: 24rpx;
     flex-shrink: 0;
   }
+
+  &__checked-tag {
+    margin-left: 16rpx;
+    font-size: 24rpx;
+    color: $tm-success;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+}
+
+/* 清点勾选框 */
+.check {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  border: 2rpx solid $tm-border;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+  background: $tm-card-bg;
+
+  &--on {
+    background: $tm-success;
+    border-color: $tm-success;
+  }
+
+  &__mark {
+    color: #ffffff;
+    font-size: 28rpx;
+    line-height: 1;
+  }
 }
 
 .actions {
@@ -361,6 +487,11 @@ async function directReturn() {
 
   &--primary {
     background: $tm-primary;
+    color: #ffffff;
+  }
+
+  &--disabled {
+    background: $tm-border;
     color: #ffffff;
   }
 }
