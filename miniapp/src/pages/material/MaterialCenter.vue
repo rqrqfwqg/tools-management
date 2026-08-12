@@ -8,54 +8,63 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="list">
-      <!-- 备件 -->
-      <view class="group-title">备件（{{ spares.length }}）</view>
-      <view v-if="spares.length">
-        <view class="card" v-for="s in spares" :key="'s' + s.spare_id">
-          <image v-if="s.image_url" class="card__thumb" :src="resolveImage(s.image_url)" mode="aspectFill" />
-          <view v-else class="card__thumb card__thumb--text">{{ (s.spare_name || s.spare_code).charAt(0) }}</view>
-          <view class="card__main">
-            <text class="card__name">{{ s.spare_name || s.spare_code }}</text>
-            <text class="card__code">{{ s.spare_code }}</text>
-          </view>
-          <view class="card__side">
-            <text class="qty" :class="{ 'qty--low': s.is_low_stock }">{{ s.stock_qty ?? 0 }}{{ s.unit || '' }}</text>
-            <text class="card__loc" v-if="s.location_name || s.warehouse_name">{{ s.location_name || s.warehouse_name }}</text>
-          </view>
+    <!-- 概览 -->
+    <view class="summary" v-if="loaded">
+      <text class="summary__item">备件 {{ spares.length }}</text>
+      <text class="summary__sep">·</text>
+      <text class="summary__item">消耗品 {{ consumables.length }}</text>
+      <text class="summary__sep">·</text>
+      <text class="summary__item summary__item--warn">低库存 {{ lowCount }}</text>
+    </view>
+    <view class="summary" v-else>加载中…</view>
+
+    <view class="entries">
+      <!-- 备件入口 -->
+      <view class="entry" @tap="goSpares">
+        <view class="entry__icon entry__icon--blue">备</view>
+        <view class="entry__info">
+          <text class="entry__title">备件</text>
+          <text class="entry__sub">按型号管理 · 领用生成工单</text>
+        </view>
+        <view class="entry__right">
+          <text class="entry__count">{{ spares.length }}</text>
+          <text class="entry__arrow">›</text>
         </view>
       </view>
-      <view class="group-empty" v-else-if="loaded">暂无备件</view>
 
-      <!-- 消耗品 -->
-      <view class="group-title">消耗品（{{ consumables.length }}）</view>
-      <view v-if="consumables.length">
-        <view class="card" v-for="c in consumables" :key="'c' + c.consumable_id">
-          <image v-if="c.image_url" class="card__thumb" :src="resolveImage(c.image_url)" mode="aspectFill" />
-          <view v-else class="card__thumb card__thumb--text">{{ (c.consumable_name || c.consumable_code).charAt(0) }}</view>
-          <view class="card__main">
-            <text class="card__name">{{ c.consumable_name || c.consumable_code }}</text>
-            <text class="card__code">{{ c.consumable_code }}</text>
-          </view>
-          <view class="card__side">
-            <text class="qty" :class="{ 'qty--low': isLow(c) }">{{ c.stock_qty ?? 0 }}{{ c.unit || '' }}</text>
-            <text class="card__loc" v-if="c.location_name || c.warehouse_name">{{ c.location_name || c.warehouse_name }}</text>
-          </view>
+      <!-- 消耗品入口 -->
+      <view class="entry" @tap="goConsumables">
+        <view class="entry__icon entry__icon--green">耗</view>
+        <view class="entry__info">
+          <text class="entry__title">消耗品</text>
+          <text class="entry__sub">直接消耗 · 即时领取</text>
+        </view>
+        <view class="entry__right">
+          <text class="entry__count">{{ consumables.length }}</text>
+          <text class="entry__arrow">›</text>
         </view>
       </view>
-      <view class="group-empty" v-else-if="loaded">暂无消耗品</view>
 
-      <view class="group-empty" v-if="!loaded">加载中…</view>
-    </scroll-view>
+      <!-- 物料领用入口（游客隐藏） -->
+      <view class="entry" v-if="!auth.isGuest" @tap="goDispense">
+        <view class="entry__icon entry__icon--orange">领</view>
+        <view class="entry__info">
+          <text class="entry__title">物料领用</text>
+          <text class="entry__sub">备件提交工单 · 消耗品即时领取</text>
+        </view>
+        <view class="entry__right">
+          <text class="entry__arrow">›</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getSpareParts, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
-import { resolveImage } from '@/utils/image'
 import { useAuthStore } from '@/store/auth'
 import type { SparePart, Consumable } from '@/types'
 
@@ -67,6 +76,20 @@ const auth = useAuthStore()
 function isLow(c: Consumable): boolean {
   if (c.warning_qty == null) return false
   return (c.stock_qty ?? 0) <= c.warning_qty
+}
+
+const lowCount = computed(
+  () =>
+    spares.value.filter((s) => (s as any).is_low_stock).length +
+    consumables.value.filter(isLow).length
+)
+
+function goSpares() {
+  uni.navigateTo({ url: '/pages/material/SparePartList' })
+}
+
+function goConsumables() {
+  uni.navigateTo({ url: '/pages/material/ConsumableList' })
 }
 
 function goDispense() {
@@ -131,93 +154,93 @@ onShow(() => {
   }
 }
 
-.list {
-  flex: 1;
-  padding: 16rpx 24rpx 40rpx;
-  box-sizing: border-box;
-}
-
-.group-title {
-  margin: 24rpx 8rpx 12rpx;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: $tm-text;
-}
-
-.group-empty {
-  padding: 16rpx 8rpx 24rpx;
-  font-size: 24rpx;
-  color: $tm-text-muted;
-}
-
-.card {
+.summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background: $tm-card-bg;
-  border-radius: $tm-radius-sm;
-  padding: 28rpx 28rpx;
-  margin-bottom: 16rpx;
-  box-shadow: $tm-shadow-card;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 20rpx 0;
+  font-size: 26rpx;
+  color: $tm-text-secondary;
 
-  &__thumb {
-    width: 88rpx;
-    height: 88rpx;
-    border-radius: $tm-radius-sm;
-    margin-right: 20rpx;
-    flex-shrink: 0;
-    background: $tm-border-light;
-
-    &--text {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: $tm-primary-bg;
-      color: $tm-primary;
-      font-size: 36rpx;
+  &__item {
+    &--warn {
+      color: $tm-danger;
       font-weight: 600;
     }
   }
 
-  &__main {
+  &__sep {
+    color: $tm-border;
+  }
+}
+
+.entries {
+  padding: 16rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  background: $tm-card-bg;
+  border-radius: $tm-radius;
+  padding: 28rpx 32rpx;
+  margin-bottom: 20rpx;
+  box-shadow: $tm-shadow-card;
+
+  &__icon {
+    width: 88rpx;
+    height: 88rpx;
+    border-radius: 24rpx;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 36rpx;
+    font-weight: 600;
+    margin-right: 24rpx;
+    flex-shrink: 0;
+
+    &--blue { background: $tm-primary; }
+    &--green { background: $tm-success; }
+    &--orange { background: $tm-warning; }
+  }
+
+  &__info {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
   }
 
-  &__name {
-    font-size: 30rpx;
+  &__title {
+    font-size: 32rpx;
+    font-weight: 600;
     color: $tm-text;
-    font-weight: 500;
   }
 
-  &__code {
-    margin-top: 6rpx;
+  &__sub {
+    margin-top: 8rpx;
     font-size: 24rpx;
     color: $tm-text-muted;
   }
 
-  &__loc {
-    margin-top: 10rpx;
-    font-size: 22rpx;
-    color: $tm-text-secondary;
+  &__right {
+    display: flex;
+    align-items: center;
   }
-}
 
-.card__side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
+  &__count {
+    font-size: 36rpx;
+    font-weight: 700;
+    color: $tm-text-secondary;
+    margin-right: 8rpx;
+  }
 
-.qty {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: $tm-text;
-
-  &--low {
-    color: $tm-danger;
+  &__arrow {
+    font-size: 40rpx;
+    color: $tm-border;
   }
 }
 </style>
