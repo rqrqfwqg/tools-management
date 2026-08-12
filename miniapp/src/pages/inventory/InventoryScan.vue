@@ -1,14 +1,283 @@
 <template>
-  <view class="page" />
+  <view class="page">
+    <!-- 顶部：进度 + 完成 -->
+    <view class="header">
+      <view class="header__top">
+        <text class="header__title">{{ check?.check_no || '盘库' }}</text>
+        <view class="header__finish" :class="{ 'header__finish--disabled': finishing }" @tap="finish">
+          {{ finishing ? '提交中…' : '完成盘库' }}
+        </view>
+      </view>
+      <view class="header__progress-text">已录入 {{ enteredCount }} / 应盘 {{ totalCount }}</view>
+      <view class="header__track">
+        <view class="header__fill" :style="{ width: progressPercent + '%' }"></view>
+      </view>
+    </view>
+
+    <scroll-view scroll-y class="list" v-if="items.length">
+      <view
+        class="item"
+        v-for="it in items"
+        :key="it.item_code"
+        :class="{ 'item--entered': it.entered, 'item--highlight': highlightCode === it.item_code }"
+        :id="'it-' + it.item_code"
+      >
+        <view class="item__head">
+          <text class="item__name">{{ it.item_name }}</text>
+          <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : 'type-tag--cons'">
+            {{ it.item_type === 'spare' ? '备件' : '消耗品' }}
+          </text>
+          <text v-if="it.entered" class="entered-tag">✓ 已录入</text>
+        </view>
+        <view class="item__code">{{ it.item_code }}</view>
+        <view class="item__row">
+          <text class="item__sys">系统库存 {{ it.system_qty }}</text>
+          <view class="item__input-wrap">
+            <text class="item__input-label">实盘</text>
+            <input
+              class="item__input"
+              type="number"
+              :value="String(it.actualInput)"
+              @blur="onInputBlur(it, $event)"
+            />
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="empty" v-else>
+      <text class="empty__text">{{ loaded ? '暂无应盘明细' : '加载中…' }}</text>
+    </view>
+
+    <!-- 扫码按钮 -->
+    <view class="scan-float" @tap="doScan">
+      <text class="scan-float__icon">📷</text>
+      <text class="scan-float__text">扫码</text>
+    </view>
+  </view>
 </template>
 
 <script setup lang="ts">
-// 盘点扫码录入（T12 实现，接入 useScanner）
+import { ref, computed } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
+import { getInventoryCheckById, scanInventoryCheck, completeInventoryCheck } from '@/api/material'
+import { useScanner } from '@/composables/useScanner'
+import { isItemEntered, markEntered } from '@/composables/useInventoryEntered'
+import { showToast, showModal } from '@/utils/feedback'
+
+interface ScanItem {
+  item_type: string
+  item_code: string
+  item_name: string
+  system_qty: number
+  actual_qty: number
+  diff: number
+  entered: boolean
+  actualInput: number
+}
+
+const checkId = ref(0)
+const check = ref<any>(null)
+const items = ref<ScanItem[]>([])
+const loaded = ref(false)
+const finishing = ref(false)
+const highlightCode = ref('')
+const { scan } = useScanner()
+
+const totalCount = computed(() => items.value.length)
+const enteredCount = computed(() => items.value.filter((i) => i.entered).length)
+const progressPercent = computed(() =>
+  totalCount.value ? Math.round((enteredCount.value / totalCount.value) * 100) : 0
+)
+
+onLoad(async (options) => {
+  checkId.value = Number(options?.id || 0)
+  if (checkId.value) await load()
+})
+
+async function load() {
+  loaded.value = false
+  try {
+    const data = await getInventoryCheckById(checkId.value).catch(() => null)
+    check.value = data
+    items.value = (data?.items || []).map((i: any) => {
+      const entered = isItemEntered(checkId.value, i)
+      return {
+        ...i,
+        entered,
+        // 已录入显示实盘值；未录入默认系统量（账实相符无需改）
+        actualInput: entered ? Number(i.actual_qty ?? 0) : Number(i.system_qty ?? 0)
+      }
+    })
+  } finally {
+    loaded.value = true
+  }
+}
+
+/** 提交实盘数量（默认=系统量则无需发请求；差异才提交） */
+async function submitItem(it: ScanItem, qty: number): Promise<void> {
+  const actual = Math.max(0, Math.floor(qty))
+  try {
+    await scanInventoryCheck(checkId.value, it.item_code, actual)
+    it.actual_qty = actual
+    it.diff = actual - Number(it.system_qty)
+    it.entered = true
+    it.actualInput = actual
+    markEntered(checkId.value, it.item_code)
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '提交失败', 'none')
+  }
+}
+
+function onInputBlur(it: ScanItem, e: any) {
+  const val = Number(String(e?.detail?.value ?? '').trim())
+  if (!Number.isInteger(val) || val < 0) {
+    it.actualInput = it.actual_qty ?? Number(it.system_qty ?? 0)
+    return
+  }
+  if (val === it.actual_qty) return
+  submitItem(it, val)
+}
+
+/** 扫码：命中应盘物料 → 默认以系统量为准并高亮定位 */
+async function doScan() {
+  const res = await scan()
+  if (!res?.code) return
+  const code = res.code.trim()
+  const target = items.value.find((i) => i.item_code === code)
+  if (!target) {
+    await showToast('不在本次盘库范围', 'none')
+    return
+  }
+  highlightCode.value = code
+  setTimeout(() => (highlightCode.value = ''), 1500)
+  if (!target.entered || target.actual_qty === 0) {
+    await submitItem(target, target.system_qty)
+  } else {
+    await showToast('该物料已录入', 'none')
+  }
+}
+
+/** 完成盘库：差异落账 + 写流水 */
+async function finish() {
+  if (finishing.value) return
+  const ok = await showModal({
+    title: '完成盘库',
+    content: `共 ${totalCount.value} 项，已录入 ${enteredCount.value} 项。确认完成？差异将同步库存。`,
+    confirmText: '完成'
+  })
+  if (!ok) return
+  finishing.value = true
+  try {
+    await completeInventoryCheck(checkId.value)
+    uni.redirectTo({ url: `/pages/inventory/InventoryResult?id=${checkId.value}` })
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '完成失败', 'none')
+  } finally {
+    finishing.value = false
+  }
+}
 </script>
 
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
   background-color: $tm-bg;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background: $tm-card-bg;
+  padding: 24rpx 32rpx 20rpx;
+
+  &__top { display: flex; align-items: center; justify-content: space-between; }
+  &__title { font-size: 32rpx; font-weight: 600; color: $tm-text; }
+  &__finish {
+    padding: 10rpx 28rpx;
+    border-radius: 999rpx;
+    background: $tm-success;
+    color: #ffffff;
+    font-size: 26rpx;
+    font-weight: 500;
+    &--disabled { background: $tm-border; }
+  }
+  &__progress-text { margin-top: 16rpx; font-size: 24rpx; color: $tm-text-secondary; }
+  &__track { margin-top: 10rpx; height: 12rpx; border-radius: 999rpx; background: $tm-border-light; overflow: hidden; }
+  &__fill { height: 100%; border-radius: 999rpx; background: $tm-success; transition: width 0.3s; }
+}
+
+.list { flex: 1; padding: 16rpx 24rpx 120rpx; box-sizing: border-box; }
+
+.item {
+  background: $tm-card-bg;
+  border-radius: $tm-radius-sm;
+  padding: 22rpx 26rpx;
+  margin-bottom: 14rpx;
+  box-shadow: $tm-shadow-card;
+  border: 2rpx solid transparent;
+
+  &--entered { border-color: rgba(7, 193, 96, 0.35); }
+  &--highlight { background: $tm-warning-bg; }
+
+  &__head { display: flex; align-items: center; gap: 12rpx; }
+  &__name { flex: 1; font-size: 28rpx; font-weight: 500; color: $tm-text; }
+  &__code { margin-top: 6rpx; font-size: 22rpx; color: $tm-text-muted; }
+
+  &__row { display: flex; align-items: center; justify-content: space-between; margin-top: 14rpx; }
+  &__sys { font-size: 24rpx; color: $tm-text-secondary; }
+
+  &__input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10rpx;
+  }
+  &__input-label { font-size: 24rpx; color: $tm-text-muted; }
+  &__input {
+    width: 140rpx;
+    height: 56rpx;
+    border-radius: 12rpx;
+    border: 1rpx solid $tm-border;
+    background: $tm-bg;
+    text-align: center;
+    font-size: 28rpx;
+    color: $tm-text;
+  }
+}
+
+.type-tag {
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  &--spare { color: $tm-primary; background: $tm-primary-bg; }
+  &--cons { color: $tm-success; background: #e8f8ef; }
+}
+
+.entered-tag { padding: 2rpx 12rpx; border-radius: 999rpx; font-size: 20rpx; color: $tm-success; background: #e8f8ef; }
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  &__text { font-size: 26rpx; color: $tm-text-muted; }
+}
+
+.scan-float {
+  position: fixed;
+  right: 40rpx;
+  bottom: calc(60rpx + env(safe-area-inset-bottom));
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: $tm-primary;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(25, 137, 250, 0.4);
+
+  &__icon { font-size: 40rpx; line-height: 1; }
+  &__text { margin-top: 4rpx; font-size: 20rpx; color: #ffffff; }
 }
 </style>
