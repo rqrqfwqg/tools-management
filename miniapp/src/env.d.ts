@@ -10,6 +10,10 @@ declare module '*.vue' {
 interface ImportMetaEnv {
   /** 后端 API 基地址（.env.development / .env.production） */
   readonly VITE_API_BASE_URL: string
+  /** 微信订阅消息模板 ID：领用成功通知 */
+  readonly VITE_WX_TPL_CLAIM?: string
+  /** 微信订阅消息模板 ID：工单归还提醒（每日 8:00/20:00） */
+  readonly VITE_WX_TPL_REMIND?: string
 }
 
 interface ImportMeta {

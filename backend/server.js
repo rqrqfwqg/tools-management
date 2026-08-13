@@ -9,6 +9,7 @@ require('dotenv').config();
 
 const { initDB, migrateDB, nowCST } = require('./routes/db');
 const { JWT_SECRET } = require('./middleware/auth');
+const { startScheduler } = require('./lib/scheduler');
 
 const app = express();
 app.set('trust proxy', 1);  // nginx 反向代理，express-rate-limit 需要此配置
@@ -155,6 +156,7 @@ app.use('/api', require('./routes/tools'));
 app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/admin'));
 app.use('/api', require('./routes/materials'));
+app.use('/api', require('./routes/notifications'));
 
 // ============ Multer 错误处理（必须在全局错误处理之前） ============
 app.use((err, req, res, next) => {
@@ -206,3 +208,6 @@ app.listen(PORT, HOST, () => {
   console.log(`   环境: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   API 文档: http://localhost:${PORT}/api/health`);
 });
+
+// 启动每日 8:00 / 20:00 未归还工单提醒调度（微信订阅消息；模板 ID 见 WX_TPL_* 环境变量）
+startScheduler();

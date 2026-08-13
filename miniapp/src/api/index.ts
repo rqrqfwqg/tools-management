@@ -24,6 +24,12 @@ export const wxLogin = (code: string, nickname?: string, avatar?: string) =>
  */
 export const wxBindPhone = (phone: string) => post('/auth/wx-bind-phone', { phone })
 
+// ===== 通知 / 提醒 =====
+/** 获取订阅消息配置状态（前端展示模板是否配置、下次推送时间） */
+export const getNotifyConfig = () => get('/notifications/config')
+/** 给当前用户发送一条「未归还提醒」测试（验证模板是否生效，无需等待 8/20） */
+export const sendTestReminder = () => post('/notifications/test-reminder')
+
 /**
  * 微信手机号登录：phoneCode 来自 <button open-type="getPhoneNumber"> 的 e.detail.code，
  * code 来自 uni.login。后端解析手机号匹配系统账号决定权限；未匹配返回游客（只读）。

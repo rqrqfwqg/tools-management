@@ -9,6 +9,7 @@ const sharp = require('sharp');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId, nowCST } = require('./db');
 const { authenticate, requireMaterialManager } = require('../middleware/auth');
+const { pushClaimSuccess } = require('../lib/wechatNotify');
 
 const router = express.Router();
 
@@ -332,6 +333,9 @@ router.post('/spare-parts/claim', authenticate, [
   if (!db.orders) db.orders = [];
   db.orders.push(order);
   writeDB(db);
+
+  // 领用成功通知（微信订阅消息，原则3）：fire-and-forget
+  pushClaimSuccess(order).catch((err) => console.error('[Materials] 领用成功推送异常:', err.message));
 
   res.json({ message: '领取成功，库存已扣减', order });
 });

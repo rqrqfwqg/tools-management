@@ -19,6 +19,13 @@ const {
   applyMaterialReturn,
   applyMaterialClose
 } = require('./orders-helpers');
+const { pushClaimSuccess } = require('../lib/wechatNotify');
+
+// 领用成功通知（微信订阅消息，原则3）：fire-and-forget，失败静默跳过
+function notifyClaim(order) {
+  if (!order) return;
+  pushClaimSuccess(order).catch((err) => console.error('[Orders] 领用成功推送异常:', err.message));
+}
 
 const router = express.Router();
 
@@ -246,6 +253,7 @@ router.post('/orders/:id/approve', authenticate, requireApprover, (req, res) => 
     const result = applyMaterialApprove(db, order, req.user);
     if (!result.ok) return res.status(400).json({ message: result.error });
     writeDB(db);
+    notifyClaim(order);
     return res.json({ message: '已批准', order });
   }
 
@@ -267,6 +275,7 @@ router.post('/orders/:id/approve', authenticate, requireApprover, (req, res) => 
     item.item_status = 'borrowed';
   }
   writeDB(db);
+  notifyClaim(order);
   res.json({ message: '已批准' });
 });
 
@@ -494,6 +503,7 @@ router.put('/orders/:id/status', authenticate, (req, res) => {
     db.orders[idx].status = 'cancelled';
   }
   writeDB(db);
+  if (status === 'approved') notifyClaim(order);
   res.json({ message: `已${status === 'approved' ? '批准' : status === 'rejected' ? '拒绝' : '取消'}` });
 });
 

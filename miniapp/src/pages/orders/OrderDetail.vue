@@ -115,6 +115,7 @@ import { orderStatusMeta, toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { showToast, showModal } from '@/utils/feedback'
 import { useAuthStore } from '@/store/auth'
+import { requestSubscribe } from '@/composables/useWxSubscribe'
 import type { Order, OrderItem } from '@/types'
 
 const auth = useAuthStore()
@@ -253,6 +254,7 @@ async function submitReturn() {
   try {
     await returnOrder(order.value.order_id)
     await showToast('已归还', 'success')
+    requestSubscribe('both', true)
     load()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '归还失败', 'none')
@@ -275,6 +277,7 @@ async function approve() {
   try {
     await updateOrderStatus(order.value.order_id, 'approved')
     await showToast('已批准', 'success')
+    requestSubscribe('both', true)
     load()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '操作失败', 'none')
@@ -302,6 +305,7 @@ async function directReturn() {
   try {
     await returnOrder(order.value.order_id)
     await showToast('已归还', 'success')
+    requestSubscribe('both', true)
     load()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '归还失败', 'none')
@@ -329,6 +333,7 @@ async function spareReturn(it: any) {
   try {
     await returnOrder(order.value.order_id, [{ spare_id: it.spare_id, return_qty: qty }])
     await showToast(`已归还 ${qty} 件，库存已加回`, 'success')
+    requestSubscribe('both', true)
     load()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '归还失败', 'none')
@@ -348,6 +353,7 @@ async function materialReturnAll() {
   try {
     await returnOrder(order.value.order_id)
     await showToast('已全部归还，库存已加回', 'success')
+    requestSubscribe('both', true)
     load()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '归还失败', 'none')

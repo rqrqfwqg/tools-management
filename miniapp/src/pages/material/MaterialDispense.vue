@@ -71,6 +71,7 @@ import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { showToast, showModal } from '@/utils/feedback'
 import { useAuthStore } from '@/store/auth'
+import { requestSubscribe } from '@/composables/useWxSubscribe'
 
 type Tab = 'spare' | 'consumable'
 
@@ -196,6 +197,8 @@ async function submit(): Promise<void> {
     }
     qtyMap.value = {}
     await showToast(msg, 'success')
+    // 领用成功后请求订阅授权（续期），保证后续「领用成功 / 未归还提醒」能送达
+    requestSubscribe('both', true)
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '提交失败', 'none')
   } finally {

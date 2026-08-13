@@ -2,6 +2,7 @@
 import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/store/auth'
 import { useAutoLogout } from '@/composables/useAutoLogout'
+import { requestSubscribeOnLaunch } from '@/composables/useWxSubscribe'
 
 // 全局启动逻辑
 onLaunch(() => {
@@ -9,6 +10,10 @@ onLaunch(() => {
   const authStore = useAuthStore()
   if (!authStore.isLoggedIn) {
     console.log('[miniapp] App Launch：未登录')
+  }
+  // 已登录且非游客：请求微信订阅消息授权（保证每日 8/20 未归还提醒能送达）
+  if (authStore.isLoggedIn && !authStore.isGuest) {
+    requestSubscribeOnLaunch()
   }
 })
 

@@ -26,6 +26,23 @@
       </view>
     </view>
 
+    <!-- 消息提醒（微信订阅消息） -->
+    <view class="group-title">消息提醒</view>
+    <view class="cell-group">
+      <view class="cell">
+        <text class="cell__label">领用成功通知</text>
+        <text class="cell__value" :style="{ color: claimReady ? '#07c160' : '#999' }">{{ claimReady ? '已配置' : '未配置' }}</text>
+      </view>
+      <view class="cell">
+        <text class="cell__label">未归还提醒（每日 8/20）</text>
+        <text class="cell__value" :style="{ color: remindReady ? '#07c160' : '#999' }">{{ remindReady ? '已配置' : '未配置' }}</text>
+      </view>
+      <view class="cell cell--link" @tap="sendTest">
+        <text class="cell__label cell__label--primary">发送测试提醒</text>
+        <text class="cell__arrow">›</text>
+      </view>
+    </view>
+
     <!-- 管理入口（仅管理员/审批人可见） -->
     <template v-if="auth.isAdmin || auth.isApprover">
       <view class="group-title">管理</view>
@@ -44,7 +61,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuthStore } from '@/store/auth'
-import { wxBindPhone } from '@/api'
+import { wxBindPhone, sendTestReminder } from '@/api'
+import { WX_TPL_CLAIM, WX_TPL_REMIND } from '@/config/wechat'
 import { showToast, showInputModal } from '@/utils/feedback'
 
 const auth = useAuthStore()
@@ -57,6 +75,24 @@ const avatarText = computed(() => displayName.value.charAt(0))
 const roleName = computed(() => auth.user?.role_name || roleLabel(auth.user?.role))
 const phone = computed(() => auth.user?.phone || '')
 const deptName = computed(() => auth.user?.dept_name || '')
+
+// 微信订阅消息模板是否已配置（前端展示用）
+const claimReady = computed(() => !!WX_TPL_CLAIM)
+const remindReady = computed(() => !!WX_TPL_REMIND)
+
+/** 发送测试提醒：验证模板是否生效，无需等待 8/20 定时 */
+async function sendTest() {
+  if (!claimReady.value && !remindReady.value) {
+    showToast('请先在公众平台创建订阅消息模板并配置模板 ID', 'none')
+    return
+  }
+  try {
+    await sendTestReminder()
+    showToast('测试提醒已发送，请查看微信「服务通知」', 'success')
+  } catch (e: any) {
+    showToast(e?.data?.message || e?.message || '发送失败', 'none')
+  }
+}
 
 const adminMenus = [
   { label: '用户管理', url: '/pagesAdmin/UserManagement' },
