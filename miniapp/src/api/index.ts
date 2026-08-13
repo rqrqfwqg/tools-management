@@ -8,7 +8,7 @@
  */
 import { get, post, put, del } from '@/utils/request'
 import { getToken } from '@/utils/storage'
-import type { WxLoginResult } from '@/types'
+import type { WxLoginResult, SafetySupply, SafetyAlerts } from '@/types'
 
 // ===== Auth =====
 export const login = (phone: string) => post('/auth/login', { phone })
@@ -142,3 +142,16 @@ export const getToolkitByCode = (code: string) =>
 // ===== Scan — 按 tool_code 快速领用（单件工具） =====
 export const borrowToolByCode = (code: string, data?: { scene?: string; expected_return?: string; purpose?: string }) =>
   post(`/tools/code/${encodeURIComponent(code)}/borrow`, data || {})
+
+// ===== Safety Supplies — 安全防护用品（物料分支） =====
+export const getSafetySupplies = (keyword?: string) =>
+  get('/safety-supplies', keyword ? { keyword } : undefined)
+export const getSafetyAlerts = () => get<SafetyAlerts>('/safety-supplies/alerts')
+export const createSafetySupply = (data: Partial<SafetySupply>) =>
+  post('/safety-supplies', data)
+export const updateSafetySupply = (id: number, data: Partial<SafetySupply>) =>
+  put(`/safety-supplies/${id}`, data)
+export const deleteSafetySupply = (id: number) => del(`/safety-supplies/${id}`)
+export const getSafetySettings = () => get('/safety-supplies/settings')
+export const updateSafetySettings = (expiry_alert_days: number) =>
+  put('/safety-supplies/settings', { expiry_alert_days })

@@ -74,6 +74,24 @@
       }
     },
     {
+      "path": "pages/material/SafetySupplies",
+      "style": {
+        "navigationBarTitleText": "安全防护用品"
+      }
+    },
+    {
+      "path": "pages/material/SafetySupplyForm",
+      "style": {
+        "navigationBarTitleText": "录入用品"
+      }
+    },
+    {
+      "path": "pages/material/SafetyInspection",
+      "style": {
+        "navigationBarTitleText": "定期检查工单"
+      }
+    },
+    {
       "path": "pages/inventory/Inventory",
       "style": {
         "navigationBarTitleText": "盘点"

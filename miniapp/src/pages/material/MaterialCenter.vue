@@ -56,6 +56,18 @@
           <text class="entry__arrow">›</text>
         </view>
       </view>
+
+      <!-- 安全防护用品入口 -->
+      <view class="entry" @tap="goSafety">
+        <view class="entry__icon entry__icon--red">防</view>
+        <view class="entry__info">
+          <text class="entry__title">安全防护用品</text>
+          <text class="entry__sub">台账录入 · 到期与定期检查提醒</text>
+        </view>
+        <view class="entry__right">
+          <text class="entry__arrow">›</text>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -94,6 +106,10 @@ function goConsumables() {
 
 function goDispense() {
   uni.navigateTo({ url: '/pages/material/MaterialDispense' })
+}
+
+function goSafety() {
+  uni.navigateTo({ url: '/pages/material/SafetySupplies' })
 }
 
 async function load() {
@@ -205,6 +221,7 @@ onShow(() => {
     &--blue { background: $tm-primary; }
     &--green { background: $tm-success; }
     &--orange { background: $tm-warning; }
+    &--red { background: $tm-danger; }
   }
 
   &__info {

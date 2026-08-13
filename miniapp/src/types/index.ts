@@ -212,3 +212,44 @@ export interface InventoryCheck {
   started_at?: string
   completed_at?: string
 }
+
+// ========== 安全防护用品（物料分支） ==========
+
+export interface SafetySupply {
+  supply_id: number
+  name: string
+  model: string
+  brand: string
+  /** 生产日期 YYYY-MM-DD（可空） */
+  production_date: string
+  /** 到期日期 YYYY-MM-DD（必填） */
+  expiry_date: string
+  /** 管理人（必填） */
+  manager: string
+  /** 使用人（可空） */
+  user_name: string
+  /** 检查周期（天），默认 90 */
+  check_cycle_days: number
+  /** 上次检查日期 YYYY-MM-DD（可空） */
+  last_check_date: string | null
+  remark: string
+  created_at?: string
+  updated_at?: string
+}
+
+/** 即将到期项（后端 enrich：额外带 days_to_expiry） */
+export interface SafetyExpiring extends SafetySupply {
+  days_to_expiry: number
+}
+
+/** 待定期检查项（后端 enrich：额外带 next_check_date） */
+export interface SafetyCheckDue extends SafetySupply {
+  next_check_date: string | null
+}
+
+/** /safety-supplies/alerts 响应 */
+export interface SafetyAlerts {
+  expiry_alert_days: number
+  expiring: SafetyExpiring[]
+  check_due: SafetyCheckDue[]
+}

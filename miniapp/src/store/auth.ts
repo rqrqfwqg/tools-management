@@ -17,6 +17,10 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isApprover = computed(() => user.value?.role === 'admin' || user.value?.role === 'team_leader')
+  /** 物料管理员：可写物料/安全防护用品（录入/编辑/删除/完成检查） */
+  const isMaterialManager = computed(
+    () => user.value?.role === 'material_manager' || user.value?.role === 'admin'
+  )
   /** 游客模式（只读）：未匹配到系统账号的微信用户 */
   const isGuest = computed(() => user.value?.role === 'guest')
 
@@ -51,5 +55,5 @@ export const useAuthStore = defineStore('auth', () => {
     return result
   }
 
-  return { token, user, isLoggedIn, isAdmin, isApprover, isGuest, setToken, setUser, logout, wxLogin }
+  return { token, user, isLoggedIn, isAdmin, isApprover, isMaterialManager, isGuest, setToken, setUser, logout, wxLogin }
 })
