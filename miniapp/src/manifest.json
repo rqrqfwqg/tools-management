@@ -1,14 +1,14 @@
 {
-  "name": "工器具管理",
+  "name": "工器通",
   "appid": "wxd3f79993e8a43ac2",
-  "description": "工器具管理系统微信小程序",
+  "description": "工器具与物料的借还、工单、盘点及安全防护用品管理小程序",
   "versionName": "1.0.0",
   "versionCode": "100",
   "transformPx": false,
   "vueVersion": "3",
   "locale": "zh-Hans",
   "h5": {
-    "title": "工器具管理",
+    "title": "工器通",
     "router": {
       "mode": "hash"
     }

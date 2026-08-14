@@ -124,7 +124,7 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "工器具管理",
+    "navigationBarTitleText": "工器通",
     "navigationBarBackgroundColor": "#ffffff",
     "backgroundColor": "#f7f8fa"
   },
