@@ -284,4 +284,20 @@ export const completeInventoryCheck = (id: number) =>
 export const getToolkitByCode = (code: string) =>
   request.get(`/toolkits/code/${encodeURIComponent(code)}`).then(r => r.data)
 
+// ============ 安全防护用品管理 ============
+export const getSafetySupplies = (keyword = '') =>
+  request.get('/safety-supplies', { params: { keyword } }).then(r => r.data)
+export const createSafetySupply = (data: any) =>
+  request.post('/safety-supplies', data).then(r => r.data)
+export const updateSafetySupply = (id: number, data: any) =>
+  request.put(`/safety-supplies/${id}`, data).then(r => r.data)
+export const deleteSafetySupply = (id: number) =>
+  request.delete(`/safety-supplies/${id}`).then(r => r.data)
+export const getSafetySupplyAlerts = () =>
+  request.get('/safety-supplies/alerts').then(r => r.data)
+export const getSafetySupplySettings = () =>
+  request.get('/safety-supplies/settings').then(r => r.data)
+export const updateSafetySupplySettings = (data: any) =>
+  request.put('/safety-supplies/settings', data).then(r => r.data)
+
 export default request

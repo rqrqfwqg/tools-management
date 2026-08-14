@@ -21,6 +21,7 @@ const router = createRouter({
         { path: 'tools', name: 'ToolManagement', component: () => import('@/views/ToolManagement.vue') },
         { path: 'spare-parts', name: 'SparePartManagement', component: () => import('@/views/SparePartManagement.vue') },
         { path: 'consumables', name: 'ConsumableManagement', component: () => import('@/views/ConsumableManagement.vue') },
+        { path: 'safety-supplies', name: 'SafetySupplyManagement', component: () => import('@/views/SafetySupplyManagement.vue') },
         { path: 'material-categories', name: 'MaterialCategoryManagement', component: () => import('@/views/MaterialCategoryManagement.vue') },
         { path: 'stock-movements', name: 'StockMovement', component: () => import('@/views/StockMovement.vue') },
         { path: 'inventory-checks', name: 'InventoryCheck', component: () => import('@/views/InventoryCheck.vue') },

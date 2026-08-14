@@ -89,13 +89,19 @@ function migrateDB() {
       { category_id: 3, category_name: '通用物料', category_code: 'ALL', category_type: 'both', description: '备件与消耗品通用' }
     ],
     stock_movements: [],
-    inventory_checks: []
+    inventory_checks: [],
+    safety_supplies: []
   };
   for (const key of Object.keys(newTables)) {
     if (!Array.isArray(db[key])) {
       db[key] = newTables[key];
       changed = true;
     }
+  }
+  // 安全防护用品模块：初始化全局设置（若不存在），存于 db.settings
+  if (!db.settings || typeof db.settings !== 'object' || Array.isArray(db.settings)) {
+    db.settings = {};
+    changed = true;
   }
   // 兼容：material_categories 旧数据若没有 category_type 字段则补默认
   if (Array.isArray(db.material_categories)) {

@@ -156,6 +156,7 @@ app.use('/api', require('./routes/tools'));
 app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/admin'));
 app.use('/api', require('./routes/materials'));
+app.use('/api', require('./routes/safetySupplies'));
 app.use('/api', require('./routes/notifications'));
 
 // ============ Multer 错误处理（必须在全局错误处理之前） ============

@@ -234,3 +234,27 @@ export interface ApiResponse<T> {
   data: T
   message?: string
 }
+
+// 安全防护用品
+export interface SafetySupply {
+  supply_id: number
+  name: string
+  model?: string
+  brand?: string
+  production_date?: string
+  expiry_date: string
+  manager: string
+  user_name?: string
+  check_cycle_days?: number
+  last_check_date?: string | null
+  remark?: string
+  created_at?: string
+  updated_at?: string
+}
+
+// 安全防护用品提醒数据
+export interface SafetySupplyAlerts {
+  expiry_alert_days: number
+  expiring: Array<SafetySupply & { days_to_expiry: number }>
+  check_due: Array<SafetySupply & { next_check_date: string | null }>
+}
