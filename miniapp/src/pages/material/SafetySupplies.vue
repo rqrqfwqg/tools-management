@@ -18,7 +18,7 @@
     </view>
 
     <!-- ===== 台账 ===== -->
-    <view v-if="tab === 'ledger'">
+    <view v-show="tab === 'ledger'">
       <view class="search">
         <input
           v-model="keyword"
@@ -67,7 +67,7 @@
     </view>
 
     <!-- ===== 预警 ===== -->
-    <view v-else class="alerts">
+    <view v-show="tab === 'alert'" class="alerts">
       <view class="stat">
         <view class="stat__item">
           <text class="stat__num stat__num--warn">{{ alerts?.expiring.length || 0 }}</text>
