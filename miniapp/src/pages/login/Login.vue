@@ -24,12 +24,6 @@
         <text>{{ loading ? '登录中…' : '游客模式浏览（只读）' }}</text>
       </view>
 
-      <!-- 调试模式（开发版/开发者工具）提供管理员快捷登录 -->
-      <view v-if="isDebug" class="debug-btn" :class="{ 'debug-btn--disabled': loading }" @tap="debugLogin">
-        <text class="debug-icon">⚙️</text>
-        <text>{{ loading ? '登录中…' : '调试登录（管理员）' }}</text>
-      </view>
-
       <view class="tip">手机号需与系统员工档案匹配才能操作；未匹配仅可查看</view>
     </view>
   </view>
@@ -38,12 +32,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/store/auth'
-import { login, wxPhoneLogin } from '@/api'
-import { DEBUG_ADMIN_PHONE, isDebugMode } from '@/constants/debug'
+import { wxPhoneLogin } from '@/api'
 
 const authStore = useAuthStore()
 const loading = ref(false)
-const isDebug = ref(false)
 
 function goHome() {
   // Dashboard 是 tabBar 页，必须用 switchTab 跳转
@@ -55,8 +47,6 @@ onMounted(() => {
   if (authStore.isLoggedIn) {
     goHome()
   }
-  // 仅开发版/调试模式显示「调试登录」入口
-  isDebug.value = isDebugMode()
 })
 
 /** 微信手机号登录：getPhoneNumber 按钮回调 → 手机号 code + uni.login code → 后端匹配账号 */
@@ -126,27 +116,6 @@ async function guestLogin() {
     }
   } catch (err: any) {
     uni.showToast({ title: err?.data?.message || err?.message || '登录失败', icon: 'none' })
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 调试模式快捷登录：手机号免密直登管理员账号（仅开发版显示该入口） */
-async function debugLogin() {
-  if (loading.value) return
-  loading.value = true
-  try {
-    const res = await login(DEBUG_ADMIN_PHONE)
-    if (res?.access_token) {
-      authStore.setToken(res.access_token)
-      authStore.setUser(res.user)
-      uni.showToast({ title: '调试模式：管理员登录', icon: 'success' })
-      goHome()
-    } else {
-      uni.showToast({ title: '调试登录失败', icon: 'none' })
-    }
-  } catch (err: any) {
-    uni.showToast({ title: err?.data?.message || err?.message || '调试登录失败', icon: 'none' })
   } finally {
     loading.value = false
   }
@@ -249,30 +218,6 @@ async function debugLogin() {
   &--disabled {
     opacity: 0.7;
   }
-}
-
-.debug-btn {
-  width: 100%;
-  margin-top: 24rpx;
-  height: 88rpx;
-  border-radius: 44rpx;
-  background: $tm-card-bg;
-  color: $tm-primary;
-  font-size: 30rpx;
-  font-weight: 500;
-  border: 1rpx solid $tm-primary;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12rpx;
-
-  &--disabled {
-    opacity: 0.7;
-  }
-}
-
-.debug-icon {
-  font-size: 32rpx;
 }
 
 .tip {
