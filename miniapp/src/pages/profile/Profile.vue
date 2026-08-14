@@ -19,11 +19,6 @@
         <text class="cell__label">部门</text>
         <text class="cell__value">{{ deptName || '—' }}</text>
       </view>
-      <!-- 微信新用户：绑定手机号后合并为正式员工档案（游客不展示，需用手机号重新登录） -->
-      <view class="cell cell--link" v-if="!phone && !auth.isGuest" @tap="bindPhone">
-        <text class="cell__label cell__label--primary">绑定手机号</text>
-        <text class="cell__arrow">›</text>
-      </view>
     </view>
 
     <!-- 消息提醒（微信订阅消息） -->
@@ -61,7 +56,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuthStore } from '@/store/auth'
-import { wxBindPhone, sendTestReminder } from '@/api'
+import { sendTestReminder } from '@/api'
 import { WX_TPL_CLAIM, WX_TPL_REMIND } from '@/config/wechat'
 import { showToast, showInputModal } from '@/utils/feedback'
 
@@ -116,39 +111,6 @@ function roleLabel(r?: string): string {
 
 function open(url: string) {
   uni.navigateTo({ url })
-}
-
-/**
- * 绑定手机号：输入本人手机号 → wx-bind-phone 合并为正式员工档案。
- * 合并成功后旧 token 失效（临时微信账号被移除），重新 wx.login 换新 token。
- */
-async function bindPhone() {
-  const { confirm, content } = await showInputModal({
-    title: '绑定手机号',
-    placeholderText: '请输入您本人的手机号',
-    confirmText: '绑定'
-  })
-  if (!confirm) return
-  const phoneInput = content.trim()
-  if (!/^1\d{10}$/.test(phoneInput)) {
-    showToast('手机号格式不正确', 'none')
-    return
-  }
-  try {
-    const res = await wxBindPhone(phoneInput)
-    if (res?.user) auth.setUser(res.user)
-    await showToast('绑定成功，正在刷新登录…', 'success')
-    // 重新微信登录：合并后临时账号已移除，需换发新账号的 token
-    try {
-      const loginRes = await uni.login()
-      const code = (loginRes as any)?.code
-      if (code) await auth.wxLogin(code)
-    } catch (re) {
-      console.warn('[profile] re-login failed', re)
-    }
-  } catch (e: any) {
-    await showToast(e?.data?.message || e?.message || '绑定失败', 'none')
-  }
 }
 
 function logout() {

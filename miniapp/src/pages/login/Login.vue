@@ -7,24 +7,33 @@
     </view>
 
     <view class="actions">
-      <!-- 微信手机号授权登录：后端解析手机号匹配系统账号决定权限 -->
-      <button
-        class="wx-btn"
-        open-type="getPhoneNumber"
-        :loading="loading"
-        :disabled="loading"
-        @getphonenumber="onGetPhone"
-      >
-        <text class="wx-icon">💬</text>
-        <text>{{ loading ? '登录中…' : '微信手机号登录' }}</text>
-      </button>
+      <!-- 手动账号绑定：个人主体小程序无 getPhoneNumber，改用手机号/用户名免密登录 -->
+      <view class="form">
+        <view class="form__title">账号登录</view>
+        <input
+          class="form__input"
+          v-model="account"
+          placeholder="请输入手机号或用户名"
+          placeholder-class="form__ph"
+          :disabled="loading"
+          @confirm="accountLogin"
+        />
+        <button
+          class="login-btn"
+          :loading="loading"
+          :disabled="loading"
+          @tap="accountLogin"
+        >
+          <text>{{ loading ? '登录中…' : '登录并绑定本机' }}</text>
+        </button>
+      </view>
 
       <!-- 游客模式（只读） -->
       <view class="guest-btn" :class="{ 'guest-btn--disabled': loading }" @tap="guestLogin">
         <text>{{ loading ? '登录中…' : '游客模式浏览（只读）' }}</text>
       </view>
 
-      <view class="tip">手机号需与系统员工档案匹配才能操作；未匹配仅可查看</view>
+      <view class="tip">输入本人工器具系统账号（手机号或用户名）即可登录；登录态保存在本机，30 天内无需重复绑定</view>
     </view>
   </view>
 </template>
@@ -32,10 +41,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/store/auth'
-import { wxPhoneLogin } from '@/api'
 
 const authStore = useAuthStore()
 const loading = ref(false)
+const account = ref('')
 
 function goHome() {
   // Dashboard 是 tabBar 页，必须用 switchTab 跳转
@@ -49,41 +58,19 @@ onMounted(() => {
   }
 })
 
-/** 微信手机号登录：getPhoneNumber 按钮回调 → 手机号 code + uni.login code → 后端匹配账号 */
-async function onGetPhone(e: any) {
+/** 手动账号登录：手机号/用户名免密匹配 → 后端签发 token → 持久化到本机，避免每次重绑 */
+async function accountLogin() {
   if (loading.value) return
-  const detail = e?.detail || {}
-  // 用户拒绝授权手机号
-  if (detail.errMsg && String(detail.errMsg).includes('fail')) {
-    uni.showToast({ title: '未授权手机号，可使用游客模式浏览', icon: 'none' })
+  const id = account.value.trim()
+  if (!id) {
+    uni.showToast({ title: '请输入手机号或用户名', icon: 'none' })
     return
   }
-  const phoneCode = detail.code
-  if (!phoneCode) {
-    uni.showToast({ title: '获取手机号失败，请重试', icon: 'none' })
-    return
-  }
-
   loading.value = true
   try {
-    // 1. 取微信登录临时 code（mp-weixin 下 uni.login 直接返回 code，无需授权弹窗）
-    const loginRes = await uni.login()
-    const code = (loginRes as any).code
-    if (!code) {
-      uni.showToast({ title: '获取登录凭证失败', icon: 'none' })
-      return
-    }
-
-    // 2. 手机号解析 + 账号匹配（后端决定真实账号或游客）
-    const result = await wxPhoneLogin(code, phoneCode)
+    const result = await authStore.accountLogin(id)
     if (result?.access_token) {
-      authStore.setToken(result.access_token)
-      authStore.setUser(result.user)
-      if (result.guest) {
-        uni.showToast({ title: '未匹配到账号，游客模式（只读）', icon: 'none' })
-      } else {
-        uni.showToast({ title: '登录成功', icon: 'success' })
-      }
+      uni.showToast({ title: '登录成功', icon: 'success' })
       goHome()
     } else {
       uni.showToast({ title: '登录失败，请重试', icon: 'none' })
@@ -172,10 +159,43 @@ async function guestLogin() {
   align-items: center;
 }
 
-.wx-btn {
+.form {
   width: 100%;
-  height: 96rpx;
-  border-radius: 48rpx;
+  background: $tm-card-bg;
+  border-radius: $tm-radius;
+  padding: 40rpx 32rpx 36rpx;
+  box-shadow: $tm-shadow-card;
+  box-sizing: border-box;
+
+  &__title {
+    font-size: 32rpx;
+    font-weight: 600;
+    color: $tm-text;
+    margin-bottom: 28rpx;
+  }
+
+  &__input {
+    width: 100%;
+    height: 88rpx;
+    border-radius: 16rpx;
+    background: $tm-bg;
+    border: 1rpx solid $tm-border;
+    padding: 0 24rpx;
+    box-sizing: border-box;
+    font-size: 30rpx;
+    color: $tm-text;
+  }
+
+  &__ph {
+    color: $tm-text-muted;
+  }
+}
+
+.login-btn {
+  width: 100%;
+  margin-top: 28rpx;
+  height: 92rpx;
+  border-radius: 46rpx;
   background-color: #07c160;
   color: #fff;
   font-size: 32rpx;
@@ -183,22 +203,17 @@ async function guestLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12rpx;
   border: none;
-  line-height: 96rpx;
+  line-height: 92rpx;
   padding: 0;
-}
 
-.wx-btn::after {
-  border: none;
-}
+  &::after {
+    border: none;
+  }
 
-.wx-btn[disabled] {
-  opacity: 0.7;
-}
-
-.wx-icon {
-  font-size: 36rpx;
+  &[disabled] {
+    opacity: 0.7;
+  }
 }
 
 .guest-btn {
@@ -225,5 +240,6 @@ async function guestLogin() {
   font-size: 22rpx;
   color: #b0b0b0;
   text-align: center;
+  line-height: 32rpx;
 }
 </style>

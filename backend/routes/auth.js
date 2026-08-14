@@ -27,24 +27,21 @@ const validate = (req, res, next) => {
   next();
 };
 
-// 登录（手机号免密直登，兼容 username；支持 form-urlencoded/JSON 双格式）
+// 登录（账号免密直登：手机号或用户名匹配即签发，兼容 identifier/phone/username）
+// 个人主体小程序无法使用 getPhoneNumber，故改为手动输入账号绑定本机；
+// token 30 天有效 + 前端本地持久化，避免频繁重复绑定。
 router.post('/auth/login', loginLimiter, [validate], (req, res) => {
-  const identifier = req.body.phone || req.body.username;
+  const identifier = String(req.body.identifier || req.body.phone || req.body.username || '').trim();
 
   if (!identifier) {
-    return res.status(400).json({ message: '请填写手机号' });
+    return res.status(400).json({ message: '请填写手机号或用户名' });
   }
 
   const db = readDB();
   const user = db.users.find(u => u.phone === identifier || u.username === identifier);
 
-  // 同手机号多账户歧义防护：避免登错人
-  if (db.users.filter(u => u.phone === identifier).length > 1) {
-    return res.status(403).json({ message: '该手机号关联多个账户，请联系管理员' });
-  }
-
   if (!user) {
-    return res.status(401).json({ message: '用户名或手机号错误' });
+    return res.status(401).json({ message: '账号不存在，请检查手机号或用户名' });
   }
 
   if (!user.is_active) {
@@ -54,7 +51,7 @@ router.post('/auth/login', loginLimiter, [validate], (req, res) => {
   const token = jwt.sign(
     { user_id: user.user_id, username: user.username, role: user.role },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
 
   const { password: _, ...userWithoutPassword } = user;
@@ -211,12 +208,12 @@ function guestUser() {
   };
 }
 
-/** 统一签发 JWT（7 天） */
+/** 统一签发 JWT（30 天，配合前端本地持久化减少重复登录） */
 function signToken(user) {
   return jwt.sign(
     { user_id: user.user_id, username: user.username, role: user.role },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
 }
 

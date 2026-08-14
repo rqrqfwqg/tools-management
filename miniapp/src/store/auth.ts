@@ -8,7 +8,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User, WxLoginResult } from '@/types'
 import { getToken, setToken as persistToken, getStoredUser, setStoredUser, clearAuth } from '@/utils/storage'
-import { wxLogin as wxLoginApi } from '@/api'
+import { wxLogin as wxLoginApi, login as loginApi } from '@/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(getToken())
@@ -55,5 +55,20 @@ export const useAuthStore = defineStore('auth', () => {
     return result
   }
 
-  return { token, user, isLoggedIn, isAdmin, isApprover, isMaterialManager, isGuest, setToken, setUser, logout, wxLogin }
+  /**
+   * 手动账号登录（账号免密）：手机号或用户名匹配即签发 token 并持久化到本机。
+   * 个人主体小程序无 getPhoneNumber，改用此方式绑定本机登录账号。
+   */
+  async function accountLogin(identifier: string): Promise<WxLoginResult> {
+    const result = await loginApi(identifier)
+    if (result?.access_token) {
+      setToken(result.access_token)
+    }
+    if (result?.user) {
+      setUser(result.user)
+    }
+    return result
+  }
+
+  return { token, user, isLoggedIn, isAdmin, isApprover, isMaterialManager, isGuest, setToken, setUser, logout, wxLogin, accountLogin }
 })

@@ -11,31 +11,18 @@ import { getToken } from '@/utils/storage'
 import type { WxLoginResult, SafetySupply, SafetyAlerts } from '@/types'
 
 // ===== Auth =====
-export const login = (phone: string) => post('/auth/login', { phone })
+/** 账号免密登录：手机号或用户名匹配即签发（个人号无 getPhoneNumber，改手动绑定本机） */
+export const login = (identifier: string) => post('/auth/login', { identifier })
 
 /** 微信一键登录：code 由 uni.login 获取，nickname/avatar 选填（首次建档用） */
 export const wxLogin = (code: string, nickname?: string, avatar?: string) =>
   post<WxLoginResult>('/auth/wx-login', { code, nickname, avatar })
-
-/**
- * 微信绑定手机号：把当前微信账号关联到已有手机号账户（同名员工档案合并）。
- * 有匹配账户→合并（临时微信账号被移除，返回目标 user）；无匹配→给当前账号补手机号。
- * 注意：合并后旧 token 失效（临时账号已删），调用方需重新 wx-login 换新 token。
- */
-export const wxBindPhone = (phone: string) => post('/auth/wx-bind-phone', { phone })
 
 // ===== 通知 / 提醒 =====
 /** 获取订阅消息配置状态（前端展示模板是否配置、下次推送时间） */
 export const getNotifyConfig = () => get('/notifications/config')
 /** 给当前用户发送一条「未归还提醒」测试（验证模板是否生效，无需等待 8/20） */
 export const sendTestReminder = () => post('/notifications/test-reminder')
-
-/**
- * 微信手机号登录：phoneCode 来自 <button open-type="getPhoneNumber"> 的 e.detail.code，
- * code 来自 uni.login。后端解析手机号匹配系统账号决定权限；未匹配返回游客（只读）。
- */
-export const wxPhoneLogin = (code: string, phoneCode: string) =>
-  post('/auth/wx-phone-login', { code, phoneCode })
 
 // ===== Users =====
 export const getUsers = () => get('/users')
