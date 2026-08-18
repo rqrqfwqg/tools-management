@@ -62,16 +62,17 @@
               inactive-text="盘亏"
               @change="onToolToggle(row)"
             />
-            <!-- 备件/消耗品：行内直接编辑数量 -->
+            <!-- 备件/消耗品：行内直接编辑数量；未录入时默认显示系统库存，便于直接核对/微调 -->
             <el-input-number
               v-else
-              :model-value="row.actual_qty"
+              :model-value="row.actual_qty != null ? row.actual_qty : row.system_qty"
               :min="0"
               :max="999999"
               controls-position="right"
               size="small"
               style="width:120px"
               @change="onQtyChange(row, $event)"
+              @blur="onQtyBlur(row)"
             />
           </template>
         </el-table-column>
@@ -233,8 +234,8 @@ const locateByCode = async () => {
 }
 
 // 备件/消耗品：行内直接编辑数量，失焦/回车即同步
-const onQtyChange = async (row: any, val: number) => {
-  if (!current.value) return
+const submitQty = async (row: any, val: number) => {
+  if (!current.value || current.value.status !== 'pending') return
   let v = Math.floor(Number(val))
   if (!Number.isFinite(v) || v < 0) v = 0 // 钳制非负整数
   const old = row.actual_qty
@@ -248,7 +249,19 @@ const onQtyChange = async (row: any, val: number) => {
   } catch (e: any) {
     row.actual_qty = old // 失败回滚显示
     ElMessage.error(e.response?.data?.message || '录入失败')
+    throw e
   }
+}
+
+// 用户改了数量 → 提交
+const onQtyChange = (row: any, val: number) => { submitQty(row, val).catch(() => {}) }
+
+// 用户聚焦后未改动即失焦（数量仍为默认的系统库存）→ 视为"已核对，无误"，提交系统库存以标记为已录入（差异 0，不生成流水）
+const onQtyBlur = (row: any) => {
+  if (!current.value || current.value.status !== 'pending') return
+  if (row.item_type === 'tool') return // 工具走逐件切换，无数字框失焦
+  if (row.actual_qty != null) return   // 已录入过则不再重复提交
+  submitQty(row, row.system_qty).catch(() => {})
 }
 
 // 工具：逐件切换（在库 1 / 盘亏 0）

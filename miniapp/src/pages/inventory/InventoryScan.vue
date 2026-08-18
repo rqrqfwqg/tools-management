@@ -134,8 +134,8 @@ async function load() {
       return {
         ...i,
         entered,
-        // 已录入显示实盘值；未录入输入框留空（仅显式录入才会计数，未录入项完成时不动）
-        actualInput: entered ? Number(i.actual_qty ?? 0) : '',
+        // 已录入显示实盘值；未录入默认显示系统库存（盘库时默认读取现有库存数量，用户直接核对/微调，仅显式录入才标记 entered）
+        actualInput: entered ? Number(i.actual_qty ?? 0) : Number(i.system_qty ?? 0),
         // 扫码定位焦点标记：命中后聚焦输入框，等待用户手动录入（不自动提交）
         focusInput: false
       }
