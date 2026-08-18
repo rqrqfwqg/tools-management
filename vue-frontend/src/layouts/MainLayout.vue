@@ -58,6 +58,7 @@
           <el-menu-item index="/material-categories">物料分类</el-menu-item>
           <el-menu-item index="/stock-movements">出入库流水</el-menu-item>
           <el-menu-item index="/inventory-checks">盘库管理</el-menu-item>
+          <el-menu-item index="/inbound-orders">入库单</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="orders-menu">
           <template #title>

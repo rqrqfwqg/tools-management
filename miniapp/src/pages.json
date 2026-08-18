@@ -120,6 +120,12 @@
       "style": {
         "navigationBarTitleText": "货架导航盘点"
       }
+    },
+    {
+      "path": "pages/inventory/InboundScan",
+      "style": {
+        "navigationBarTitleText": "扫码入库"
+      }
     }
   ],
   "globalStyle": {

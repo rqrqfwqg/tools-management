@@ -70,7 +70,8 @@ function initDB() {
         { category_id: 3, category_name: '通用物料', category_code: 'ALL', category_type: 'both', description: '备件与消耗品通用' }
       ],
       stock_movements: [],
-      inventory_checks: []
+      inventory_checks: [],
+      inbound_orders: []
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initialDB, null, 2));
   }
@@ -91,7 +92,8 @@ function migrateDB() {
     ],
     stock_movements: [],
     inventory_checks: [],
-    safety_supplies: []
+    safety_supplies: [],
+    inbound_orders: []
   };
   for (const key of Object.keys(newTables)) {
     if (!Array.isArray(db[key])) {

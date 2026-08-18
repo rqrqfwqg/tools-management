@@ -810,29 +810,20 @@ router.post('/inventory-checks', authenticate, requireMaterialManager, [
   }
   const user = db.users.find(u => u.user_id === req.user.user_id);
   const warehouseIdNum = Number(warehouse_id);
-  // 预置该仓库下全部备件与消耗品为盘库明细
+  // 预置该仓库下全部备件与消耗品为盘点参考清单（不含工具：货位二维码只对应备件/消耗品）。
+  // 每项默认未录入（counted=false，actual_qty=null），完成盘库时未录入项不写不动（彻底消除"没扫=清零"）。
   const items = [];
   (db.spare_parts || []).filter(s => s.warehouse_id === warehouseIdNum).forEach(s => {
-    items.push({ item_type: 'spare', item_id: s.spare_id, item_code: s.spare_code, item_name: s.spare_name, system_qty: s.stock_qty || 0, actual_qty: 0, diff: -(s.stock_qty || 0) });
+    items.push({
+      item_type: 'spare', item_id: s.spare_id, item_code: s.spare_code, item_name: s.spare_name,
+      system_qty: s.stock_qty || 0, actual_qty: null, counted: false, diff: 0
+    });
   });
   (db.consumables || []).filter(c => c.warehouse_id === warehouseIdNum).forEach(c => {
-    items.push({ item_type: 'consumable', item_id: c.consumable_id, item_code: c.consumable_code, item_name: c.consumable_name, system_qty: c.stock_qty, actual_qty: 0, diff: -c.stock_qty });
-  });
-  // 预置该仓库下全部工具为逐件盘点明细：system_qty=1、actual_qty=0、diff=-1（未扫=缺，决策 Q1 逐件口径）
-  const presetToolIds = new Set();
-  const pushToolItem = (t) => {
-    if (!t || presetToolIds.has(t.tool_id)) return;
-    presetToolIds.add(t.tool_id);
-    items.push({ item_type: 'tool', item_id: t.tool_id, item_code: t.tool_code, item_name: t.tool_name, system_qty: 1, actual_qty: 0, diff: -1 });
-  };
-  (db.tools || []).filter(t => t.warehouse_id === warehouseIdNum).forEach(pushToolItem);
-  // 工具箱内的工具：按【工具自身 warehouse_id】归属预置（FIX-1）。
-  // 工具箱实体无 warehouse_id 字段（POST /toolkits 不写入、PUT 不允许改），不能作为归属依据；
-  // 箱内工具自身归属该仓库则预置（主循环已覆盖，此处防御性兜底），否则跳过，与备件/消耗品口径一致。
-  (db.toolkit_items || []).forEach(ki => {
-    const t = (db.tools || []).find(x => x.tool_id === ki.tool_id);
-    if (!t || presetToolIds.has(t.tool_id)) return;
-    if (t.warehouse_id != null && Number(t.warehouse_id) === warehouseIdNum) pushToolItem(t);
+    items.push({
+      item_type: 'consumable', item_id: c.consumable_id, item_code: c.consumable_code, item_name: c.consumable_name,
+      system_qty: c.stock_qty || 0, actual_qty: null, counted: false, diff: 0
+    });
   });
   const newCheck = {
     check_id: nextId(db.inventory_checks || [], 'check_id'),
@@ -860,7 +851,75 @@ router.get('/inventory-checks/:id', authenticate, (req, res) => {
   res.json(check);
 });
 
-// 提交实际数量：编码归一化后按前缀解析 → BX- 提示扫箱内工具；命中则写/覆盖 actual_qty 并算 diff（未命中则追加）
+// ============ 扫码解析共享逻辑（盘库 scan / 入库单 resolve-location 复用） ============
+
+// 组装货位回显载荷（location_code/location_name/shelf_name/warehouse_name）
+function buildLocationPayload(db, location) {
+  if (!location) return null;
+  const shelf = (db.shelves || []).find(s => s.shelf_id === location.shelf_id);
+  const warehouse = (db.warehouses || []).find(w => w.warehouse_id === location.warehouse_id);
+  return {
+    location_code: location.location_code,
+    location_name: location.location_name,
+    shelf_name: shelf ? shelf.shelf_name : '',
+    warehouse_name: warehouse ? warehouse.warehouse_name : ''
+  };
+}
+
+// 由「物料记录」构造解析结果（含其绑定货位，若无则 location=null）
+function makeResolvedByItem(db, itemType, item) {
+  const itemCode = itemType === 'spare' ? item.spare_code : item.consumable_code;
+  const itemName = itemType === 'spare' ? item.spare_name : item.consumable_name;
+  const location = (db.storage_locations || []).find(l => l.location_id === item.storage_location_id) || null;
+  return { itemType, item, itemCode, itemName, location };
+}
+
+/**
+ * 解析扫码目标：优先按货位码（location_code，大小写不敏感）解析其绑定物料；
+ * 否则按物料编码 BJ-/XH- 精确匹配。
+ * 「一货位一物料」：若同货位绑定多种物料，取第一条并 console.warn。
+ * @returns {{itemType:string,item:Object,itemCode:string,itemName:string,location:Object}|null}
+ */
+function resolveMaterialTarget(db, code) {
+  const norm = String(code == null ? '' : code).trim().toUpperCase();
+  if (!norm) return null;
+  // ① 货位码优先：定位货位 → 找该货位上绑定的物料（备件/消耗品）
+  const location = (db.storage_locations || []).find(l => (l.location_code || '').toUpperCase() === norm);
+  if (location) {
+    const mats = [
+      ...(db.spare_parts || []).filter(s => s.storage_location_id === location.location_id).map(s => ({ itemType: 'spare', item: s })),
+      ...(db.consumables || []).filter(c => c.storage_location_id === location.location_id).map(c => ({ itemType: 'consumable', item: c }))
+    ];
+    if (mats.length > 1) {
+      console.warn(`[resolveMaterialTarget] 货位 ${location.location_code} (location_id=${location.location_id}) 绑定了 ${mats.length} 种物料，按「一货位一物料」取第一条`);
+    }
+    if (mats.length >= 1) {
+      const m = mats[0];
+      return {
+        itemType: m.itemType,
+        item: m.item,
+        itemCode: m.itemType === 'spare' ? m.item.spare_code : m.item.consumable_code,
+        itemName: m.itemType === 'spare' ? m.item.spare_name : m.item.consumable_name,
+        location
+      };
+    }
+    // 货位存在但未绑定物料：回退到「物料编码」解析（货位码本身不会命中 BJ-/XH-，最终 400）
+  }
+  // ② 物料编码精确匹配（BJ- 备件 / XH- 消耗品）
+  if (norm.startsWith('BJ-')) {
+    const it = (db.spare_parts || []).find(s => s.spare_code === norm);
+    if (it) return makeResolvedByItem(db, 'spare', it);
+  } else if (norm.startsWith('XH-')) {
+    const it = (db.consumables || []).find(c => c.consumable_code === norm);
+    if (it) return makeResolvedByItem(db, 'consumable', it);
+  }
+  return null;
+}
+
+// 提交/解析：双语义接口
+// - 仅传 {code}（无 actual_qty）→ resolve-only：返回命中物料 + 系统库存 + 货位信息，不写入
+// - 传 {code, actual_qty} → 写实际数量（counted=true、diff 更新）
+// 解析顺序：货位码(location_code) → 绑定物料；否则物料编码(BJ-/XH-)。移除 BX-/G- 工具特殊处理（工具不在盘库）。
 router.post('/inventory-checks/:id/scan', authenticate, [
   body('code').notEmpty().withMessage('编码不能为空'),
   validate
@@ -872,69 +931,58 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   if (!check) return res.status(404).json({ message: '盘库单不存在' });
   if (check.status !== 'pending') return res.status(400).json({ message: '盘库单已完成，无法录入' });
 
-  // 编码归一化：trim + 大写，前缀判断与精确匹配统一使用归一化值（兼容旧一维码大小写/空白差异）
+  // 编码归一化：trim + 大写（兼容旧一维码大小写/空白差异）
   const code = String(rawCode == null ? '' : rawCode).trim().toUpperCase();
   if (!code) return res.status(400).json({ message: '编码不能为空' });
 
-  // 工具箱（BX-）不参与数量盘点：给出明确提示，不追加明细（决策 Q2）
-  if (code.startsWith('BX-')) {
-    return res.status(400).json({ message: '工具箱不参与数量盘点，请扫箱内工具' });
-  }
+  const resolved = resolveMaterialTarget(db, code);
+  if (!resolved) return res.status(400).json({ message: '无法识别的编码（应为货位码或物料编码）' });
 
-  let itemType = null, item = null;
-  if (code.startsWith('BJ-')) {
-    itemType = 'spare';
-    item = (db.spare_parts || []).find(s => s.spare_code === code);
-  } else if (code.startsWith('XH-')) {
-    itemType = 'consumable';
-    item = (db.consumables || []).find(c => c.consumable_code === code);
-  } else if (code.startsWith('G-')) {
-    itemType = 'tool';
-    item = (db.tools || []).find(t => t.tool_code === code);
-  } else {
-    return res.status(400).json({ message: '无法识别的编码前缀（应为 BJ-/XH-/G-/BX-）' });
-  }
-  if (!item) return res.status(404).json({ message: `盘库单中未找到编码为 "${code}" 的物料` });
-
-  // 仓库归属校验：命中明细必须属于当前盘库仓库，避免跨仓库追加（替换原有误导性文案）
-  const itemWarehouseId = item.warehouse_id != null ? Number(item.warehouse_id) : null;
-  const alreadyInCheck = check.items.some(it => it.item_code === code);
-  const itemName = item.spare_name || item.consumable_name || item.tool_name;
+  // 跨仓库校验：命中物料须属于当前盘库仓库
+  const itemWarehouseId = resolved.item.warehouse_id != null ? Number(resolved.item.warehouse_id) : null;
   if (itemWarehouseId !== null && itemWarehouseId !== Number(check.warehouse_id)) {
     return res.status(400).json({
-      message: `"${itemName}"（${code}）不属于本盘库仓库「${check.warehouse_name}」，请勿跨仓库录入`
+      message: `"${resolved.itemName}"（${resolved.itemCode}）不属于本盘库仓库「${check.warehouse_name}」，请勿跨仓库录入`
     });
   }
-  if (itemWarehouseId === null && !alreadyInCheck) {
-    return res.status(400).json({ message: `"${itemName}"（${code}）未归属仓库，无法录入本盘库单` });
-  }
 
-  // 实盘数量：备件/消耗品默认取系统数量（stock_qty）；工具逐件口径默认取 1（扫到=在库），可传 0/1 覆盖
-  let actual;
-  if (itemType === 'tool') {
-    actual = Number(actual_qty != null ? actual_qty : 1);
-    actual = actual === 0 ? 0 : 1; // 工具逐件：超界/非法一律钳制到 0/1（FIX-3）
-  } else {
-    actual = Number(actual_qty != null ? actual_qty : (item.stock_qty || 0));
-    // 服务端钳制：备件/消耗品实盘必须为非负整数，非法/负数一律按 0 处理，拒绝负库存语义（FIX-3）
-    if (!Number.isFinite(actual) || actual < 0) actual = 0;
-    actual = Math.floor(actual);
-  }
-
-  const system_qty = itemType === 'tool' ? 1 : (item.stock_qty || 0);
-  const existingIdx = check.items.findIndex(it => it.item_code === code);
-  if (existingIdx > -1) {
-    check.items[existingIdx].actual_qty = actual;
-    check.items[existingIdx].diff = actual - check.items[existingIdx].system_qty;
-  } else {
-    check.items.push({
-      item_type: itemType, item_id: item.spare_id || item.consumable_id || item.tool_id,
-      item_code: code, item_name: itemName,
-      system_qty, actual_qty: actual, diff: actual - system_qty
+  // resolve-only：仅解析返回，不写入
+  const hasActual = actual_qty !== undefined && actual_qty !== null && String(actual_qty).trim() !== '';
+  if (!hasActual) {
+    return res.json({
+      item_type: resolved.itemType,
+      item_code: resolved.itemCode,
+      item_name: resolved.itemName,
+      system_qty: Number(resolved.item.stock_qty || 0),
+      location: buildLocationPayload(db, resolved.location)
     });
+  }
+
+  // write：录入实盘（服务端钳制非负整数，拒绝负库存语义）
+  let actual = Math.floor(Number(actual_qty));
+  if (!Number.isFinite(actual) || actual < 0) actual = 0;
+  const system_qty = Number(resolved.item.stock_qty || 0);
+  let existing = (check.items || []).find(it => it.item_code === resolved.itemCode);
+  if (existing) {
+    existing.actual_qty = actual;
+    existing.counted = true;
+    existing.diff = actual - (existing.system_qty != null ? existing.system_qty : system_qty);
+  } else {
+    existing = {
+      item_type: resolved.itemType,
+      item_id: resolved.itemType === 'spare' ? resolved.item.spare_id : resolved.item.consumable_id,
+      item_code: resolved.itemCode,
+      item_name: resolved.itemName,
+      system_qty,
+      actual_qty: actual,
+      counted: true,
+      diff: actual - system_qty
+    };
+    if (!check.items) check.items = [];
+    check.items.push(existing);
   }
   writeDB(db);
-  res.json({ message: '录入成功', item: check.items.find(it => it.item_code === code) });
+  res.json({ message: '录入成功', item: existing });
 });
 
 // 判断工具是否存在未归还的领用/借用记录（FIX-2：借出中不算盘亏）
@@ -952,7 +1000,9 @@ function toolHasOutstandingBorrow(db, tool) {
   );
 }
 
-// 完成盘库：diff≠0 写 adjust 流水并落账（备件/消耗品同步 stock_qty 为实点数；工具逐件落账：盘亏置候选+流水），置 completed
+// 完成盘库：仅对「已录入且有差异」的备件/消耗品生成 in/out 流水并同步库存；
+// 未录入项不写不动（彻底消除"没扫=清零"）；工具不在盘库范围（已移除工具分支）。
+// operator 署名盘点人（check.operator_name），remark="盘点出入库[单号]"。
 router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
   const db = readDB();
@@ -961,65 +1011,46 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
   const check = db.inventory_checks[cIdx];
   if (check.status !== 'pending') return res.status(400).json({ message: '盘库单已完成' });
   const user = db.users.find(u => u.user_id === req.user.user_id);
+  // 署名盘点人：优先用盘库单记录的 operator（与创建人一致），缺失时回退当前用户
+  const operatorId = check.operator_id != null ? check.operator_id : (user ? user.user_id : null);
+  const operatorName = check.operator_name || (user ? (user.real_name || user.username) : '');
 
   const adjustments = [];
-  const skippedBorrowed = [];
-  for (const it of check.items) {
-    const diff = it.actual_qty - it.system_qty;
-    // 工具逐件盘点：按实盘结果同步"盘亏候选"标记（actual=0 → 候选；actual=1 → 清除）
-    // 注意：不得改动工具 status（可用/借出中等）与 borrow 状态（决策 Q6）
-    if (it.item_type === 'tool') {
-      const tIdx = (db.tools || []).findIndex(x => x.tool_id === it.item_id);
-      if (tIdx > -1) {
-        const tool = db.tools[tIdx];
-        // 借出中工具不算盘亏（FIX-2，用户拍板）：视为"借出中，不在库"，
-        // 跳过 inventory_missing 打标、不写负向 adjust 流水（含实际为 0 的场景）
-        if (toolHasOutstandingBorrow(db, tool)) {
-          skippedBorrowed.push({ ...it, reason: 'borrowed' });
-          continue;
-        }
-        if (it.actual_qty === 0) {
-          db.tools[tIdx].inventory_missing = true;
-          db.tools[tIdx].inventory_missing_at = nowCST();
-          db.tools[tIdx].inventory_missing_check_no = check.check_no;
-        } else {
-          delete db.tools[tIdx].inventory_missing;
-          delete db.tools[tIdx].inventory_missing_at;
-          delete db.tools[tIdx].inventory_missing_check_no;
-        }
-      }
-    }
-    if (diff === 0) continue;
+  for (const it of (check.items || [])) {
+    // 工具不在盘库范围（货位二维码只对应备件/消耗品）
+    if (it.item_type === 'tool') continue;
+    // 仅「已录入且有差异」的项处理；未录入（counted=false）或差异为 0 的项不写不动
+    if (!it.counted) continue;
+    if (it.diff === 0) continue;
+
+    const diff = it.diff;
+    // 同步主表库存为实点数
     if (it.item_type === 'consumable' || it.item_type === 'spare') {
-      // 备件与消耗品一致：落账为实点数，同步 stock_qty
       const key = it.item_type === 'consumable' ? 'consumable_id' : 'spare_id';
-      const list = it.item_type === 'consumable' ? db.consumables : db.spare_parts;
-      const idx = (list || []).findIndex(x => x[key] === it.item_id);
-      if (idx > -1) {
-        list[idx].stock_qty = it.actual_qty;
-      }
+      const list = it.item_type === 'consumable' ? (db.consumables || []) : (db.spare_parts || []);
+      const idx = list.findIndex(x => x[key] === it.item_id);
+      if (idx > -1) list[idx].stock_qty = it.actual_qty;
     }
-    // 差异统一写 adjust 流水；工具盘亏标注"工具盘亏"便于 PC 复核（决策 Q6）
+    // 差异流水：多了入库(in)、少了出库(out)，署名盘点人
+    const mtype = diff > 0 ? 'in' : 'out';
     const movement = writeMovement(db, {
       item_type: it.item_type,
       item_id: it.item_id,
       item_code: it.item_code,
       item_name: it.item_name,
-      movement_type: 'adjust',
-      qty: diff,
-      operator_id: user?.user_id,
-      operator_name: user?.real_name || user?.username,
+      movement_type: mtype,
+      qty: Math.abs(diff),
+      operator_id: operatorId,
+      operator_name: operatorName,
       order_id: null,
-      remark: it.item_type === 'tool' && it.actual_qty === 0
-        ? `盘库调整 ${check.check_no}（工具盘亏）`
-        : `盘库调整 ${check.check_no}`
+      remark: `盘点出入库 ${check.check_no}`
     });
-    adjustments.push({ ...it, movement_id: movement.movement_id });
+    adjustments.push({ ...it, movement_id: movement.movement_id, movement_type: mtype });
   }
   check.status = 'completed';
   check.completed_at = nowCST();
   writeDB(db);
-  res.json({ message: '盘库完成', check, adjustments, skipped_borrowed: skippedBorrowed });
+  res.json({ message: '盘库完成', check, adjustments });
 });
 
 module.exports = router;
@@ -1028,3 +1059,5 @@ module.exports = router;
 module.exports.computeSpareLowStock = computeSpareLowStock;
 module.exports.buildSpareModelMap = buildSpareModelMap;
 module.exports.writeMovement = writeMovement;
+module.exports.resolveMaterialTarget = resolveMaterialTarget;
+module.exports.buildLocationPayload = buildLocationPayload;

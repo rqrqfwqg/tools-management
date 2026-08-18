@@ -74,9 +74,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { getInventoryCheckById, scanInventoryCheck, completeInventoryCheck } from '@/api/material'
+import { getInventoryCheckById, scanInventoryCheck, resolveInventoryCheck, completeInventoryCheck } from '@/api/material'
 import { useScanner } from '@/composables/useScanner'
-import { isItemEntered, markEntered, getEnteredCodes } from '@/composables/useInventoryEntered'
+import { markEntered, getEnteredCodes } from '@/composables/useInventoryEntered'
 import { showToast, showModal } from '@/utils/feedback'
 
 interface ScanItem {
@@ -87,7 +87,7 @@ interface ScanItem {
   actual_qty: number
   diff: number
   entered: boolean
-  actualInput: number
+  actualInput: number | string
   focusInput: boolean
 }
 
@@ -129,15 +129,14 @@ async function load() {
     const data = await getInventoryCheckById(checkId.value).catch(() => null)
     check.value = data
     items.value = (data?.items || []).map((i: any) => {
-      const isTool = i.item_type === 'tool'
-      // 工具逐件口径：仅"扫过/提交过"的编码记为已录入（避免预置 actual=0 即显示已录入），未扫默认 0（缺）
-      const entered = isTool ? getEnteredCodes(checkId.value).has(i.item_code) : isItemEntered(checkId.value, i)
+      // 新模型：counted 为后端返回的"是否已录入"依据（未录入 actual_qty=null）
+      const entered = i.counted === true || getEnteredCodes(checkId.value).has(i.item_code)
       return {
         ...i,
         entered,
-        // 已录入显示实盘值；未录入默认系统量（账实相符无需改）；工具默认 0（未扫=缺）
-        actualInput: entered ? Number(i.actual_qty ?? 0) : (isTool ? 0 : Number(i.system_qty ?? 0)),
-        // 扫码定位焦点标记：命中后聚焦输入框，等待用户手动录入（不再自动按系统量提交）
+        // 已录入显示实盘值；未录入输入框留空（仅显式录入才会计数，未录入项完成时不动）
+        actualInput: entered ? Number(i.actual_qty ?? 0) : '',
+        // 扫码定位焦点标记：命中后聚焦输入框，等待用户手动录入（不自动提交）
         focusInput: false
       }
     })
@@ -169,16 +168,14 @@ function onInputBlur(it: ScanItem, e: any) {
   it.focusInput = false // 失焦即清除定位聚焦标记
   let val = Number(String(e?.detail?.value ?? '').trim())
   if (!Number.isInteger(val) || val < 0) {
-    it.actualInput = it.actual_qty ?? Number(it.system_qty ?? 0)
+    it.actualInput = it.actual_qty != null ? Number(it.actual_qty) : ''
     return
   }
-  // 工具逐件盘点：实盘仅允许 0/1
-  if (it.item_type === 'tool') val = val === 0 ? 0 : 1
   if (val === it.actual_qty) return
   submitItem(it, val)
 }
 
-/** 扫码：BX- 提示扫箱内工具；命中应盘物料 → 滚动定位 + 高亮 + 聚焦输入框（不自动提交，等用户手动录入）；未命中区分"不在本盘库单/编码未识别" */
+/** 扫码：扫货位码/物料码 → resolve 解析（或本地命中）→ 滚动定位 + 高亮 + 聚焦输入框（不自动提交，等用户手动录入） */
 async function doScan() {
   if (locked.value) {
     await showToast('盘库已完成，不可录入', 'none')
@@ -187,30 +184,37 @@ async function doScan() {
   const res = await scan()
   if (!res?.code) return
   const code = res.code.trim().toUpperCase()
-  if (code.startsWith('BX-')) {
-    await showToast('工具箱不参与数量盘点，请扫箱内工具', 'none')
-    return
-  }
-  const target = items.value.find((i) => i.item_code === code)
-  if (!target) {
-    if (code.startsWith('G-')) {
-      await showToast('工具不在本盘库单', 'none')
-    } else if (code.startsWith('BJ-') || code.startsWith('XH-')) {
-      await showToast('物料不在本盘库单', 'none')
-    } else {
-      await showToast('编码未识别', 'none')
+  try {
+    // 先按物料编码在清单内命中；否则走 resolve（货位码优先解析该货位上的物料，兼容物料码）
+    let target = items.value.find((i) => i.item_code === code)
+    if (!target) {
+      const resolved: any = await resolveInventoryCheck(checkId.value, code)
+      if (!resolved?.item_code) {
+        await showToast('未找到该货位/物料', 'none')
+        return
+      }
+      target = items.value.find((i) => i.item_code === resolved.item_code)
+      if (!target) {
+        await showToast(`「${resolved.item_name}」不在本盘库单`, 'none')
+        return
+      }
+      await showToast(
+        `货位 ${resolved.location?.location_code || ''} · ${resolved.item_name} · 系统库存 ${resolved.system_qty}`,
+        'none'
+      )
     }
-    return
+    highlightCode.value = target.item_code
+    setTimeout(() => (highlightCode.value = ''), 1500)
+    // 命中后不自动提交：滚动定位 + 高亮 + 聚焦输入框，等用户手动录入（blur 时提交）。
+    // 未录入项完成盘库时保持原库存不变（后端仅处理 counted 且有差异的项）。
+    target.focusInput = true
+    setTimeout(() => { target.focusInput = false }, 3000)
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '编码无法识别', 'none')
   }
-  highlightCode.value = code
-  setTimeout(() => (highlightCode.value = ''), 1500)
-  // 命中后不再自动按系统量提交：滚动定位 + 高亮 + 聚焦输入框，等用户手动录入（blur 时提交）。
-  // 未完成/未改的物料仍由 finish() 的「未录入自动补齐为系统量」保护（现有逻辑保留）。
-  target.focusInput = true
-  setTimeout(() => { target.focusInput = false }, 3000)
 }
 
-/** 完成盘库：未录入项默认按账实相符提交，差异落账 + 写流水 */
+/** 完成盘库：仅对「已录入且有差异」的项由后端生成 in/out 流水；未录入项保持原库存不变（不再自动补齐） */
 async function finish() {
   if (locked.value) {
     await showToast('盘库已完成，不可录入', 'none')
@@ -219,36 +223,12 @@ async function finish() {
   if (finishing.value) return
   const ok = await showModal({
     title: '完成盘库',
-    content: `共 ${totalCount.value} 项，已录入 ${enteredCount.value} 项。确认完成？差异将同步库存。`,
+    content: `共 ${totalCount.value} 项，已录入 ${enteredCount.value} 项。确认完成？未录入的物料保持原库存不变，已录入且有差异的项将生成出入库流水。`,
     confirmText: '完成'
   })
   if (!ok) return
   finishing.value = true
   try {
-    // 未录入项：默认「账实相符」（actual=系统量，diff=0），
-    // 避免完成盘库时后端把它们当成实盘 0 而将库存清零。
-    // 注意：工具逐件口径例外——未扫工具保持 actual=0（=盘亏候选），不自动按 system_qty=1 补齐。
-    const unentered = items.value.filter((i) => !i.entered && i.item_type !== 'tool')
-    if (unentered.length) {
-      const results = await Promise.allSettled(
-        unentered.map((it) =>
-          scanInventoryCheck(checkId.value, it.item_code, Number(it.system_qty ?? 0))
-        )
-      )
-      const failed = results.filter((r) => r.status === 'rejected')
-      if (failed.length) {
-        await showToast(`有 ${failed.length} 项提交失败，请检查网络后重试`, 'none')
-        return
-      }
-      // 本地标记为账实相符
-      unentered.forEach((it) => {
-        it.entered = true
-        it.actual_qty = Number(it.system_qty ?? 0)
-        it.actualInput = Number(it.system_qty ?? 0)
-        it.diff = 0
-        markEntered(checkId.value, it.item_code)
-      })
-    }
     await completeInventoryCheck(checkId.value)
     uni.redirectTo({ url: `/pages/inventory/InventoryResult?id=${checkId.value}` })
   } catch (e: any) {

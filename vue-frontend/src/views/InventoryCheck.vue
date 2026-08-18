@@ -31,7 +31,7 @@
         <el-tag :type="current.status === 'pending' ? 'warning' : 'success'">{{ current.status === 'pending' ? '进行中' : '已完成' }}</el-tag>
       </div>
       <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
-        <el-input v-model="scanCode" placeholder="手动输入编码（BJ-/XH-/G-）" clearable style="width:280px" @keyup.enter="locateByCode" />
+        <el-input v-model="scanCode" placeholder="输入货位码/物料编码，回车定位" clearable style="width:280px" @keyup.enter="locateByCode" />
         <el-button type="primary" :disabled="!scanCode.trim()" @click="locateByCode">定位盘点</el-button>
         <el-button v-if="current.status === 'pending'" type="success" @click="handleComplete">完成盘库</el-button>
       </div>
@@ -104,7 +104,7 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
-import { getInventoryChecks, createInventoryCheck, scanInventoryCheck, completeInventoryCheck, getWarehouses } from '@/api'
+import { getInventoryChecks, createInventoryCheck, scanInventoryCheck, resolveInventoryCheck, completeInventoryCheck, getWarehouses } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const list = ref<any[]>([])
@@ -185,28 +185,29 @@ const enterCheck = async (row: any) => {
 }
 const backToList = () => { current.value = null; load() }
 
-const detectPrefix = (code: string) => {
-  const c = code.trim().toUpperCase()
-  if (c.startsWith('BX-')) return 'toolkit'
-  if (c.startsWith('BJ-')) return 'spare'
-  if (c.startsWith('XH-')) return 'consumable'
-  if (c.startsWith('G-')) return 'tool'
-  return ''
-}
-
 // 顶部输码/扫码 → 定位聚焦（不再弹窗录入）
-// 找到对应行：高亮 + 滚动可见 + 聚焦其编辑控件（物料聚焦数字框 / 工具聚焦切换按钮）
-const locateByCode = () => {
+// 优先按物料编码在清单内定位；若未命中，尝试按货位码 resolve 解析该货位上的物料后定位。
+// 找到对应行：高亮 + 滚动可见 + 聚焦其数量输入框
+const locateByCode = async () => {
   const code = scanCode.value.trim().toUpperCase()
   if (!code) { ElMessage.warning('请输入编码'); return }
   if (!current.value || current.value.status !== 'pending') { ElMessage.warning('当前盘库单不可录入'); return }
-  const type = detectPrefix(code)
-  // 工具箱（BX-）不参与数量盘点：明确提示扫箱内工具（决策 Q2）
-  if (type === 'toolkit') { ElMessage.warning('工具箱不参与数量盘点，请扫箱内工具'); return }
-  if (!type) { ElMessage.error('无法识别的编码前缀（应为 BJ-/XH-/G-/BX-）'); return }
   const items = (current.value.items || []) as any[]
-  const target = items.find((it: any) => it.item_code === code)
-  if (!target) { ElMessage.warning('不在本次盘点范围'); return }
+  let target = items.find((it: any) => it.item_code === code)
+  if (!target) {
+    // 可能输入的是货位码（货位一码一种物料）→ resolve 解析该货位上的物料
+    try {
+      const resolved: any = await resolveInventoryCheck(current.value.check_id, code)
+      if (!resolved?.item_code) { ElMessage.error('无法识别的编码（应为货位码或物料编码）'); return }
+      target = items.find((it: any) => it.item_code === resolved.item_code)
+      if (!target) { ElMessage.warning(`「${resolved.item_name}」不在本次盘点范围`); return }
+      scanHint.value = `货位 ${resolved.location?.location_code}（${resolved.location?.shelf_name || ''}${resolved.location?.location_name || ''}）→ ${resolved.item_name}，系统库存 ${resolved.system_qty}`
+      scanHintType.value = 'info'
+    } catch (e: any) {
+      ElMessage.error(e.response?.data?.message || '编码无法解析'); return
+    }
+  }
+  if (!target) return
 
   // 若该行被类型筛选隐藏，先切回"全部"以保证可见
   const isMaterial = target.item_type === 'spare' || target.item_type === 'consumable'
@@ -268,37 +269,12 @@ const onToolToggle = async (row: any) => {
 
 const handleComplete = async () => {
   if (!current.value) return
-  await ElMessageBox.confirm('完成后将无法继续录入，确认完成？', '提示', { type: 'warning' })
+  await ElMessageBox.confirm('完成后将无法继续录入；未录入的物料保持原库存不变（仅已录入且有差异的项生成出入库流水）。确认完成？', '提示', { type: 'warning' })
   try {
-    // FIX-4：完成前对"未扫的备件/消耗品"自动补齐为账实相符（actual=system_qty），
-    // 避免未扫项被判为实盘 0 而将库存清零（与 H5/小程序 finish() 补齐语义对齐）。
-    // 工具逐件口径例外：未扫工具保持 actual=0（=盘亏候选），不自动补齐。
     const checkId = current.value.check_id
-    const enteredCodes = getEnteredCodes(checkId)
-    const unentered = (current.value.items || []).filter(
-      (it: any) =>
-        it.item_type !== 'tool' &&
-        !enteredCodes.has(it.item_code) &&
-        Number(it.actual_qty ?? 0) === 0 &&
-        Number(it.system_qty ?? 0) > 0
-    )
-    let failed = 0
-    if (unentered.length > 0) {
-      const results = await Promise.all(
-        unentered.map((it: any) =>
-          scanInventoryCheck(checkId, it.item_code, Number(it.system_qty ?? 0)).then(
-            () => { markEntered(checkId, it.item_code); return true },
-            () => false
-          )
-        )
-      )
-      failed = results.filter((ok: boolean) => !ok).length
-      if (failed > 0) {
-        ElMessage.warning(`${failed} 项补齐失败，请检查网络后重试（未补齐项可能被计为 0）`)
-      }
-    }
     await completeInventoryCheck(checkId)
-    ElMessage.success('盘库已完成'); backToList()
+    ElMessage.success('盘库已完成，差异已生成出入库流水')
+    backToList()
   } catch (e: any) { ElMessage.error(e.response?.data?.message || '完成失败') }
 }
 

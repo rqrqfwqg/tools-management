@@ -36,7 +36,10 @@
     </view>
 
     <view class="footer" v-if="!auth.isGuest">
-      <view class="footer__btn" @tap="goCreate">新建盘点</view>
+      <view class="footer__row">
+        <view class="footer__btn" @tap="goCreate">新建盘点</view>
+        <view class="footer__btn footer__btn--secondary" @tap="goInbound">扫码入库</view>
+      </view>
     </view>
   </view>
 </template>
@@ -81,11 +84,13 @@ function formatTime(s?: string): string {
   return String(s).replace('T', ' ').slice(0, 16)
 }
 
-/** 进度 X/Y：已录入 = 本地标记集合有痕迹 */
+/** 进度 X/Y：新模型以后端 counted 为准（旧单兼容本地标记） */
 function progress(c: Check): string {
   const items = c.items || []
   if (!items.length) return '0/0'
-  const done = items.filter((it) => isItemEntered(c.check_id, it as any)).length
+  const done = items.filter((it) =>
+    typeof it.counted === 'boolean' ? it.counted : isItemEntered(c.check_id, it as any)
+  ).length
   return `${done}/${items.length}`
 }
 
@@ -98,6 +103,10 @@ function open(c: Check) {
 
 function goCreate() {
   uni.navigateTo({ url: '/pages/inventory/InventoryCreate' })
+}
+
+function goInbound() {
+  uni.navigateTo({ url: '/pages/inventory/InboundScan' })
 }
 
 async function load() {
@@ -167,7 +176,9 @@ onShow(() => {
   background: $tm-card-bg;
   box-shadow: 0 -4rpx 16rpx rgba(0,0,0,0.04);
 
+  &__row { display: flex; gap: 20rpx; }
   &__btn {
+    flex: 1;
     text-align: center;
     padding: 22rpx 0;
     border-radius: 999rpx;
@@ -175,6 +186,8 @@ onShow(() => {
     color: #ffffff;
     font-size: 30rpx;
     font-weight: 600;
+
+    &--secondary { background: $tm-success; }
   }
 }
 </style>

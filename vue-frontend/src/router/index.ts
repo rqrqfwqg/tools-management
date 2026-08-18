@@ -25,6 +25,7 @@ const router = createRouter({
         { path: 'material-categories', name: 'MaterialCategoryManagement', component: () => import('@/views/MaterialCategoryManagement.vue') },
         { path: 'stock-movements', name: 'StockMovement', component: () => import('@/views/StockMovement.vue') },
         { path: 'inventory-checks', name: 'InventoryCheck', component: () => import('@/views/InventoryCheck.vue') },
+        { path: 'inbound-orders', name: 'InboundOrder', component: () => import('@/views/InboundOrder.vue') },
         { path: 'orders', name: 'OrderManagement', component: () => import('@/views/OrderManagement.vue') },
         { path: 'material-orders', name: 'MaterialOrderManagement', component: () => import('@/views/MaterialOrderManagement.vue') },
         { path: 'material-cart', name: 'MaterialCartView', component: () => import('@/views/MaterialCartView.vue') },

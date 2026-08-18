@@ -283,8 +283,21 @@ export const getInventoryCheck = (id: number) =>
   request.get<InventoryCheck>(`/inventory-checks/${id}`).then(r => r.data)
 export const scanInventoryCheck = (id: number, code: string, actual_qty?: number) =>
   request.post(`/inventory-checks/${id}/scan`, { code, actual_qty }).then(r => r.data)
+// resolve-only：扫货位码/物料码，仅解析返回物料+系统库存（不写入实盘）
+export const resolveInventoryCheck = (id: number, code: string) =>
+  request.post(`/inventory-checks/${id}/scan`, { code }).then(r => r.data)
 export const completeInventoryCheck = (id: number) =>
   request.post(`/inventory-checks/${id}/complete`).then(r => r.data)
+
+// 入库单模块
+export const createInboundOrder = (data: any) =>
+  request.post('/inbound-orders', data).then(r => r.data)
+export const getInboundOrders = (params?: { status?: string; item_type?: string }) =>
+  request.get<any[]>('/inbound-orders', { params }).then(r => r.data)
+export const receiveInboundOrder = (id: number, data?: { location_code?: string; actual_qty?: number }) =>
+  request.post(`/inbound-orders/${id}/receive`, data || {}).then(r => r.data)
+export const resolveInboundLocation = (code: string) =>
+  request.post('/inbound-orders/resolve-location', { code }).then(r => r.data)
 
 // Barcode — 按 toolkit_code 查询工具箱详情
 export const getToolkitByCode = (code: string) =>

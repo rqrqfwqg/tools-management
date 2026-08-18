@@ -156,6 +156,7 @@ app.use('/api', require('./routes/tools'));
 app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/admin'));
 app.use('/api', require('./routes/materials'));
+app.use('/api', require('./routes/inbound'));
 app.use('/api', require('./routes/safetySupplies'));
 app.use('/api', require('./routes/notifications'));
 

@@ -41,5 +41,16 @@ export const createInventoryCheck = (data: { warehouse_id: number; operator?: st
   post('/inventory-checks', data)
 export const scanInventoryCheck = (id: number, code: string, actual_qty?: number) =>
   post(`/inventory-checks/${id}/scan`, { code, actual_qty })
+// resolve-only：扫货位码/物料码，仅解析返回物料+系统库存（不写入实盘）
+export const resolveInventoryCheck = (id: number, code: string) =>
+  post(`/inventory-checks/${id}/scan`, { code })
 export const completeInventoryCheck = (id: number) =>
   post(`/inventory-checks/${id}/complete`)
+
+// 入库单模块
+export const createInboundOrder = (data: any) => post('/inbound-orders', data)
+export const getInboundOrders = (params?: any) => get('/inbound-orders', params)
+export const receiveInboundOrder = (id: number, data?: any) =>
+  post(`/inbound-orders/${id}/receive`, data || {})
+export const resolveInboundLocation = (code: string) =>
+  post('/inbound-orders/resolve-location', { code })

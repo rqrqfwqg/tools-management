@@ -43,9 +43,9 @@
           <view class="item__code">{{ it.item_code }}</view>
           <view class="item__row">
             <text class="item__cell">系统 {{ it.system_qty }}</text>
-            <text class="item__cell">实盘 {{ it.actual_qty ?? 0 }}</text>
+            <text class="item__cell">实盘 {{ isCounted(it) ? (it.actual_qty ?? 0) : '未盘' }}</text>
             <text class="item__diff" :class="{ 'item__diff--neg': diffOf(it) < 0, 'item__diff--pos': diffOf(it) > 0 }">
-              差异 {{ diffOf(it) > 0 ? '+' : '' }}{{ diffOf(it) }}
+              {{ isCounted(it) ? (diffOf(it) > 0 ? '差异 +' : '差异 ') + diffOf(it) : '未盘' }}
             </text>
           </view>
         </view>
@@ -67,11 +67,15 @@ const checkId = ref(0)
 const check = ref<any>(null)
 const loaded = ref(false)
 
+/** 是否已录入：counted 标记为真，或后端返回了实际数量 */
+const isCounted = (it: any): boolean => it?.counted === true || it?.actual_qty != null
+
 const diffCount = computed(() =>
-  (check.value?.items || []).filter((it: any) => diffOf(it) !== 0).length
+  (check.value?.items || []).filter((it: any) => isCounted(it) && diffOf(it) !== 0).length
 )
 
 function diffOf(it: any): number {
+  if (!isCounted(it)) return 0
   return Number(it.diff ?? (Number(it.actual_qty ?? 0) - Number(it.system_qty ?? 0)))
 }
 
