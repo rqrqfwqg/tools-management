@@ -13,6 +13,17 @@ log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
+# pm2 绝对路径：cron 环境的 PATH 精简（通常仅 /usr/bin:/bin），裸 pm2 会找不到，
+# 必须显式指定。若服务器 pm2 不在下列常见路径，请 export PM2_BIN=/path/to/pm2 或直接改这里。
+PM2_BIN="${PM2_BIN:-}"
+if [ -z "$PM2_BIN" ]; then
+  for p in /usr/local/bin/pm2 /usr/bin/pm2 "$HOME/.local/bin/pm2" "$HOME/npm-global/bin/pm2" "$(dirname "$(command -v npm 2>/dev/null || echo /usr/local/bin/npm)")/pm2"; do
+    if [ -x "$p" ]; then PM2_BIN="$p"; break; fi
+  done
+  PM2_BIN="${PM2_BIN:-/usr/local/bin/pm2}"
+fi
+log "使用 pm2: $PM2_BIN"
+
 DEPLOY_STATUS_FILE="/opt/tools-management/logs/deploy-status.json"
 
 write_status() {
@@ -107,14 +118,14 @@ else
   log "⏭️ 跳过工具导入"
 fi
 
-# 6. 重启后端
+# 6. 重启后端（进程名为 tools-backend-miniapp：3300 小程序网关，与 nginx 443→3300 对齐）
 log "🔄 重启后端服务..."
-if ! pm2 restart tools-backend 2>&1; then
+if ! "$PM2_BIN" restart tools-backend-miniapp 2>&1; then
   log "❌ PM2 重启失败"
   write_status "error" "PM2 重启后端失败"
   exit 1
 fi
-pm2 save 2>&1
+"$PM2_BIN" save 2>&1
 log "✅ 后端重启完成"
 
 # 7. 健康检查

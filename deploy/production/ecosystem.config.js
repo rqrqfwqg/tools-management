@@ -7,7 +7,8 @@ module.exports = {
   apps: [
     {
       // 唯一后端实例（3300 单实例，与 nginx /api/ → 3300 对齐，避免双实例并发写 db.json）
-      name: 'tools-backend',
+      // 进程名 tools-backend-miniapp 与服务器实际 PM2 进程 / scripts/auto-deploy.sh 一致（2026-08-18 统一）
+      name: 'tools-backend-miniapp',
       script: './server.js',
       cwd: '/opt/tools-management/backend',
       instances: 1,
