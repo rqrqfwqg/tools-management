@@ -48,6 +48,12 @@ export interface Tool {
   borrow_count?: number
   description?: string
   image_url?: string
+  // 盘亏复核（inventory_missing* 标记由盘库 complete 打标、PC 端复核确认/撤销）
+  inventory_missing?: boolean
+  inventory_missing_at?: string
+  inventory_missing_check_no?: string
+  inventory_missing_confirmed?: boolean
+  inventory_missing_confirmed_at?: string
 }
 
 export interface ReturnRecord {

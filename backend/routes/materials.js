@@ -826,12 +826,13 @@ router.post('/inventory-checks', authenticate, requireMaterialManager, [
     items.push({ item_type: 'tool', item_id: t.tool_id, item_code: t.tool_code, item_name: t.tool_name, system_qty: 1, actual_qty: 0, diff: -1 });
   };
   (db.tools || []).filter(t => t.warehouse_id === warehouseIdNum).forEach(pushToolItem);
-  // 工具箱内的工具：若工具未显式归属仓库、但所在工具箱归属该仓库，视为仓库内工具一并预置
+  // 工具箱内的工具：按【工具自身 warehouse_id】归属预置（FIX-1）。
+  // 工具箱实体无 warehouse_id 字段（POST /toolkits 不写入、PUT 不允许改），不能作为归属依据；
+  // 箱内工具自身归属该仓库则预置（主循环已覆盖，此处防御性兜底），否则跳过，与备件/消耗品口径一致。
   (db.toolkit_items || []).forEach(ki => {
     const t = (db.tools || []).find(x => x.tool_id === ki.tool_id);
     if (!t || presetToolIds.has(t.tool_id)) return;
-    const kit = (db.toolkits || []).find(k => k.toolkit_id === ki.toolkit_id);
-    if (t.warehouse_id == null && kit && kit.warehouse_id === warehouseIdNum) pushToolItem(t);
+    if (t.warehouse_id != null && Number(t.warehouse_id) === warehouseIdNum) pushToolItem(t);
   });
   const newCheck = {
     check_id: nextId(db.inventory_checks || [], 'check_id'),
@@ -912,9 +913,12 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   let actual;
   if (itemType === 'tool') {
     actual = Number(actual_qty != null ? actual_qty : 1);
-    actual = actual === 0 ? 0 : 1;
+    actual = actual === 0 ? 0 : 1; // 工具逐件：超界/非法一律钳制到 0/1（FIX-3）
   } else {
     actual = Number(actual_qty != null ? actual_qty : (item.stock_qty || 0));
+    // 服务端钳制：备件/消耗品实盘必须为非负整数，非法/负数一律按 0 处理，拒绝负库存语义（FIX-3）
+    if (!Number.isFinite(actual) || actual < 0) actual = 0;
+    actual = Math.floor(actual);
   }
 
   const system_qty = itemType === 'tool' ? 1 : (item.stock_qty || 0);
@@ -933,6 +937,21 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   res.json({ message: '录入成功', item: check.items.find(it => it.item_code === code) });
 });
 
+// 判断工具是否存在未归还的领用/借用记录（FIX-2：借出中不算盘亏）
+// 优先看工具自身 status（borrowed/reserved 均为不可用/占用中）；再兜底扫订单明细中未归还的借用项。
+function toolHasOutstandingBorrow(db, tool) {
+  if (!tool) return false;
+  if (tool.status === 'borrowed' || tool.status === 'reserved') return true;
+  return (db.orders || []).some(o =>
+    o.status === 'borrowed' &&
+    (o.items || []).some(it =>
+      it.tool_id === tool.tool_id &&
+      it.item_status === 'borrowed' &&
+      (Number(it.returned_qty) || 0) < (Number(it.borrow_qty) || 1)
+    )
+  );
+}
+
 // 完成盘库：diff≠0 写 adjust 流水并落账（备件/消耗品同步 stock_qty 为实点数；工具逐件落账：盘亏置候选+流水），置 completed
 router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
@@ -944,13 +963,21 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
   const user = db.users.find(u => u.user_id === req.user.user_id);
 
   const adjustments = [];
+  const skippedBorrowed = [];
   for (const it of check.items) {
     const diff = it.actual_qty - it.system_qty;
-    // 工具逐件盘点：无论差异如何，先按实盘结果同步"盘亏候选"标记（actual=0 → 候选；actual=1 → 清除）
+    // 工具逐件盘点：按实盘结果同步"盘亏候选"标记（actual=0 → 候选；actual=1 → 清除）
     // 注意：不得改动工具 status（可用/借出中等）与 borrow 状态（决策 Q6）
     if (it.item_type === 'tool') {
       const tIdx = (db.tools || []).findIndex(x => x.tool_id === it.item_id);
       if (tIdx > -1) {
+        const tool = db.tools[tIdx];
+        // 借出中工具不算盘亏（FIX-2，用户拍板）：视为"借出中，不在库"，
+        // 跳过 inventory_missing 打标、不写负向 adjust 流水（含实际为 0 的场景）
+        if (toolHasOutstandingBorrow(db, tool)) {
+          skippedBorrowed.push({ ...it, reason: 'borrowed' });
+          continue;
+        }
         if (it.actual_qty === 0) {
           db.tools[tIdx].inventory_missing = true;
           db.tools[tIdx].inventory_missing_at = nowCST();
@@ -992,7 +1019,7 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
   check.status = 'completed';
   check.completed_at = nowCST();
   writeDB(db);
-  res.json({ message: '盘库完成', check, adjustments });
+  res.json({ message: '盘库完成', check, adjustments, skipped_borrowed: skippedBorrowed });
 });
 
 module.exports = router;

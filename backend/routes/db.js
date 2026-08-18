@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const DB_PATH = path.join(__dirname, '..', 'db.json');
+// 默认数据库文件：backend/db.json；测试/临时环境可用 DB_PATH 环境变量覆盖（默认行为不变）
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'db.json');
 let dbWriteLock = false;
 
 // 初始化数据库

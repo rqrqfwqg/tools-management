@@ -2,6 +2,10 @@
   <div>
     <h2>工器具管理</h2>
     <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <el-button :type="missingView ? 'primary' : 'default'" @click="toggleMissingView">
+        <el-icon style="margin-right:4px"><Warning /></el-icon>盘亏复核
+      </el-button>
+      <template v-if="!missingView">
       <el-button type="primary" @click="openDialog()">新增工器具</el-button>
       <el-button type="success" @click="exportExcel"><el-icon style="margin-right:4px"><Download /></el-icon>导出Excel</el-button>
       <el-button @click="goBarcodeList"><el-icon style="margin-right:4px"><Printer /></el-icon>条形码清单</el-button>
@@ -35,8 +39,9 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+      </template>
     </div>
-    <el-table :data="filteredList" border style="margin-top:0">
+    <el-table v-if="!missingView" :data="filteredList" border style="margin-top:0">
       <el-table-column label="图片" width="80">
         <template #default="{row}">
           <el-image
@@ -90,6 +95,49 @@
           <el-button size="small" type="danger" @click="handleDelete(row.tool_id)">删除</el-button>
         </template>
       </el-table-column>
+    </el-table>
+
+    <!-- 盘亏复核视图：仅盘亏候选工具（inventory_missing===true） -->
+    <el-table v-else :data="missingList" border style="margin-top:0">
+      <el-table-column type="index" label="序号" width="60" />
+      <el-table-column prop="tool_code" label="编码" min-width="110" show-overflow-tooltip />
+      <el-table-column prop="tool_name" label="名称" min-width="120" show-overflow-tooltip />
+      <el-table-column prop="warehouse" label="仓库" min-width="90" show-overflow-tooltip />
+      <el-table-column label="货位" min-width="120" show-overflow-tooltip>
+        <template #default="{row}">{{ row.storage_location || row.location_name || '-' }}</template>
+      </el-table-column>
+      <el-table-column label="盘亏时间" min-width="165">
+        <template #default="{row}">{{ row.inventory_missing_at || '-' }}</template>
+      </el-table-column>
+      <el-table-column prop="inventory_missing_check_no" label="盘库单号" min-width="135" show-overflow-tooltip />
+      <el-table-column label="确认状态" width="100">
+        <template #default="{row}">
+          <el-tag :type="row.inventory_missing_confirmed ? 'danger' : 'warning'">
+            {{ row.inventory_missing_confirmed ? '已确认' : '待确认' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="230" fixed="right">
+        <template #default="{row}">
+          <template v-if="isMaterialManager">
+            <el-button
+              size="small"
+              type="danger"
+              :disabled="row.inventory_missing_confirmed"
+              @click="handleConfirmMissing(row)"
+            >确认盘亏</el-button>
+            <el-button
+              size="small"
+              type="warning"
+              @click="handleRevertMissing(row)"
+            >撤销恢复</el-button>
+          </template>
+          <span v-else style="color:#909399;font-size:12px">仅物料管理员可操作</span>
+        </template>
+      </el-table-column>
+      <template #empty>
+        <el-empty description="暂无盘亏候选工具" :image-size="80" />
+      </template>
     </el-table>
 
     <!-- 新增/编辑对话框 -->
@@ -205,13 +253,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getTools, createTool, updateTool, deleteTool, getToolkits } from '@/api'
+import { getTools, createTool, updateTool, deleteTool, getToolkits, confirmToolMissing, revertToolMissing } from '@/api'
 import { getCategories } from '@/api'
 import { getWarehouses, getShelves, getStorageLocations } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Picture, UploadFilled, ShoppingCart, Download, Printer, Operation } from '@element-plus/icons-vue'
+import { Upload, Picture, UploadFilled, ShoppingCart, Download, Printer, Operation, Warning } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { useCartStore } from '@/store/cart'
+import { useAuthStore } from '@/store/auth'
 
 const route = useRoute()
 const list = ref<any[]>([])
@@ -316,6 +365,66 @@ const loadWarehouses = async () => { warehouses.value = await getWarehouses() }
 const loadShelves = async () => { shelves.value = await getShelves() }
 const loadLocations = async () => { locations.value = await getStorageLocations() }
 const loadToolkits = async () => { toolkits.value = await getToolkits() }
+
+// ===== 盘亏复核（PC 端） =====
+const authStore = useAuthStore()
+// 物料管理员/管理员可执行确认/撤销（与后端 requireMaterialManager 一致）
+const isMaterialManager = computed(() => authStore.hasRole(['admin', 'material_manager']))
+const missingView = ref(false)
+
+// 盘亏复核视图：仅展示盘亏候选（后端按 missing=true 过滤，此处再防御性过滤）
+const missingList = computed(() => list.value.filter(t => t.inventory_missing === true))
+
+const loadMissing = async () => { list.value = await getTools({ missing: true }) }
+
+const toggleMissingView = () => {
+  missingView.value = !missingView.value
+  if (missingView.value) {
+    loadMissing()
+  } else {
+    load()
+  }
+}
+
+// 确认盘亏：仅置 inventory_missing_confirmed 标记 + 写流水，不改 status、不报废
+const handleConfirmMissing = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认工具"${row.tool_name}"（${row.tool_code}）盘亏？\n此操作仅记录盘亏确认与流水，不会修改工具状态或报废。`,
+      '确认盘亏',
+      { type: 'warning', confirmButtonText: '确认盘亏', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await confirmToolMissing(row.tool_id)
+    ElMessage.success('已确认盘亏')
+    await loadMissing()
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '确认失败')
+  }
+}
+
+// 撤销盘亏：清除 inventory_missing* 标记（恢复在库），写对冲流水
+const handleRevertMissing = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `撤销工具"${row.tool_name}"（${row.tool_code}）的盘亏标记并恢复在库？\n将写入对冲流水，工具移出盘亏候选列表。`,
+      '撤销盘亏',
+      { type: 'warning', confirmButtonText: '撤销恢复', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await revertToolMissing(row.tool_id)
+    ElMessage.success('已撤销盘亏，工具恢复在库')
+    await loadMissing()
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '撤销失败')
+  }
+}
 
 // 借一箱：将工具包下所有可用工具加入购物车
 const handleBorrowKit = (kitName: string) => {

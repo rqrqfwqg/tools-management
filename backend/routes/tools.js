@@ -8,6 +8,7 @@ const sharp = require('sharp');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId, nowCST } = require('./db');
 const { authenticate, requireMaterialManager } = require('../middleware/auth');
+const { writeMovement } = require('./materials');
 
 const router = express.Router();
 
@@ -60,6 +61,11 @@ router.get('/tools', authenticate, (req, res) => {
     );
     // 工具没有 warehouse_id 或 warehouse_id 在允许列表内才显示
     enriched = enriched.filter(t => !t.warehouse_id || allowedWarehouseIds.has(t.warehouse_id));
+  }
+
+  // 盘亏复核视图：仅当显式传入 missing=true 时过滤为盘亏候选（默认不传返回全部，不破坏现有调用）
+  if (req.query.missing === 'true') {
+    enriched = enriched.filter(t => t.inventory_missing === true);
   }
 
   enriched.sort((a, b) => (b.borrow_count || 0) - (a.borrow_count || 0));
@@ -331,6 +337,83 @@ router.delete('/tools/:id', authenticate, requireMaterialManager, (req, res) => 
   db.tools.splice(toolIndex, 1);
   writeDB(db);
   res.json({ message: '删除成功' });
+});
+
+// ============ 盘亏复核（PC 端，决策 Q6：不自动报废，只标记 + 流水） ============
+
+// 确认盘亏：标记 inventory_missing_confirmed=true（不改 status、不报废），写一条 adjust 流水。
+// 幂等：已确认再次确认直接返回当前状态，不重复写流水。
+router.post('/tools/:id/missing/confirm', authenticate, requireMaterialManager, (req, res) => {
+  const toolId = parseInt(req.params.id);
+  const db = readDB();
+  const tIdx = (db.tools || []).findIndex(t => t.tool_id === toolId);
+  if (tIdx === -1) return res.status(404).json({ message: '工具不存在' });
+  const tool = db.tools[tIdx];
+
+  // 不在盘亏候选（如已撤销/从未打标）不允许确认
+  if (tool.inventory_missing !== true) {
+    return res.status(400).json({ message: '该工具不在盘亏候选，无法确认' });
+  }
+
+  // 幂等：已确认则直接返回，不重复写流水
+  if (tool.inventory_missing_confirmed === true) {
+    return res.json({ message: '该工具已确认盘亏', tool, idempotent: true });
+  }
+
+  tool.inventory_missing_confirmed = true;
+  tool.inventory_missing_confirmed_at = nowCST();
+  const user = db.users.find(u => u.user_id === req.user.user_id);
+  const movement = writeMovement(db, {
+    item_type: 'tool',
+    item_id: tool.tool_id,
+    item_code: tool.tool_code,
+    item_name: tool.tool_name,
+    movement_type: 'adjust',
+    qty: -1, // 工具无 stock_qty 语义，±1 即可（与 complete 盘亏口径一致）
+    operator_id: user?.user_id,
+    operator_name: user?.real_name || user?.username,
+    order_id: null,
+    remark: tool.inventory_missing_check_no
+      ? `盘亏确认 [${tool.inventory_missing_check_no}]`
+      : '盘亏确认'
+  });
+  writeDB(db);
+  res.json({ message: '已确认盘亏', tool, movement });
+});
+
+// 撤销盘亏：清除该工具 inventory_missing* 标记（恢复在库），写一条对冲 adjust 流水。
+// 无标记时返回 400 提示，避免重复撤销重复对冲。
+router.post('/tools/:id/missing/revert', authenticate, requireMaterialManager, (req, res) => {
+  const toolId = parseInt(req.params.id);
+  const db = readDB();
+  const tIdx = (db.tools || []).findIndex(t => t.tool_id === toolId);
+  if (tIdx === -1) return res.status(404).json({ message: '工具不存在' });
+  const tool = db.tools[tIdx];
+
+  if (tool.inventory_missing !== true) {
+    return res.status(400).json({ message: '该工具不在盘亏候选，无需撤销' });
+  }
+
+  delete tool.inventory_missing;
+  delete tool.inventory_missing_at;
+  delete tool.inventory_missing_check_no;
+  delete tool.inventory_missing_confirmed;
+  delete tool.inventory_missing_confirmed_at;
+  const user = db.users.find(u => u.user_id === req.user.user_id);
+  const movement = writeMovement(db, {
+    item_type: 'tool',
+    item_id: tool.tool_id,
+    item_code: tool.tool_code,
+    item_name: tool.tool_name,
+    movement_type: 'adjust',
+    qty: 1, // 对冲：与确认盘亏的 -1 相抵
+    operator_id: user?.user_id,
+    operator_name: user?.real_name || user?.username,
+    order_id: null,
+    remark: '盘亏撤销恢复'
+  });
+  writeDB(db);
+  res.json({ message: '已撤销盘亏，工具恢复在库', tool, movement });
 });
 
 // ============ 图片上传（含自动压缩，目标 ≤ 2MB）============

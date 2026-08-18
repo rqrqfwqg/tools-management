@@ -127,8 +127,8 @@ export const getStorageLocation = (id: number) =>
   request.get(`/storage-locations/${id}`).then(r => r.data)
 
 // Tools
-export const getTools = () =>
-  request.get<Tool[]>('/tools').then(r => r.data)
+export const getTools = (params?: { missing?: boolean }) =>
+  request.get<Tool[]>('/tools', { params }).then(r => r.data)
 
 export const getToolkits = () =>
   request.get<any[]>('/toolkits').then(r => r.data)
@@ -159,6 +159,12 @@ export const updateTool = (id: number, data: any) =>
 
 export const deleteTool = (id: number) =>
   request.delete(`/tools/${id}`).then(r => r.data)
+
+// 盘亏复核（PC 端）
+export const confirmToolMissing = (id: number) =>
+  request.post(`/tools/${id}/missing/confirm`).then(r => r.data)
+export const revertToolMissing = (id: number) =>
+  request.post(`/tools/${id}/missing/revert`).then(r => r.data)
 
 // Orders
 export const getOrders = (params?: { type?: string }) =>

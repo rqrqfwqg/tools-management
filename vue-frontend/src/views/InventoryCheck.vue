@@ -119,6 +119,29 @@ const scanHintType = ref<any>('info')
 
 const itemTypeText = (t: string) => ({ spare: '备件', consumable: '消耗品', tool: '工具' }[t] || t)
 
+// 本地"已录入"标记（FIX-4：与 H5/小程序 useInventoryEntered 同口径，key 约定一致），
+// 用于区分"已扫过（含刻意记为 0）"与"未扫（预置 actual=0）"，避免完成盘库误清零。
+const ENTERED_KEY_PREFIX = 'inventory_entered_'
+function getEnteredCodes(checkId: number): Set<string> {
+  try {
+    const raw = localStorage.getItem(`${ENTERED_KEY_PREFIX}${checkId}`)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw)
+    return new Set(Array.isArray(arr) ? arr : [])
+  } catch {
+    return new Set()
+  }
+}
+function markEntered(checkId: number, code: string): void {
+  try {
+    const set = getEnteredCodes(checkId)
+    set.add(code)
+    localStorage.setItem(`${ENTERED_KEY_PREFIX}${checkId}`, JSON.stringify([...set]))
+  } catch {
+    // 忽略写入异常（隐私模式等场景），不影响主流程
+  }
+}
+
 const load = async () => { list.value = await getInventoryChecks() }
 const loadWarehouses = async () => { warehouses.value = await getWarehouses() }
 
@@ -180,6 +203,8 @@ const handleScanSubmit = async () => {
     // 工具逐件盘点：实盘仅允许 0/1
     if (scanMeta.value.type === 'tool') qty = qty === 0 ? 0 : 1
     const res: any = await scanInventoryCheck(current.value.check_id, scanMeta.value.code, qty)
+    // 记录已录入编码（含刻意记为 0），供完成盘库时识别"未扫项"（FIX-4）
+    markEntered(current.value.check_id, scanMeta.value.code)
     scanVisible.value = false
     scanHint.value = `已录入：${res.item?.item_code} 实盘 ${res.item?.actual_qty}（差异 ${res.item?.diff}）`
     scanHintType.value = res.item?.diff === 0 ? 'success' : 'warning'
@@ -195,7 +220,34 @@ const handleComplete = async () => {
   if (!current.value) return
   await ElMessageBox.confirm('完成后将无法继续录入，确认完成？', '提示', { type: 'warning' })
   try {
-    await completeInventoryCheck(current.value.check_id)
+    // FIX-4：完成前对"未扫的备件/消耗品"自动补齐为账实相符（actual=system_qty），
+    // 避免未扫项被判为实盘 0 而将库存清零（与 H5/小程序 finish() 补齐语义对齐）。
+    // 工具逐件口径例外：未扫工具保持 actual=0（=盘亏候选），不自动补齐。
+    const checkId = current.value.check_id
+    const enteredCodes = getEnteredCodes(checkId)
+    const unentered = (current.value.items || []).filter(
+      (it: any) =>
+        it.item_type !== 'tool' &&
+        !enteredCodes.has(it.item_code) &&
+        Number(it.actual_qty ?? 0) === 0 &&
+        Number(it.system_qty ?? 0) > 0
+    )
+    let failed = 0
+    if (unentered.length > 0) {
+      const results = await Promise.all(
+        unentered.map((it: any) =>
+          scanInventoryCheck(checkId, it.item_code, Number(it.system_qty ?? 0)).then(
+            () => { markEntered(checkId, it.item_code); return true },
+            () => false
+          )
+        )
+      )
+      failed = results.filter((ok: boolean) => !ok).length
+      if (failed > 0) {
+        ElMessage.warning(`${failed} 项补齐失败，请检查网络后重试（未补齐项可能被计为 0）`)
+      }
+    }
+    await completeInventoryCheck(checkId)
     ElMessage.success('盘库已完成'); backToList()
   } catch (e: any) { ElMessage.error(e.response?.data?.message || '完成失败') }
 }
