@@ -31,21 +31,48 @@
         <el-tag :type="current.status === 'pending' ? 'warning' : 'success'">{{ current.status === 'pending' ? '进行中' : '已完成' }}</el-tag>
       </div>
       <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
-        <el-input v-model="scanCode" placeholder="手动输入编码（BJ-/XH-/G-）" clearable style="width:280px" @keyup.enter="openScanConfirm" />
-        <el-button type="primary" :disabled="!scanCode.trim()" @click="openScanConfirm">扫码盘点</el-button>
+        <el-input v-model="scanCode" placeholder="手动输入编码（BJ-/XH-/G-）" clearable style="width:280px" @keyup.enter="locateByCode" />
+        <el-button type="primary" :disabled="!scanCode.trim()" @click="locateByCode">定位盘点</el-button>
         <el-button v-if="current.status === 'pending'" type="success" @click="handleComplete">完成盘库</el-button>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin:8px 0 12px">
+        <span style="color:#909399;font-size:13px">类型筛选：</span>
+        <el-radio-group v-model="filterType" size="small">
+          <el-radio-button label="all">全部</el-radio-button>
+          <el-radio-button label="material">物料（备件/消耗品）</el-radio-button>
+          <el-radio-button label="tool">工具</el-radio-button>
+        </el-radio-group>
+      </div>
       <el-alert v-if="scanHint" :type="scanHintType" :closable="false" style="margin-bottom:12px" :title="scanHint" />
-      <el-table :data="current.items || []" border>
+      <el-table :data="filteredItems" border ref="tableRef" :row-class-name="rowClassName">
         <el-table-column label="类型" width="90">
           <template #default="{row}"><el-tag :type="row.item_type === 'spare' ? 'primary' : row.item_type === 'consumable' ? 'success' : ''">{{ itemTypeText(row.item_type) }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="item_code" label="编码" min-width="100" />
         <el-table-column prop="item_name" label="名称" min-width="120" show-overflow-tooltip />
         <el-table-column prop="system_qty" label="系统数量" width="100" />
-        <el-table-column label="实盘数量" width="100">
+        <el-table-column label="实盘数量" width="150">
           <template #default="{row}">
-            <span :style="{ color: row.actual_qty === 0 ? '#f56c6c' : '#303133', fontWeight: 'bold' }">{{ row.actual_qty }}</span>
+            <!-- 工具：逐件切换（在库/盘亏），不显示数字框 -->
+            <el-switch
+              v-if="row.item_type === 'tool'"
+              :model-value="row.actual_qty === 1"
+              inline-prompt
+              active-text="在库"
+              inactive-text="盘亏"
+              @change="onToolToggle(row)"
+            />
+            <!-- 备件/消耗品：行内直接编辑数量 -->
+            <el-input-number
+              v-else
+              :model-value="row.actual_qty"
+              :min="0"
+              :max="999999"
+              controls-position="right"
+              size="small"
+              style="width:120px"
+              @change="onQtyChange(row, $event)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="差异" width="90">
@@ -73,31 +100,10 @@
         <el-button type="primary" :loading="creating" @click="handleCreate">创建</el-button>
       </template>
     </el-dialog>
-
-    <!-- 扫码盘点：数量录入 -->
-    <el-dialog v-model="scanVisible" title="录入实盘数量" width="420px">
-      <div v-if="scanMeta">
-        <p>编码：<strong>{{ scanMeta.code }}</strong></p>
-        <p>名称：<strong>{{ scanMeta.name }}</strong></p>
-        <p>类型：<el-tag :type="scanMeta.type === 'spare' ? 'primary' : scanMeta.type === 'consumable' ? 'success' : ''">{{ itemTypeText(scanMeta.type) }}</el-tag></p>
-        <p v-if="scanMeta.system_qty != null">系统数量：<strong>{{ scanMeta.system_qty }}</strong></p>
-      </div>
-      <el-alert v-if="scanMeta && scanMeta.type === 'spare'" type="info" :closable="false" style="margin:8px 0" title="备件实盘数量支持录入大于 1 的整数（与数量库存口径一致）" />
-      <el-alert v-if="scanMeta && scanMeta.type === 'tool'" type="info" :closable="false" style="margin:8px 0" title="工具逐件盘点：0=盘亏候选，1=在库（扫到默认在库）" />
-      <el-form label-width="90px" style="margin-top:8px">
-        <el-form-item label="实盘数量">
-          <el-input-number v-model="scanQty" :min="0" :max="scanMeta?.type === 'tool' ? 1 : 999999" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="scanVisible=false">取消</el-button>
-        <el-button type="primary" :loading="scanning" @click="handleScanSubmit">确认录入</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { getInventoryChecks, createInventoryCheck, scanInventoryCheck, completeInventoryCheck, getWarehouses } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -110,14 +116,26 @@ const newOperator = ref('')
 const creating = ref(false)
 
 const scanCode = ref('')
-const scanVisible = ref(false)
-const scanMeta = ref<any>(null)
-const scanQty = ref(1)
-const scanning = ref(false)
+// 类型筛选：全部 / 物料（备件+消耗品）/ 工具
+const filterType = ref<'all' | 'material' | 'tool'>('all')
+// 定位高亮 + 表格 ref（用于滚动定位）
+const highlightCode = ref('')
+const tableRef = ref<any>(null)
 const scanHint = ref('')
 const scanHintType = ref<any>('info')
 
 const itemTypeText = (t: string) => ({ spare: '备件', consumable: '消耗品', tool: '工具' }[t] || t)
+
+// 类型筛选后的显示列表
+const filteredItems = computed(() => {
+  const items = (current.value?.items || []) as any[]
+  if (filterType.value === 'all') return items
+  if (filterType.value === 'material') return items.filter((it) => it.item_type === 'spare' || it.item_type === 'consumable')
+  return items.filter((it) => it.item_type === 'tool')
+})
+
+// 高亮命中行（row-class-name 回调）
+const rowClassName = ({ row }: any) => (row.item_code === highlightCode.value ? 'inv-row-highlight' : '')
 
 // 本地"已录入"标记（FIX-4：与 H5/小程序 useInventoryEntered 同口径，key 约定一致），
 // 用于区分"已扫过（含刻意记为 0）"与"未扫（预置 actual=0）"，避免完成盘库误清零。
@@ -162,6 +180,8 @@ const enterCheck = async (row: any) => {
   // 优先用列表已有的 items，避免额外请求；列表项字段已包含 items
   current.value = row
   scanHint.value = ''
+  highlightCode.value = ''
+  filterType.value = 'all'
 }
 const backToList = () => { current.value = null; load() }
 
@@ -174,7 +194,9 @@ const detectPrefix = (code: string) => {
   return ''
 }
 
-const openScanConfirm = () => {
+// 顶部输码/扫码 → 定位聚焦（不再弹窗录入）
+// 找到对应行：高亮 + 滚动可见 + 聚焦其编辑控件（物料聚焦数字框 / 工具聚焦切换按钮）
+const locateByCode = () => {
   const code = scanCode.value.trim().toUpperCase()
   if (!code) { ElMessage.warning('请输入编码'); return }
   if (!current.value || current.value.status !== 'pending') { ElMessage.warning('当前盘库单不可录入'); return }
@@ -182,38 +204,66 @@ const openScanConfirm = () => {
   // 工具箱（BX-）不参与数量盘点：明确提示扫箱内工具（决策 Q2）
   if (type === 'toolkit') { ElMessage.warning('工具箱不参与数量盘点，请扫箱内工具'); return }
   if (!type) { ElMessage.error('无法识别的编码前缀（应为 BJ-/XH-/G-/BX-）'); return }
-  const existing = (current.value.items || []).find((it: any) => it.item_code === code)
-  if (!existing) { ElMessage.warning('不在本次盘点范围'); return }
-  scanMeta.value = {
-    code,
-    type,
-    name: existing?.item_name || '',
-    system_qty: existing?.system_qty != null ? existing.system_qty : null
-  }
-  // 工具逐件口径：默认实盘 1（扫到=在库）；备件/消耗品默认=系统数量
-  scanQty.value = existing?.system_qty != null ? existing.system_qty : (type === 'tool' ? 1 : 0)
-  scanVisible.value = true
+  const items = (current.value.items || []) as any[]
+  const target = items.find((it: any) => it.item_code === code)
+  if (!target) { ElMessage.warning('不在本次盘点范围'); return }
+
+  // 若该行被类型筛选隐藏，先切回"全部"以保证可见
+  const isMaterial = target.item_type === 'spare' || target.item_type === 'consumable'
+  if (filterType.value === 'material' && !isMaterial) filterType.value = 'all'
+  if (filterType.value === 'tool' && target.item_type !== 'tool') filterType.value = 'all'
+
+  highlightCode.value = code
+  scanCode.value = ''
+  // 高亮自动淡出（避免覆盖后续高亮）
+  setTimeout(() => { if (highlightCode.value === code) highlightCode.value = '' }, 2000)
+
+  nextTick(() => {
+    const tableEl = tableRef.value?.$el as HTMLElement | undefined
+    const rowEl = tableEl?.querySelector('.inv-row-highlight') as HTMLElement | null
+    if (rowEl) rowEl.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // 聚焦对应编辑控件
+    if (target.item_type === 'tool') {
+      (rowEl?.querySelector('.el-switch') as HTMLElement | null)?.focus?.()
+    } else {
+      (rowEl?.querySelector('.el-input-number .el-input__inner') as HTMLElement | null)?.focus?.()
+    }
+  })
 }
 
-const handleScanSubmit = async () => {
-  if (!scanMeta.value || !current.value) return
-  scanning.value = true
+// 备件/消耗品：行内直接编辑数量，失焦/回车即同步
+const onQtyChange = async (row: any, val: number) => {
+  if (!current.value) return
+  let v = Math.floor(Number(val))
+  if (!Number.isFinite(v) || v < 0) v = 0 // 钳制非负整数
+  const old = row.actual_qty
   try {
-    let qty = scanQty.value
-    // 工具逐件盘点：实盘仅允许 0/1
-    if (scanMeta.value.type === 'tool') qty = qty === 0 ? 0 : 1
-    const res: any = await scanInventoryCheck(current.value.check_id, scanMeta.value.code, qty)
-    // 记录已录入编码（含刻意记为 0），供完成盘库时识别"未扫项"（FIX-4）
-    markEntered(current.value.check_id, scanMeta.value.code)
-    scanVisible.value = false
-    scanHint.value = `已录入：${res.item?.item_code} 实盘 ${res.item?.actual_qty}（差异 ${res.item?.diff}）`
-    scanHintType.value = res.item?.diff === 0 ? 'success' : 'warning'
-    scanCode.value = ''
-    // 刷新当前盘库单（含最新 items）
-    const fresh: any = await getInventoryChecks()
-    const updated = fresh.find((c: any) => c.check_id === current.value!.check_id)
-    if (updated) current.value = updated
-  } catch (e: any) { ElMessage.error(e.response?.data?.message || '录入失败') } finally { scanning.value = false }
+    const res: any = await scanInventoryCheck(current.value.check_id, row.item_code, v)
+    row.actual_qty = res?.item?.actual_qty ?? v
+    row.diff = row.actual_qty - row.system_qty
+    markEntered(current.value.check_id, row.item_code)
+    scanHint.value = `已录入：${row.item_code} 实盘 ${row.actual_qty}（差异 ${row.diff}）`
+    scanHintType.value = row.diff === 0 ? 'success' : 'warning'
+  } catch (e: any) {
+    row.actual_qty = old // 失败回滚显示
+    ElMessage.error(e.response?.data?.message || '录入失败')
+  }
+}
+
+// 工具：逐件切换（在库 1 / 盘亏 0）
+const onToolToggle = async (row: any) => {
+  if (!current.value) return
+  const newVal = row.actual_qty ? 0 : 1 // 点击切换
+  try {
+    const res: any = await scanInventoryCheck(current.value.check_id, row.item_code, newVal)
+    row.actual_qty = res?.item?.actual_qty ?? newVal
+    row.diff = row.actual_qty - row.system_qty
+    markEntered(current.value.check_id, row.item_code)
+    scanHint.value = `已录入：${row.item_code} ${row.actual_qty ? '在库' : '盘亏'}`
+    scanHintType.value = 'success'
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '录入失败')
+  }
 }
 
 const handleComplete = async () => {
@@ -254,3 +304,9 @@ const handleComplete = async () => {
 
 onMounted(() => { load(); loadWarehouses() })
 </script>
+<style>
+/* 盘库定位高亮行（el-table 行 tr 不在 SFC 作用域内，用全局样式保证生效） */
+.inv-row-highlight > td {
+  background-color: #fff7e6 !important;
+}
+</style>

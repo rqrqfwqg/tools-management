@@ -20,7 +20,13 @@
       <text class="locked-banner__text">本盘库单{{ statusText }}，已锁定录入。如需继续盘点，请新建盘库单。</text>
     </view>
 
-    <scroll-view scroll-y class="list" v-show="items.length">
+    <scroll-view
+      scroll-y
+      class="list"
+      v-show="items.length"
+      :scroll-into-view="highlightCode ? 'it-' + highlightCode : ''"
+      scroll-with-animation
+    >
       <view
         class="item"
         v-for="it in items"
@@ -44,6 +50,7 @@
               class="item__input"
               type="number"
               :value="String(it.actualInput)"
+              :focus="it.focusInput"
               :disabled="locked"
               @blur="onInputBlur(it, $event)"
             />
@@ -81,6 +88,7 @@ interface ScanItem {
   diff: number
   entered: boolean
   actualInput: number
+  focusInput: boolean
 }
 
 const checkId = ref(0)
@@ -128,7 +136,9 @@ async function load() {
         ...i,
         entered,
         // 已录入显示实盘值；未录入默认系统量（账实相符无需改）；工具默认 0（未扫=缺）
-        actualInput: entered ? Number(i.actual_qty ?? 0) : (isTool ? 0 : Number(i.system_qty ?? 0))
+        actualInput: entered ? Number(i.actual_qty ?? 0) : (isTool ? 0 : Number(i.system_qty ?? 0)),
+        // 扫码定位焦点标记：命中后聚焦输入框，等待用户手动录入（不再自动按系统量提交）
+        focusInput: false
       }
     })
   } finally {
@@ -156,6 +166,7 @@ async function submitItem(it: ScanItem, qty: number): Promise<void> {
 }
 
 function onInputBlur(it: ScanItem, e: any) {
+  it.focusInput = false // 失焦即清除定位聚焦标记
   let val = Number(String(e?.detail?.value ?? '').trim())
   if (!Number.isInteger(val) || val < 0) {
     it.actualInput = it.actual_qty ?? Number(it.system_qty ?? 0)
@@ -167,7 +178,7 @@ function onInputBlur(it: ScanItem, e: any) {
   submitItem(it, val)
 }
 
-/** 扫码：BX- 提示扫箱内工具；命中应盘物料 → 默认以系统量为准并高亮定位；未命中区分"不在本盘库单/编码未识别" */
+/** 扫码：BX- 提示扫箱内工具；命中应盘物料 → 滚动定位 + 高亮 + 聚焦输入框（不自动提交，等用户手动录入）；未命中区分"不在本盘库单/编码未识别" */
 async function doScan() {
   if (locked.value) {
     await showToast('盘库已完成，不可录入', 'none')
@@ -193,11 +204,10 @@ async function doScan() {
   }
   highlightCode.value = code
   setTimeout(() => (highlightCode.value = ''), 1500)
-  if (!target.entered || target.actual_qty === 0) {
-    await submitItem(target, target.system_qty)
-  } else {
-    await showToast('该物料已录入', 'none')
-  }
+  // 命中后不再自动按系统量提交：滚动定位 + 高亮 + 聚焦输入框，等用户手动录入（blur 时提交）。
+  // 未完成/未改的物料仍由 finish() 的「未录入自动补齐为系统量」保护（现有逻辑保留）。
+  target.focusInput = true
+  setTimeout(() => { target.focusInput = false }, 3000)
 }
 
 /** 完成盘库：未录入项默认按账实相符提交，差异落账 + 写流水 */
