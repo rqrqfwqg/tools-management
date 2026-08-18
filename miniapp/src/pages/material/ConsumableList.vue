@@ -5,7 +5,7 @@
       <text class="bar__refresh" @tap="load">刷新</text>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="consumables.length">
+    <scroll-view scroll-y class="list" v-show="consumables.length">
       <view class="card" v-for="c in consumables" :key="'c' + c.consumable_id">
         <image v-if="c.image_url" class="card__thumb" :src="resolveImage(c.image_url)" mode="aspectFill" />
         <view v-else class="card__thumb card__thumb--text">{{ (c.consumable_name || c.consumable_code).charAt(0) }}</view>
@@ -25,7 +25,7 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!consumables.length">
       <text class="empty__text">{{ loaded ? '暂无消耗品' : '加载中…' }}</text>
     </view>
   </view>

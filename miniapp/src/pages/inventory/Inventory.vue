@@ -5,7 +5,7 @@
       <text class="bar__refresh" @tap="load">刷新</text>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="checks.length">
+    <scroll-view scroll-y class="list" v-show="checks.length">
       <view class="card" v-for="c in checks" :key="c.check_id" @tap="open(c)">
         <view class="card__top">
           <text class="card__no">{{ c.check_no }}</text>
@@ -31,7 +31,7 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!checks.length">
       <text class="empty__text">{{ loaded ? '暂无盘点记录' : '加载中…' }}</text>
     </view>
 

@@ -5,7 +5,7 @@
       <text class="bar__refresh" v-if="cartStore.items.length" @tap="clearAll">清空</text>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="cartStore.items.length">
+    <scroll-view scroll-y class="list" v-show="cartStore.items.length">
       <view class="card" v-for="item in cartStore.items" :key="item.tool_id">
         <view class="card__main">
           <text class="card__name">{{ item.tool_name }}</text>
@@ -34,7 +34,7 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!cartStore.items.length">
       <text class="empty__icon">篮</text>
       <text class="empty__text">领用篮为空</text>
       <view class="empty__btn" @tap="goTools">去挑选工具</view>

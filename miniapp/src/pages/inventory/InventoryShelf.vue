@@ -7,7 +7,7 @@
 
     <view class="tip">本仓库应盘物料参照清单（扫码录入请在盘点页进行）</view>
 
-    <scroll-view scroll-y class="list" v-if="groups.length">
+    <scroll-view scroll-y class="list" v-show="groups.length">
       <view class="group" v-for="g in groups" :key="g.title">
         <view class="group__title">{{ g.title }}（{{ g.items.length }}）</view>
         <view class="item" v-for="it in g.items" :key="g.title + it.item_code">
@@ -23,7 +23,7 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!groups.length">
       <text class="empty__text">{{ loaded ? '暂无应盘物料' : '加载中…' }}</text>
     </view>
   </view>

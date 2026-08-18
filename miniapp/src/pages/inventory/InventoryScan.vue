@@ -4,7 +4,8 @@
     <view class="header">
       <view class="header__top">
         <text class="header__title">{{ check?.check_no || '盘库' }}</text>
-        <view class="header__finish" :class="{ 'header__finish--disabled': finishing }" @tap="finish">
+        <text v-if="statusText" class="header__status" :class="`header__status--${check?.status}`">{{ statusText }}</text>
+        <view class="header__finish" :class="{ 'header__finish--disabled': finishing || locked }" @tap="finish">
           {{ finishing ? '提交中…' : '完成盘库' }}
         </view>
       </view>
@@ -14,7 +15,12 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="items.length">
+    <view v-if="locked" class="locked-banner">
+      <text class="locked-banner__icon">🔒</text>
+      <text class="locked-banner__text">本盘库单{{ statusText }}，已锁定录入。如需继续盘点，请新建盘库单。</text>
+    </view>
+
+    <scroll-view scroll-y class="list" v-show="items.length">
       <view
         class="item"
         v-for="it in items"
@@ -38,6 +44,7 @@
               class="item__input"
               type="number"
               :value="String(it.actualInput)"
+              :disabled="locked"
               @blur="onInputBlur(it, $event)"
             />
           </view>
@@ -45,12 +52,12 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!items.length">
       <text class="empty__text">{{ loaded ? '暂无应盘明细' : '加载中…' }}</text>
     </view>
 
     <!-- 扫码按钮 -->
-    <view class="scan-float" @tap="doScan">
+    <view class="scan-float" :class="{ 'scan-float--disabled': locked }" @tap="doScan">
       <text class="scan-float__icon">📷</text>
       <text class="scan-float__text">扫码</text>
     </view>
@@ -90,6 +97,19 @@ const progressPercent = computed(() =>
   totalCount.value ? Math.round((enteredCount.value / totalCount.value) * 100) : 0
 )
 
+/** 盘库单非 pending（已完成/已取消）即锁定，禁止一切录入写操作 */
+const locked = computed(() => {
+  const s = check.value?.status
+  return !!s && s !== 'pending'
+})
+const statusText = computed(() => {
+  const s = check.value?.status
+  if (s === 'completed') return '已完成'
+  if (s === 'cancelled') return '已取消'
+  if (s === 'pending') return '进行中'
+  return ''
+})
+
 onLoad(async (options) => {
   checkId.value = Number(options?.id || 0)
   if (checkId.value) await load()
@@ -118,6 +138,10 @@ async function load() {
 
 /** 提交实盘数量（默认=系统量则无需发请求；差异才提交） */
 async function submitItem(it: ScanItem, qty: number): Promise<void> {
+  if (locked.value) {
+    await showToast('盘库已完成，不可录入', 'none')
+    return
+  }
   const actual = Math.max(0, Math.floor(qty))
   try {
     await scanInventoryCheck(checkId.value, it.item_code, actual)
@@ -145,6 +169,10 @@ function onInputBlur(it: ScanItem, e: any) {
 
 /** 扫码：BX- 提示扫箱内工具；命中应盘物料 → 默认以系统量为准并高亮定位；未命中区分"不在本盘库单/编码未识别" */
 async function doScan() {
+  if (locked.value) {
+    await showToast('盘库已完成，不可录入', 'none')
+    return
+  }
   const res = await scan()
   if (!res?.code) return
   const code = res.code.trim().toUpperCase()
@@ -174,6 +202,10 @@ async function doScan() {
 
 /** 完成盘库：未录入项默认按账实相符提交，差异落账 + 写流水 */
 async function finish() {
+  if (locked.value) {
+    await showToast('盘库已完成，不可录入', 'none')
+    return
+  }
   if (finishing.value) return
   const ok = await showModal({
     title: '完成盘库',
@@ -231,6 +263,16 @@ async function finish() {
 
   &__top { display: flex; align-items: center; justify-content: space-between; }
   &__title { font-size: 32rpx; font-weight: 600; color: $tm-text; }
+  &__status {
+    margin-left: 16rpx;
+    padding: 2rpx 14rpx;
+    border-radius: 999rpx;
+    font-size: 22rpx;
+    color: $tm-success;
+    background: #e8f8ef;
+    &--completed { color: $tm-text-secondary; background: $tm-border-light; }
+    &--cancelled { color: $tm-danger; background: #fdeaea; }
+  }
   &__finish {
     padding: 10rpx 28rpx;
     border-radius: 999rpx;
@@ -246,6 +288,20 @@ async function finish() {
 }
 
 .list { flex: 1; padding: 16rpx 24rpx 120rpx; box-sizing: border-box; }
+
+.locked-banner {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 12rpx 24rpx 0;
+  padding: 16rpx 22rpx;
+  border-radius: $tm-radius-sm;
+  background: #fdf6ec;
+  border: 1rpx solid #faecd8;
+
+  &__icon { font-size: 26rpx; }
+  &__text { font-size: 24rpx; color: #e6a23c; line-height: 1.4; }
+}
 
 .item {
   background: $tm-card-bg;
@@ -318,5 +374,10 @@ async function finish() {
 
   &__icon { font-size: 40rpx; line-height: 1; }
   &__text { margin-top: 4rpx; font-size: 20rpx; color: #ffffff; }
+
+  &--disabled {
+    background: $tm-border;
+    box-shadow: none;
+  }
 }
 </style>
