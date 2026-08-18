@@ -392,6 +392,8 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 32rpx;
+  /* 底部安全区避让：避免全面屏/鸿蒙手势条遮挡按钮（HarmonyOS 适配 §3） */
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
   background: $tm-card-bg;
   border-top: 1rpx solid $tm-border;
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);

@@ -32,7 +32,7 @@
       >{{ s.shelf_name }}</view>
     </scroll-view>
 
-    <scroll-view scroll-y class="list" v-if="filtered.length">
+    <scroll-view scroll-y class="list" v-show="filtered.length">
       <view class="card" v-for="t in filtered" :key="t.tool_id" @tap="onTap(t)">
         <image v-if="t.image_url" class="card__thumb" :src="resolveImage(t.image_url)" mode="aspectFill" />
         <view v-else class="card__thumb card__thumb--text">{{ (t.tool_name || t.tool_code).charAt(0) }}</view>
@@ -59,7 +59,7 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!filtered.length">
       <text class="empty__icon">工</text>
       <text class="empty__text">{{ loaded ? '没有符合条件的工具' : '加载中…' }}</text>
     </view>
@@ -345,6 +345,8 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 32rpx;
+  /* 底部安全区避让：避免全面屏/鸿蒙手势条遮挡按钮（HarmonyOS 适配 §3） */
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
   background: $tm-card-bg;
   border-top: 1rpx solid $tm-border;
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);

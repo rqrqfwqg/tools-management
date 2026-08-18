@@ -24,7 +24,7 @@
       >备件领取单</view>
     </view>
 
-    <scroll-view scroll-y class="list" v-if="shown.length">
+    <scroll-view scroll-y class="list" v-show="shown.length">
       <view class="card" v-for="o in shown" :key="o.order_id" @tap="goDetail(o)">
         <view class="card__top">
           <text class="card__no">{{ o.order_no }}</text>
@@ -59,7 +59,7 @@
       </view>
     </scroll-view>
 
-    <view class="empty" v-else>
+    <view class="empty" v-show="!shown.length">
       <text class="empty__icon">单</text>
       <text class="empty__text">{{ loaded ? '暂无工单数据' : '加载中…' }}</text>
     </view>
