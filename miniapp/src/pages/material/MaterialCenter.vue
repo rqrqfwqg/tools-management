@@ -68,6 +68,18 @@
           <text class="entry__arrow">›</text>
         </view>
       </view>
+
+      <!-- 库存盘点入口（仅物料管理员可见：建单/完成盘库需该权限） -->
+      <view class="entry" v-if="auth.isMaterialManager" @tap="goInventory">
+        <view class="entry__icon entry__icon--purple">盘</view>
+        <view class="entry__info">
+          <text class="entry__title">库存盘点</text>
+          <text class="entry__sub">扫码盘点备件与消耗品库存</text>
+        </view>
+        <view class="entry__right">
+          <text class="entry__arrow">›</text>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -110,6 +122,10 @@ function goDispense() {
 
 function goSafety() {
   uni.navigateTo({ url: '/pages/material/SafetySupplies' })
+}
+
+function goInventory() {
+  uni.navigateTo({ url: '/pages/inventory/Inventory' })
 }
 
 async function load() {
@@ -222,6 +238,7 @@ onShow(() => {
     &--green { background: $tm-success; }
     &--orange { background: $tm-warning; }
     &--red { background: $tm-danger; }
+    &--purple { background: #7c4dff; }
   }
 
   &__info {

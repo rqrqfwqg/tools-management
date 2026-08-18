@@ -26,8 +26,8 @@
       >
         <div class="scan-item-head">
           <span class="scan-item-name">{{ item.item_name }}</span>
-          <van-tag :type="item.item_type === 'spare' ? 'primary' : 'success'">
-            {{ item.item_type === 'spare' ? '备件' : '消耗品' }}
+          <van-tag :type="item.item_type === 'spare' ? 'primary' : item.item_type === 'consumable' ? 'warning' : 'success'">
+            {{ item.item_type === 'spare' ? '备件' : item.item_type === 'consumable' ? '消耗品' : '工具' }}
           </van-tag>
           <van-tag v-if="item.entered" type="success">已录入</van-tag>
         </div>
@@ -35,11 +35,11 @@
         <div class="scan-item-stock">现有库存：<b>{{ item.system_qty }}</b></div>
         <div class="scan-item-edit">
           <span class="stepper-label">实盘数量</span>
-          <!-- 步进器录入：默认=现有库存，加减/手输即提交（决策：值变化@change 提交，替代 blur） -->
+          <!-- 步进器录入：默认=现有库存，加减/手输即提交（决策：值变化@change 提交，替代 blur）；工具逐件 0/1 -->
           <van-stepper
             v-model="item.actualInput"
             :min="0"
-            :max="999999"
+            :max="item.item_type === 'tool' ? 1 : 999999"
             integer
             :long-press="false"
             @change="onStepperChange(item, $event)"
@@ -67,7 +67,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { showSuccessToast, showFailToast } from 'vant'
 import { scanInventoryCheck } from '@/api/material'
-import { isItemEntered, markEntered } from '@/composables/useInventoryEntered'
+import { isItemEntered, markEntered, getEnteredCodes } from '@/composables/useInventoryEntered'
 import InventoryScannerPopup from '@/components/InventoryScannerPopup.vue'
 import type { InventoryCheck, InventoryCheckItem } from '@/types'
 
@@ -113,14 +113,17 @@ const filteredItems = computed(() => {
 })
 
 onMounted(() => {
-  // 恢复 entered：actual_qty!==system_qty 或本地集合有录入痕迹（幂等）
-  // 步进器默认值：已录入项显示实际已录值 actual_qty；未录入项默认=现有库存 system_qty（账实相符无需操作）
+  // 恢复 entered：备件/消耗品沿用 actual_qty!==system_qty 或本地集合（幂等）；
+  // 工具逐件口径：仅"扫过/提交过"的编码记为已录入（避免预置 actual=0 即显示已录入），未扫默认 0（缺）。
   items.value = (props.check.items || []).map((i: InventoryCheckItem) => {
-    const entered = isItemEntered(checkId.value, i)
+    const isTool = i.item_type === 'tool'
+    const entered = isTool
+      ? getEnteredCodes(checkId.value).has(i.item_code)
+      : isItemEntered(checkId.value, i)
     return {
       ...i,
       entered,
-      actualInput: entered ? i.actual_qty : i.system_qty
+      actualInput: entered ? i.actual_qty : (isTool ? 0 : i.system_qty)
     }
   })
 })
@@ -130,21 +133,27 @@ function clampQty(v: number): number {
   return Math.max(0, Math.min(999999, Math.floor(v)))
 }
 
-/** 编码前缀门禁（决策 #7）：仅 BJ-/XH- 属盘点范围，G-/BX-/未知一律拦截 */
-function detectPrefix(code: string): 'spare' | 'consumable' | 'tool' | '' {
-  if (code.startsWith('BJ-')) return 'spare'
-  if (code.startsWith('XH-')) return 'consumable'
-  if (code.startsWith('G-') || code.startsWith('BX-')) return 'tool'
+/** 编码前缀识别：BX- 工具箱（提示扫箱内工具）；G- 工具（逐件盘点）；BJ-/XH- 备件/消耗品；未知前缀拦截 */
+function detectPrefix(code: string): 'spare' | 'consumable' | 'tool' | 'toolkit' | '' {
+  const c = code.trim().toUpperCase()
+  if (c.startsWith('BX-')) return 'toolkit'
+  if (c.startsWith('BJ-')) return 'spare'
+  if (c.startsWith('XH-')) return 'consumable'
+  if (c.startsWith('G-')) return 'tool'
   return ''
 }
 
-/** 扫码命中处理：预填 system_qty（与步进器默认一致）→ 提交 → markEntered → 定位高亮滚动 */
+/** 扫码命中处理：工具扫到=在库（actual=1）；备件/消耗品预填 system_qty → 提交 → markEntered → 定位高亮滚动 */
 async function onScannedCode(raw: string): Promise<void> {
-  const code = raw.trim()
+  const code = raw.trim().toUpperCase()
   if (!code) return
   const type = detectPrefix(code)
-  if (type === 'tool' || !type) {
-    showFailToast('不在本次盘点范围')
+  if (type === 'toolkit') {
+    showFailToast('工具箱不参与数量盘点，请扫箱内工具')
+    return
+  }
+  if (!type) {
+    showFailToast('无法识别的编码前缀（应为 BJ-/XH-/G-）')
     return
   }
   const target = items.value.find((i) => i.item_code === code)
@@ -152,7 +161,14 @@ async function onScannedCode(raw: string): Promise<void> {
     showFailToast('不在本次盘点范围')
     return
   }
-  // 扫码视为"确认以系统量为准"（可再改步进器覆盖）；预填与步进器默认值一致
+  if (type === 'tool') {
+    // 工具逐件盘点：扫到=在库（actual=1）；如需标记缺失可将步进器改为 0
+    target.actualInput = 1
+    await submitItem(target, 1)
+    scrollToItem(code)
+    return
+  }
+  // 备件/消耗品：扫码视为"确认以系统量为准"（可再改步进器覆盖）；预填与步进器默认值一致
   target.actualInput = target.system_qty
   await submitItem(target, target.system_qty)
   scrollToItem(code)
@@ -177,7 +193,7 @@ async function submitItem(item: ScanItem, actual: number, opts: { silent?: boole
   }
 }
 
-/** 步进器值变化即提交：加减/手输均触发；静默提交避免每步 toast 轰炸，失败仍 toast */
+/** 步进器值变化即提交：加减/手输均触发；工具逐件钳制到 0/1；静默提交避免每步 toast 轰炸，失败仍 toast */
 async function onStepperChange(item: ScanItem, value: number | string): Promise<void> {
   const n = Number(value)
   if (!Number.isFinite(n)) {
@@ -185,7 +201,8 @@ async function onStepperChange(item: ScanItem, value: number | string): Promise<
     item.actualInput = item.actual_qty
     return
   }
-  const q = clampQty(n)
+  let q = clampQty(n)
+  if (item.item_type === 'tool') q = q === 0 ? 0 : 1
   item.actualInput = q
   await submitItem(item, q, { silent: true })
 }
@@ -209,13 +226,14 @@ function onScannerClosed(): void {
 /**
  * 完成盘库：先把未录入项按 system_qty 批量提交（实际=系统量，diff=0，账实相符），
  * 再进入 complete 流程，避免后端将未扫描项判为全亏清零（历史坑）。
+ * 注意：工具逐件口径例外——未扫工具保持 actual=0（=盘亏候选），完成时不自动按 system_qty=1 补齐。
  * 失败项不阻塞完成，toast 汇总失败数。
  */
 async function finish(): Promise<void> {
   if (finishing.value) return
   finishing.value = true
   try {
-    const pending = items.value.filter((i) => !i.entered)
+    const pending = items.value.filter((i) => !i.entered && i.item_type !== 'tool')
     if (pending.length > 0) {
       const results = await Promise.all(
         pending.map((i) => submitItem(i, i.system_qty, { silent: true }))

@@ -24,8 +24,8 @@
       >
         <view class="item__head">
           <text class="item__name">{{ it.item_name }}</text>
-          <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : 'type-tag--cons'">
-            {{ it.item_type === 'spare' ? '备件' : '消耗品' }}
+          <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : it.item_type === 'tool' ? 'type-tag--tool' : 'type-tag--cons'">
+            {{ it.item_type === 'spare' ? '备件' : it.item_type === 'tool' ? '工具' : '消耗品' }}
           </text>
           <text v-if="it.entered" class="entered-tag">✓ 已录入</text>
         </view>
@@ -62,7 +62,7 @@ import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getInventoryCheckById, scanInventoryCheck, completeInventoryCheck } from '@/api/material'
 import { useScanner } from '@/composables/useScanner'
-import { isItemEntered, markEntered } from '@/composables/useInventoryEntered'
+import { isItemEntered, markEntered, getEnteredCodes } from '@/composables/useInventoryEntered'
 import { showToast, showModal } from '@/utils/feedback'
 
 interface ScanItem {
@@ -101,12 +101,14 @@ async function load() {
     const data = await getInventoryCheckById(checkId.value).catch(() => null)
     check.value = data
     items.value = (data?.items || []).map((i: any) => {
-      const entered = isItemEntered(checkId.value, i)
+      const isTool = i.item_type === 'tool'
+      // 工具逐件口径：仅"扫过/提交过"的编码记为已录入（避免预置 actual=0 即显示已录入），未扫默认 0（缺）
+      const entered = isTool ? getEnteredCodes(checkId.value).has(i.item_code) : isItemEntered(checkId.value, i)
       return {
         ...i,
         entered,
-        // 已录入显示实盘值；未录入默认系统量（账实相符无需改）
-        actualInput: entered ? Number(i.actual_qty ?? 0) : Number(i.system_qty ?? 0)
+        // 已录入显示实盘值；未录入默认系统量（账实相符无需改）；工具默认 0（未扫=缺）
+        actualInput: entered ? Number(i.actual_qty ?? 0) : (isTool ? 0 : Number(i.system_qty ?? 0))
       }
     })
   } finally {
@@ -130,23 +132,35 @@ async function submitItem(it: ScanItem, qty: number): Promise<void> {
 }
 
 function onInputBlur(it: ScanItem, e: any) {
-  const val = Number(String(e?.detail?.value ?? '').trim())
+  let val = Number(String(e?.detail?.value ?? '').trim())
   if (!Number.isInteger(val) || val < 0) {
     it.actualInput = it.actual_qty ?? Number(it.system_qty ?? 0)
     return
   }
+  // 工具逐件盘点：实盘仅允许 0/1
+  if (it.item_type === 'tool') val = val === 0 ? 0 : 1
   if (val === it.actual_qty) return
   submitItem(it, val)
 }
 
-/** 扫码：命中应盘物料 → 默认以系统量为准并高亮定位 */
+/** 扫码：BX- 提示扫箱内工具；命中应盘物料 → 默认以系统量为准并高亮定位；未命中区分"不在本盘库单/编码未识别" */
 async function doScan() {
   const res = await scan()
   if (!res?.code) return
-  const code = res.code.trim()
+  const code = res.code.trim().toUpperCase()
+  if (code.startsWith('BX-')) {
+    await showToast('工具箱不参与数量盘点，请扫箱内工具', 'none')
+    return
+  }
   const target = items.value.find((i) => i.item_code === code)
   if (!target) {
-    await showToast('不在本次盘库范围', 'none')
+    if (code.startsWith('G-')) {
+      await showToast('工具不在本盘库单', 'none')
+    } else if (code.startsWith('BJ-') || code.startsWith('XH-')) {
+      await showToast('物料不在本盘库单', 'none')
+    } else {
+      await showToast('编码未识别', 'none')
+    }
     return
   }
   highlightCode.value = code
@@ -158,7 +172,7 @@ async function doScan() {
   }
 }
 
-/** 完成盘库：差异落账 + 写流水 */
+/** 完成盘库：未录入项默认按账实相符提交，差异落账 + 写流水 */
 async function finish() {
   if (finishing.value) return
   const ok = await showModal({
@@ -169,6 +183,30 @@ async function finish() {
   if (!ok) return
   finishing.value = true
   try {
+    // 未录入项：默认「账实相符」（actual=系统量，diff=0），
+    // 避免完成盘库时后端把它们当成实盘 0 而将库存清零。
+    // 注意：工具逐件口径例外——未扫工具保持 actual=0（=盘亏候选），不自动按 system_qty=1 补齐。
+    const unentered = items.value.filter((i) => !i.entered && i.item_type !== 'tool')
+    if (unentered.length) {
+      const results = await Promise.allSettled(
+        unentered.map((it) =>
+          scanInventoryCheck(checkId.value, it.item_code, Number(it.system_qty ?? 0))
+        )
+      )
+      const failed = results.filter((r) => r.status === 'rejected')
+      if (failed.length) {
+        await showToast(`有 ${failed.length} 项提交失败，请检查网络后重试`, 'none')
+        return
+      }
+      // 本地标记为账实相符
+      unentered.forEach((it) => {
+        it.entered = true
+        it.actual_qty = Number(it.system_qty ?? 0)
+        it.actualInput = Number(it.system_qty ?? 0)
+        it.diff = 0
+        markEntered(checkId.value, it.item_code)
+      })
+    }
     await completeInventoryCheck(checkId.value)
     uni.redirectTo({ url: `/pages/inventory/InventoryResult?id=${checkId.value}` })
   } catch (e: any) {
@@ -251,6 +289,7 @@ async function finish() {
   font-size: 20rpx;
   &--spare { color: $tm-primary; background: $tm-primary-bg; }
   &--cons { color: $tm-success; background: #e8f8ef; }
+  &--tool { color: #e6a23c; background: #fdf6ec; }
 }
 
 .entered-tag { padding: 2rpx 12rpx; border-radius: 999rpx; font-size: 20rpx; color: $tm-success; background: #e8f8ef; }

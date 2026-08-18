@@ -17,7 +17,7 @@
           <div id="inventory-scanner-viewport" class="scanner-viewport"></div>
           <div v-if="scanning" class="scan-overlay">
             <div class="scan-line"></div>
-            <p class="scan-hint">将条形码对准扫描框</p>
+            <p class="scan-hint">将二维码/条形码对准扫描框</p>
           </div>
 
           <!-- 手电筒开关（仅设备支持且正在扫码时显示） -->
@@ -49,7 +49,7 @@
             v-model="manualCode"
             center
             clearable
-            placeholder="手动输入编码（BJ-/XH-）"
+            placeholder="手动输入编码（BJ-/XH-/G-）"
             @keyup.enter="handleManualSubmit"
           >
             <template #button>

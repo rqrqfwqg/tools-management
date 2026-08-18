@@ -2,7 +2,8 @@
  * useScanner — html5-qrcode 扫码封装
  *
  * 封装摄像头扫码逻辑，支持：
- * - Code128 条形码识别（启用原生 BarcodeDetector 提升弱光识别）
+ * - Code128 / EAN13 / CODE39 条形码识别（启用原生 BarcodeDetector 提升弱光识别）
+ * - QR_CODE 二维码识别（增量 R5：新标签左二维码+右文字，扫码即得内部编码）
  * - 闪光灯（手电筒）开关
  * - 扫码成功自动停止
  * - 手动输入降级
@@ -12,7 +13,7 @@
  * 本版新增（弱光扫码进阶增强，见增量设计 §3.2）：
  * - 组合 useBrightness：扫码生命周期内启停亮度监控，输出 lowLightState
  * - 探测摄像头进阶能力（exposureCompensation / iso / torch）并合并施加约束
- * - qrbox 依视口自适应计算
+ * - qrbox 依视口自适应计算（R5：改为方形以适配二维码；一维码仍可在此区域内识别）
  * - toggleTorch 改造为走合并约束，避免 torch 与曝光/ISO 互相覆盖
  *
  * 重要：本文件不得改动 onSuccess 回调中任何 BX- / handleToolkitCode / getToolkitByCode
@@ -321,7 +322,7 @@ export function useScanner(options: ScannerOptions = {}) {
    * 计算扫码框尺寸
    * - qrboxAuto 为 false：回退到传入的 qrbox
    * - qrboxAuto 为 true：width = clamp(round(容器宽 * 0.8), 240, 480)，
-   *   height = round(width * 0.45)（1D 条码比例约 0.45）
+   *   height = width（R5：二维码为方形，qrbox 改宽高相等；一维码仍可在此区域内识别）
    * 容器宽度取 #scanner-viewport 的 clientWidth，兜底 window.innerWidth。
    */
   function computeQrbox(): { width: number; height: number } {
@@ -332,7 +333,7 @@ export function useScanner(options: ScannerOptions = {}) {
     const containerWidth = container ? container.clientWidth : 0
     const base = containerWidth > 0 ? containerWidth : window.innerWidth
     const width = clamp(Math.round(base * 0.8), 240, 480)
-    const height = Math.round(width * 0.45)
+    const height = width
     return { width, height }
   }
 
@@ -369,6 +370,8 @@ export function useScanner(options: ScannerOptions = {}) {
         // 弱光识别能力与速度大幅增强；不支持时自动回退 ZXing
         useBarCodeDetectorIfSupported: true,
         formatsToSupport: [
+          // R5：增加 QR_CODE（html5-qrcode 原生支持，ZXing/BarcodeDetector 双路径均可识别）
+          Html5QrcodeSupportedFormats.QR_CODE,
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.CODE_39

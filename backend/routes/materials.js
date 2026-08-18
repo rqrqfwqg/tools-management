@@ -428,7 +428,7 @@ router.delete('/spare-parts/:id', authenticate, requireMaterialManager, (req, re
 });
 
 router.get('/spare-parts/code/:code', authenticate, (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const db = readDB();
   const sp = (db.spare_parts || []).find(s => s.spare_code === code);
   if (!sp) return res.status(404).json({ message: `未找到编码为 "${code}" 的备件` });
@@ -437,7 +437,7 @@ router.get('/spare-parts/code/:code', authenticate, (req, res) => {
 
 // 备件扫码领用 → 生成 pending 工单（item_type='spare'）
 router.post('/spare-parts/code/:code/borrow', authenticate, (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const { scene, expected_return, purpose } = req.body || {};
   const db = readDB();
   const user = db.users.find(u => u.user_id === req.user.user_id);
@@ -625,7 +625,7 @@ router.delete('/consumables/:id', authenticate, requireMaterialManager, (req, re
 });
 
 router.get('/consumables/code/:code', authenticate, (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const db = readDB();
   const c = (db.consumables || []).find(cc => cc.consumable_code === code);
   if (!c) return res.status(404).json({ message: `未找到编码为 "${code}" 的消耗品` });
@@ -645,7 +645,7 @@ router.post('/consumables/code/:code/take', authenticate, [
   body('qty').isInt({ min: 1 }).withMessage('领用数量必须为正整数'),
   validate
 ], (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const qty = parseInt(req.body.qty);
   const db = readDB();
   const user = db.users.find(u => u.user_id === req.user.user_id);
@@ -740,10 +740,12 @@ router.post('/stock-movements', authenticate, requireMaterialManager, [
   let resolvedCode = item_code || '';
   let resolvedName = item_name || '';
   let sign = movement_type === 'out' ? -qty : qty; // in/adjust 为正，out 为负
+  // 编码归一化：精确匹配统一用 trim + 大写（与盘库 scan 保持一致）
+  const normItemCode = String(item_code || '').trim().toUpperCase();
 
   if (item_type === 'consumable') {
     const c = (db.consumables || []).find(x => x.consumable_id === Number(item_id)) ||
-      (db.consumables || []).find(x => x.consumable_code === item_code);
+      (db.consumables || []).find(x => x.consumable_code === normItemCode);
     if (!c) return res.status(404).json({ message: '消耗品不存在' });
     const idx = (db.consumables || []).findIndex(x => x.consumable_id === c.consumable_id);
     if (movement_type === 'out') {
@@ -757,13 +759,13 @@ router.post('/stock-movements', authenticate, requireMaterialManager, [
     resolvedName = c.consumable_name;
   } else if (item_type === 'spare') {
     const sp = (db.spare_parts || []).find(x => x.spare_id === Number(item_id)) ||
-      (db.spare_parts || []).find(x => x.spare_code === item_code);
+      (db.spare_parts || []).find(x => x.spare_code === normItemCode);
     if (!sp) return res.status(404).json({ message: '备件不存在' });
     resolvedCode = sp.spare_code;
     resolvedName = sp.spare_name;
   } else if (item_type === 'tool') {
     const t = (db.tools || []).find(x => x.tool_id === Number(item_id)) ||
-      (db.tools || []).find(x => x.tool_code === item_code);
+      (db.tools || []).find(x => x.tool_code === normItemCode);
     if (!t) return res.status(404).json({ message: '工具不存在' });
     resolvedCode = t.tool_code;
     resolvedName = t.tool_name;
@@ -807,13 +809,29 @@ router.post('/inventory-checks', authenticate, requireMaterialManager, [
     return res.status(400).json({ message: '该仓库已存在进行中的盘库单，请先完成' });
   }
   const user = db.users.find(u => u.user_id === req.user.user_id);
+  const warehouseIdNum = Number(warehouse_id);
   // 预置该仓库下全部备件与消耗品为盘库明细
   const items = [];
-  (db.spare_parts || []).filter(s => s.warehouse_id === Number(warehouse_id)).forEach(s => {
+  (db.spare_parts || []).filter(s => s.warehouse_id === warehouseIdNum).forEach(s => {
     items.push({ item_type: 'spare', item_id: s.spare_id, item_code: s.spare_code, item_name: s.spare_name, system_qty: s.stock_qty || 0, actual_qty: 0, diff: -(s.stock_qty || 0) });
   });
-  (db.consumables || []).filter(c => c.warehouse_id === Number(warehouse_id)).forEach(c => {
+  (db.consumables || []).filter(c => c.warehouse_id === warehouseIdNum).forEach(c => {
     items.push({ item_type: 'consumable', item_id: c.consumable_id, item_code: c.consumable_code, item_name: c.consumable_name, system_qty: c.stock_qty, actual_qty: 0, diff: -c.stock_qty });
+  });
+  // 预置该仓库下全部工具为逐件盘点明细：system_qty=1、actual_qty=0、diff=-1（未扫=缺，决策 Q1 逐件口径）
+  const presetToolIds = new Set();
+  const pushToolItem = (t) => {
+    if (!t || presetToolIds.has(t.tool_id)) return;
+    presetToolIds.add(t.tool_id);
+    items.push({ item_type: 'tool', item_id: t.tool_id, item_code: t.tool_code, item_name: t.tool_name, system_qty: 1, actual_qty: 0, diff: -1 });
+  };
+  (db.tools || []).filter(t => t.warehouse_id === warehouseIdNum).forEach(pushToolItem);
+  // 工具箱内的工具：若工具未显式归属仓库、但所在工具箱归属该仓库，视为仓库内工具一并预置
+  (db.toolkit_items || []).forEach(ki => {
+    const t = (db.tools || []).find(x => x.tool_id === ki.tool_id);
+    if (!t || presetToolIds.has(t.tool_id)) return;
+    const kit = (db.toolkits || []).find(k => k.toolkit_id === ki.toolkit_id);
+    if (t.warehouse_id == null && kit && kit.warehouse_id === warehouseIdNum) pushToolItem(t);
   });
   const newCheck = {
     check_id: nextId(db.inventory_checks || [], 'check_id'),
@@ -841,17 +859,26 @@ router.get('/inventory-checks/:id', authenticate, (req, res) => {
   res.json(check);
 });
 
-// 提交实际数量：按 code 前缀解析 → 命中则写/覆盖 actual_qty，计算 diff（未命中则追加）
+// 提交实际数量：编码归一化后按前缀解析 → BX- 提示扫箱内工具；命中则写/覆盖 actual_qty 并算 diff（未命中则追加）
 router.post('/inventory-checks/:id/scan', authenticate, [
   body('code').notEmpty().withMessage('编码不能为空'),
   validate
 ], (req, res) => {
   const id = parseInt(req.params.id);
-  const { code, actual_qty } = req.body;
+  const { code: rawCode, actual_qty } = req.body;
   const db = readDB();
   const check = (db.inventory_checks || []).find(c => c.check_id === id);
   if (!check) return res.status(404).json({ message: '盘库单不存在' });
   if (check.status !== 'pending') return res.status(400).json({ message: '盘库单已完成，无法录入' });
+
+  // 编码归一化：trim + 大写，前缀判断与精确匹配统一使用归一化值（兼容旧一维码大小写/空白差异）
+  const code = String(rawCode == null ? '' : rawCode).trim().toUpperCase();
+  if (!code) return res.status(400).json({ message: '编码不能为空' });
+
+  // 工具箱（BX-）不参与数量盘点：给出明确提示，不追加明细（决策 Q2）
+  if (code.startsWith('BX-')) {
+    return res.status(400).json({ message: '工具箱不参与数量盘点，请扫箱内工具' });
+  }
 
   let itemType = null, item = null;
   if (code.startsWith('BJ-')) {
@@ -864,14 +891,33 @@ router.post('/inventory-checks/:id/scan', authenticate, [
     itemType = 'tool';
     item = (db.tools || []).find(t => t.tool_code === code);
   } else {
-    return res.status(400).json({ message: '无法识别的编码前缀（应为 BJ-/XH-/G-）' });
+    return res.status(400).json({ message: '无法识别的编码前缀（应为 BJ-/XH-/G-/BX-）' });
   }
-  if (!item) return res.status(404).json({ message: `盘库单中未找到编码为 "${code}" 的物料（仅盘点本仓库物料）` });
+  if (!item) return res.status(404).json({ message: `盘库单中未找到编码为 "${code}" 的物料` });
 
-  // 实际数量：备件/消耗品默认取系统数量（即系统 stock_qty）；可传 actual_qty 覆盖
-  let actual = Number(actual_qty != null ? actual_qty : (item.stock_qty || 0));
+  // 仓库归属校验：命中明细必须属于当前盘库仓库，避免跨仓库追加（替换原有误导性文案）
+  const itemWarehouseId = item.warehouse_id != null ? Number(item.warehouse_id) : null;
+  const alreadyInCheck = check.items.some(it => it.item_code === code);
+  const itemName = item.spare_name || item.consumable_name || item.tool_name;
+  if (itemWarehouseId !== null && itemWarehouseId !== Number(check.warehouse_id)) {
+    return res.status(400).json({
+      message: `"${itemName}"（${code}）不属于本盘库仓库「${check.warehouse_name}」，请勿跨仓库录入`
+    });
+  }
+  if (itemWarehouseId === null && !alreadyInCheck) {
+    return res.status(400).json({ message: `"${itemName}"（${code}）未归属仓库，无法录入本盘库单` });
+  }
 
-  const system_qty = item.stock_qty || 0;
+  // 实盘数量：备件/消耗品默认取系统数量（stock_qty）；工具逐件口径默认取 1（扫到=在库），可传 0/1 覆盖
+  let actual;
+  if (itemType === 'tool') {
+    actual = Number(actual_qty != null ? actual_qty : 1);
+    actual = actual === 0 ? 0 : 1;
+  } else {
+    actual = Number(actual_qty != null ? actual_qty : (item.stock_qty || 0));
+  }
+
+  const system_qty = itemType === 'tool' ? 1 : (item.stock_qty || 0);
   const existingIdx = check.items.findIndex(it => it.item_code === code);
   if (existingIdx > -1) {
     check.items[existingIdx].actual_qty = actual;
@@ -879,7 +925,7 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   } else {
     check.items.push({
       item_type: itemType, item_id: item.spare_id || item.consumable_id || item.tool_id,
-      item_code: code, item_name: item.spare_name || item.consumable_name || item.tool_name,
+      item_code: code, item_name: itemName,
       system_qty, actual_qty: actual, diff: actual - system_qty
     });
   }
@@ -887,7 +933,7 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   res.json({ message: '录入成功', item: check.items.find(it => it.item_code === code) });
 });
 
-// 完成盘库：diff≠0 写 adjust 流水并落账（备件/消耗品同步 stock_qty 为实点数），置 completed
+// 完成盘库：diff≠0 写 adjust 流水并落账（备件/消耗品同步 stock_qty 为实点数；工具逐件落账：盘亏置候选+流水），置 completed
 router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
   const db = readDB();
@@ -900,6 +946,22 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
   const adjustments = [];
   for (const it of check.items) {
     const diff = it.actual_qty - it.system_qty;
+    // 工具逐件盘点：无论差异如何，先按实盘结果同步"盘亏候选"标记（actual=0 → 候选；actual=1 → 清除）
+    // 注意：不得改动工具 status（可用/借出中等）与 borrow 状态（决策 Q6）
+    if (it.item_type === 'tool') {
+      const tIdx = (db.tools || []).findIndex(x => x.tool_id === it.item_id);
+      if (tIdx > -1) {
+        if (it.actual_qty === 0) {
+          db.tools[tIdx].inventory_missing = true;
+          db.tools[tIdx].inventory_missing_at = nowCST();
+          db.tools[tIdx].inventory_missing_check_no = check.check_no;
+        } else {
+          delete db.tools[tIdx].inventory_missing;
+          delete db.tools[tIdx].inventory_missing_at;
+          delete db.tools[tIdx].inventory_missing_check_no;
+        }
+      }
+    }
     if (diff === 0) continue;
     if (it.item_type === 'consumable' || it.item_type === 'spare') {
       // 备件与消耗品一致：落账为实点数，同步 stock_qty
@@ -910,7 +972,7 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
         list[idx].stock_qty = it.actual_qty;
       }
     }
-    // 备件/消耗品：均已同步数量为实点数；差异统一写 adjust 流水
+    // 差异统一写 adjust 流水；工具盘亏标注"工具盘亏"便于 PC 复核（决策 Q6）
     const movement = writeMovement(db, {
       item_type: it.item_type,
       item_id: it.item_id,
@@ -921,7 +983,9 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
       operator_id: user?.user_id,
       operator_name: user?.real_name || user?.username,
       order_id: null,
-      remark: `盘库调整 ${check.check_no}`
+      remark: it.item_type === 'tool' && it.actual_qty === 0
+        ? `盘库调整 ${check.check_no}（工具盘亏）`
+        : `盘库调整 ${check.check_no}`
     });
     adjustments.push({ ...it, movement_id: movement.movement_id });
   }

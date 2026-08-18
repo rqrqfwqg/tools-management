@@ -82,7 +82,7 @@ router.get('/toolkits', authenticate, (req, res) => {
 
 // 按 toolkit_code 查询工具箱详情（含内部工具列表）
 router.get('/toolkits/code/:code', authenticate, (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const db = readDB();
   const toolkit = (db.toolkits || []).find(k => k.toolkit_code === code);
   if (!toolkit) {
@@ -523,7 +523,7 @@ router.delete('/tool-categories/:id', authenticate, requireMaterialManager, (req
 
 // 按 tool_code 查询工具详情
 router.get('/tools/code/:code', authenticate, (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const db = readDB();
   const tools = db.tools || [];
   const toolkits = db.toolkits || [];
@@ -558,7 +558,7 @@ router.get('/tools/code/:code', authenticate, (req, res) => {
 
 // 按 tool_code 快速领用（单件工具，扫码即借）
 router.post('/tools/code/:code/borrow', authenticate, (req, res) => {
-  const code = decodeURIComponent(req.params.code);
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const { scene, expected_return, purpose } = req.body || {};
   const db = readDB();
   const user = db.users.find(u => u.user_id === req.user.user_id);

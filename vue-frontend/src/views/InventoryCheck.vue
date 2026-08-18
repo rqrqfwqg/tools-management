@@ -83,9 +83,10 @@
         <p v-if="scanMeta.system_qty != null">系统数量：<strong>{{ scanMeta.system_qty }}</strong></p>
       </div>
       <el-alert v-if="scanMeta && scanMeta.type === 'spare'" type="info" :closable="false" style="margin:8px 0" title="备件实盘数量支持录入大于 1 的整数（与数量库存口径一致）" />
+      <el-alert v-if="scanMeta && scanMeta.type === 'tool'" type="info" :closable="false" style="margin:8px 0" title="工具逐件盘点：0=盘亏候选，1=在库（扫到默认在库）" />
       <el-form label-width="90px" style="margin-top:8px">
         <el-form-item label="实盘数量">
-          <el-input-number v-model="scanQty" :min="0" :max="999999" />
+          <el-input-number v-model="scanQty" :min="0" :max="scanMeta?.type === 'tool' ? 1 : 999999" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -142,20 +143,22 @@ const enterCheck = async (row: any) => {
 const backToList = () => { current.value = null; load() }
 
 const detectPrefix = (code: string) => {
-  if (code.startsWith('BJ-')) return 'spare'
-  if (code.startsWith('XH-')) return 'consumable'
-  if (code.startsWith('G-') || code.startsWith('BX-')) return 'tool'
+  const c = code.trim().toUpperCase()
+  if (c.startsWith('BX-')) return 'toolkit'
+  if (c.startsWith('BJ-')) return 'spare'
+  if (c.startsWith('XH-')) return 'consumable'
+  if (c.startsWith('G-')) return 'tool'
   return ''
 }
 
 const openScanConfirm = () => {
-  const code = scanCode.value.trim()
+  const code = scanCode.value.trim().toUpperCase()
   if (!code) { ElMessage.warning('请输入编码'); return }
   if (!current.value || current.value.status !== 'pending') { ElMessage.warning('当前盘库单不可录入'); return }
   const type = detectPrefix(code)
-  if (!type) { ElMessage.error('无法识别的编码前缀（应为 BJ-/XH-）'); return }
-  // 决策 #7：盘点范围仅备件+消耗品；扫到 G-(工具)/BX-(工具箱) → 不在本次盘点范围，不调接口不追加
-  if (type === 'tool') { ElMessage.warning('不在本次盘点范围'); return }
+  // 工具箱（BX-）不参与数量盘点：明确提示扫箱内工具（决策 Q2）
+  if (type === 'toolkit') { ElMessage.warning('工具箱不参与数量盘点，请扫箱内工具'); return }
+  if (!type) { ElMessage.error('无法识别的编码前缀（应为 BJ-/XH-/G-/BX-）'); return }
   const existing = (current.value.items || []).find((it: any) => it.item_code === code)
   if (!existing) { ElMessage.warning('不在本次盘点范围'); return }
   scanMeta.value = {
@@ -164,7 +167,8 @@ const openScanConfirm = () => {
     name: existing?.item_name || '',
     system_qty: existing?.system_qty != null ? existing.system_qty : null
   }
-  scanQty.value = existing?.system_qty != null ? existing.system_qty : 0
+  // 工具逐件口径：默认实盘 1（扫到=在库）；备件/消耗品默认=系统数量
+  scanQty.value = existing?.system_qty != null ? existing.system_qty : (type === 'tool' ? 1 : 0)
   scanVisible.value = true
 }
 
@@ -172,7 +176,10 @@ const handleScanSubmit = async () => {
   if (!scanMeta.value || !current.value) return
   scanning.value = true
   try {
-    const res: any = await scanInventoryCheck(current.value.check_id, scanMeta.value.code, scanQty.value)
+    let qty = scanQty.value
+    // 工具逐件盘点：实盘仅允许 0/1
+    if (scanMeta.value.type === 'tool') qty = qty === 0 ? 0 : 1
+    const res: any = await scanInventoryCheck(current.value.check_id, scanMeta.value.code, qty)
     scanVisible.value = false
     scanHint.value = `已录入：${res.item?.item_code} 实盘 ${res.item?.actual_qty}（差异 ${res.item?.diff}）`
     scanHintType.value = res.item?.diff === 0 ? 'success' : 'warning'

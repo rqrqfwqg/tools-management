@@ -3,12 +3,17 @@
     <!-- 操作栏 -->
     <div class="barcode-toolbar no-print">
       <div class="toolbar-left">
-        <!-- 模式切换：工具 / 工具箱 / 备件 / 消耗品 条形码 -->
+        <!-- 标签样式切换：条形码（CODE128）/ 二维码标签（左码右文 60×40mm） -->
+        <el-radio-group v-model="labelStyle" size="default" style="margin-right:2px">
+          <el-radio-button value="code128">条形码</el-radio-button>
+          <el-radio-button value="qr">二维码标签</el-radio-button>
+        </el-radio-group>
+        <!-- 模式切换：工具 / 工具箱 / 备件 / 消耗品（二维码模式不支持工具箱） -->
         <el-radio-group v-model="mode" size="default" @change="onModeChange">
-          <el-radio-button value="tool">工具条形码</el-radio-button>
-          <el-radio-button value="toolkit">工具箱条形码</el-radio-button>
-          <el-radio-button value="spare">备件条形码</el-radio-button>
-          <el-radio-button value="consumable">消耗品条形码</el-radio-button>
+          <el-radio-button value="tool">{{ labelStyle === 'qr' ? '工具二维码' : '工具条形码' }}</el-radio-button>
+          <el-radio-button v-if="labelStyle !== 'qr'" value="toolkit">工具箱条形码</el-radio-button>
+          <el-radio-button value="spare">{{ labelStyle === 'qr' ? '备件二维码' : '备件条形码' }}</el-radio-button>
+          <el-radio-button value="consumable">{{ labelStyle === 'qr' ? '消耗品二维码' : '消耗品条形码' }}</el-radio-button>
         </el-radio-group>
 
         <!-- 工具 / 备件 / 消耗品 模式筛选 -->
@@ -87,7 +92,7 @@
         </el-select>
         <el-button type="primary" @click="handlePrint">
           <el-icon style="margin-right:4px"><Printer /></el-icon>
-          打印条形码
+          {{ labelStyle === 'qr' ? '打印二维码标签' : '打印条形码' }}
         </el-button>
       </div>
     </div>
@@ -103,8 +108,11 @@
           :model-value="isSelected(currentType, tool.tool_id)"
           @change="toggleSelect(currentType, tool.tool_id)"
         />
-        <div class="barcode-svg-wrapper">
+        <div class="barcode-svg-wrapper" v-if="labelStyle === 'code128'">
           <svg :id="`barcode-tool-${tool.tool_id}`" class="barcode-svg"></svg>
+        </div>
+        <div class="qr-svg-wrapper" v-else>
+          <img :id="`qr-tool-${tool.tool_id}`" class="qr-img" alt="二维码" />
         </div>
         <div class="barcode-info">
           <div class="barcode-code">{{ tool.tool_code }}</div>
@@ -149,8 +157,11 @@
           :model-value="isSelected(currentType, s.spare_id)"
           @change="toggleSelect(currentType, s.spare_id)"
         />
-        <div class="barcode-svg-wrapper">
+        <div class="barcode-svg-wrapper" v-if="labelStyle === 'code128'">
           <svg :id="`barcode-spare-${s.spare_id}`" class="barcode-svg"></svg>
+        </div>
+        <div class="qr-svg-wrapper" v-else>
+          <img :id="`qr-spare-${s.spare_id}`" class="qr-img" alt="二维码" />
         </div>
         <div class="barcode-info">
           <div class="barcode-code">{{ s.spare_code }}</div>
@@ -173,8 +184,11 @@
           :model-value="isSelected(currentType, c.consumable_id)"
           @change="toggleSelect(currentType, c.consumable_id)"
         />
-        <div class="barcode-svg-wrapper">
+        <div class="barcode-svg-wrapper" v-if="labelStyle === 'code128'">
           <svg :id="`barcode-consumable-${c.consumable_id}`" class="barcode-svg"></svg>
+        </div>
+        <div class="qr-svg-wrapper" v-else>
+          <img :id="`qr-consumable-${c.consumable_id}`" class="qr-img" alt="二维码" />
         </div>
         <div class="barcode-info">
           <div class="barcode-code">{{ c.consumable_code }}</div>
@@ -205,6 +219,9 @@ import type { Tool } from '@/types'
 
 // ============ 模式切换 ============
 const mode = ref<'tool' | 'toolkit' | 'spare' | 'consumable'>('tool')
+
+// 标签样式：code128=既有 CODE128 一维码；qr=左二维码+右文字（默认 60×40mm，R6）
+const labelStyle = ref<'code128' | 'qr'>('code128')
 
 // 当前模式（用于模板中复选框 / 选择逻辑的 type 键）
 const currentType = computed(() => mode.value)
@@ -406,7 +423,7 @@ function doFilter() {
     case 'consumable': filterConsumables(); break
   }
   nextTick(() => {
-    renderAllBarcodes()
+    renderAllLabels()
     // 默认把当前模式所有可见项加入选中，兼容旧的「打印全部」习惯
     ensureAllVisibleSelected()
   })
@@ -527,11 +544,62 @@ function renderAllBarcodes() {
   }
 }
 
+// ============ 二维码渲染（左二维码 + 右文字标签，R6） ============
+let QRCodeModule: any = null
+
+async function loadQRCode() {
+  if (QRCodeModule) return QRCodeModule
+  const mod = await import('qrcode')
+  QRCodeModule = mod.default || mod
+  return QRCodeModule
+}
+
+/** 渲染单个二维码到指定 <img>（容错 M，内容=内部编码，白边 1 module，280px 打印源图） */
+async function renderQr(id: string, code: string): Promise<void> {
+  const imgEl = document.getElementById(id) as HTMLImageElement | null
+  if (!imgEl) return
+  try {
+    const qr = await loadQRCode()
+    imgEl.src = await qr.toDataURL(code, { errorCorrectionLevel: 'M', margin: 1, width: 280 })
+  } catch (e) {
+    console.warn(`二维码渲染失败: ${code}`, e)
+  }
+}
+
+async function renderAllQrs(): Promise<void> {
+  if (mode.value === 'tool') {
+    for (const tool of filteredTools.value) {
+      await renderQr(`qr-tool-${tool.tool_id}`, tool.tool_code)
+    }
+  } else if (mode.value === 'spare') {
+    for (const s of filteredSpares.value) {
+      await renderQr(`qr-spare-${s.spare_id}`, s.spare_code)
+    }
+  } else if (mode.value === 'consumable') {
+    for (const c of filteredConsumables.value) {
+      await renderQr(`qr-consumable-${c.consumable_id}`, c.consumable_code)
+    }
+  }
+}
+
+/** 按当前标签样式分发渲染（条形码 / 二维码） */
+function renderAllLabels() {
+  if (labelStyle.value === 'qr') {
+    renderAllQrs()
+  } else {
+    renderAllBarcodes()
+  }
+}
+
 // ============ 打印 ============
 function handlePrint() {
   // 当前模式未勾选任何项时，给出提示并不弹窗
   if (selectedCountInMode.value === 0) {
-    ElMessage.warning('请先勾选要打印的条形码')
+    ElMessage.warning(labelStyle.value === 'qr' ? '请先勾选要打印的标签' : '请先勾选要打印的条形码')
+    return
+  }
+  if (labelStyle.value === 'qr') {
+    handlePrintQr()
     return
   }
   switch (mode.value) {
@@ -730,6 +798,130 @@ ${pagesHtml}
   win.document.close()
 }
 
+// ============ 二维码标签打印（左二维码 + 右文字，60×40mm，A4 3列网格） ============
+
+/** 组装标签文字行：仓库 · 货架 · 货位（空字段自动省略） */
+function formatLoc(it: any): string {
+  const wh = it.warehouse_name || it.warehouse || ''
+  const shelf = it.shelf_name || ''
+  const loc = it.location_name || ''
+  return [wh, shelf, loc].filter(Boolean).join(' · ')
+}
+
+async function handlePrintQr() {
+  if (selectedCountInMode.value === 0) return
+  let rawItems: any[] = []
+  let title = ''
+  if (mode.value === 'tool') {
+    rawItems = filteredTools.value.filter(t => isSelected('tool', t.tool_id))
+    title = '工具二维码标签打印'
+  } else if (mode.value === 'spare') {
+    rawItems = filteredSpares.value.filter(s => isSelected('spare', s.spare_id))
+    title = '备件二维码标签打印'
+  } else if (mode.value === 'consumable') {
+    rawItems = filteredConsumables.value.filter(c => isSelected('consumable', c.consumable_id))
+    title = '消耗品二维码标签打印'
+  } else {
+    ElMessage.warning('二维码标签仅支持工具/备件/消耗品')
+    return
+  }
+  if (rawItems.length === 0) return
+
+  const qr = await loadQRCode()
+  try {
+    // 预先为每个标签生成 QR dataURL（内容=内部编码），再嵌入打印窗口，避免窗口内异步加载失败
+    const items = await Promise.all(
+      rawItems.map(async (it) => {
+        const code = it.tool_code || it.spare_code || it.consumable_code
+        const name = it.tool_name || it.spare_name || it.consumable_name
+        return {
+          code,
+          name,
+          loc: formatLoc(it),
+          qr: await qr.toDataURL(code, { errorCorrectionLevel: 'M', margin: 1, width: 280 })
+        }
+      })
+    )
+    buildPrintHtmlQr(`${title} - 共 ${items.length} 件`, items)
+  } catch (e) {
+    console.error('生成二维码失败', e)
+    ElMessage.error('生成二维码失败，请重试')
+  }
+}
+
+/**
+ * 二维码标签打印窗口：60×40mm 标签，左 QR（28×28mm）+ 右文字（编码/名称/仓库·货架·货位）。
+ * A4 3 列 × 6 行（60×40 高度下 8 行超出 A4 可打印区，故按 3×6 分页，PRD §4.4 3列网格复用）。
+ */
+function buildPrintHtmlQr(
+  title: string,
+  items: { code: string; name: string; loc: string; qr: string }[],
+  perPage = 18,
+  cols = 3
+) {
+  if (items.length === 0) return
+  const pages: { code: string; name: string; loc: string; qr: string }[][] = []
+  for (let i = 0; i < items.length; i += perPage) {
+    pages.push(items.slice(i, i + perPage))
+  }
+
+  const pagesHtml = pages
+    .map((pageItems, pageIdx) => {
+      const cellsHtml = pageItems
+        .map(
+          it => `<div class="cell">
+        <div class="qr-wrap"><img src="${it.qr}" alt="二维码" /></div>
+        <div class="info">
+          <div class="code">${escapeHtml(it.code)}</div>
+          <div class="name">${escapeHtml(it.name)}</div>
+          ${it.loc ? `<div class="loc">${escapeHtml(it.loc)}</div>` : ''}
+        </div>
+      </div>`
+        )
+        .join('\n')
+      return `<div class="page${pageIdx < pages.length - 1 ? ' page-break' : ''}">${cellsHtml}</div>`
+    })
+    .join('\n')
+
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) {
+    ElMessage.warning('弹窗被拦截，请允许弹窗后重试')
+    return
+  }
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${title}</title>
+<style>
+  @page { size: A4; margin: 8mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #fff; }
+  .page { width: 194mm; min-height: 281mm; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0; }
+  .page-break { page-break-after: always; break-after: page; }
+  .cell {
+    width: 60mm; height: 40mm;
+    border: 0.5pt solid #666;
+    border-radius: 1mm;
+    padding: 2mm;
+    margin-right: 2mm; margin-bottom: 2mm;
+    display: flex; align-items: center; gap: 2mm;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .cell:nth-child(${cols}n) { margin-right: 0; }
+  .qr-wrap { width: 28mm; height: 28mm; flex-shrink: 0; }
+  .qr-wrap img { width: 28mm; height: 28mm; display: block; }
+  .info { flex: 1; min-width: 0; }
+  .code { font-size: 14pt; font-weight: 700; font-family: "Courier New", monospace; word-break: break-all; }
+  .name { font-size: 10pt; color: #333; margin-top: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .loc { font-size: 8pt; color: #888; margin-top: 0.5mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style></head><body>
+${pagesHtml}
+<script>setTimeout(function() { window.print(); }, 800);<\/script>
+</body></html>`)
+  win.document.close()
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -774,6 +966,14 @@ watch(mode, () => {
   categoryFilter.value = ''
   keyword.value = ''
   kitKeyword.value = ''
+})
+
+// 切换标签样式：二维码模式不支持工具箱，强制回到工具模式并重渲染（含二维码预览图）
+watch(labelStyle, () => {
+  if (labelStyle.value === 'qr' && mode.value === 'toolkit') {
+    mode.value = 'tool'
+  }
+  onModeChange()
 })
 </script>
 
@@ -896,6 +1096,19 @@ watch(mode, () => {
 
 .barcode-svg {
   max-width: 100%;
+}
+
+/* 二维码预览（左码右文标签的码区） */
+.qr-svg-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.qr-img {
+  width: 120px;
+  height: 120px;
+  image-rendering: pixelated;
 }
 
 .barcode-info {

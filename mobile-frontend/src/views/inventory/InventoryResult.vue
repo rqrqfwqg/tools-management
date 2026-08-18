@@ -18,8 +18,8 @@
         >
           <div class="result-item-head">
             <span class="result-item-name">{{ item.item_name }}</span>
-            <van-tag :type="item.item_type === 'spare' ? 'primary' : 'success'">
-              {{ item.item_type === 'spare' ? '备件' : '消耗品' }}
+            <van-tag :type="item.item_type === 'spare' ? 'primary' : item.item_type === 'consumable' ? 'warning' : 'success'">
+              {{ item.item_type === 'spare' ? '备件' : item.item_type === 'consumable' ? '消耗品' : '工具' }}
             </van-tag>
           </div>
           <div class="result-item-code">{{ item.item_code }}</div>

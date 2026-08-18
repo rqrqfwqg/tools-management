@@ -36,8 +36,8 @@
         <view class="item" v-for="it in check.items || []" :key="it.item_code">
           <view class="item__head">
             <text class="item__name">{{ it.item_name }}</text>
-            <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : 'type-tag--cons'">
-              {{ it.item_type === 'spare' ? '备件' : '消耗品' }}
+            <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : it.item_type === 'tool' ? 'type-tag--tool' : 'type-tag--cons'">
+              {{ it.item_type === 'spare' ? '备件' : it.item_type === 'tool' ? '工具' : '消耗品' }}
             </text>
           </view>
           <view class="item__code">{{ it.item_code }}</view>
@@ -149,6 +149,7 @@ async function load() {
   padding: 2rpx 12rpx; border-radius: 999rpx; font-size: 20rpx;
   &--spare { color: $tm-primary; background: $tm-primary-bg; }
   &--cons { color: $tm-success; background: #e8f8ef; }
+  &--tool { color: #e6a23c; background: #fdf6ec; }
 }
 
 .empty {
