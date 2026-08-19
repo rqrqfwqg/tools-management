@@ -810,21 +810,9 @@ router.post('/inventory-checks', authenticate, requireMaterialManager, [
   }
   const user = db.users.find(u => u.user_id === req.user.user_id);
   const warehouseIdNum = Number(warehouse_id);
-  // 预置该仓库下全部备件与消耗品为盘点参考清单（不含工具：货位二维码只对应备件/消耗品）。
-  // 每项默认未录入（counted=false，actual_qty=null），完成盘库时未录入项不写不动（彻底消除"没扫=清零"）。
+  // 扫码累加模式：建单不预置全仓清单，走到哪扫到哪，扫码才生成盘点行（location_code 为主键）。
+  // 彻底消除"没扫=清零"与"全仓几百条逐条翻"的痛点，符合"货位一码一种物料"的真实用法。
   const items = [];
-  (db.spare_parts || []).filter(s => s.warehouse_id === warehouseIdNum).forEach(s => {
-    items.push({
-      item_type: 'spare', item_id: s.spare_id, item_code: s.spare_code, item_name: s.spare_name,
-      system_qty: s.stock_qty || 0, actual_qty: null, counted: false, diff: 0
-    });
-  });
-  (db.consumables || []).filter(c => c.warehouse_id === warehouseIdNum).forEach(c => {
-    items.push({
-      item_type: 'consumable', item_id: c.consumable_id, item_code: c.consumable_code, item_name: c.consumable_name,
-      system_qty: c.stock_qty || 0, actual_qty: null, counted: false, diff: 0
-    });
-  });
   const newCheck = {
     check_id: nextId(db.inventory_checks || [], 'check_id'),
     check_no: genCheckNo(db),
@@ -927,6 +915,7 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   const id = parseInt(req.params.id);
   const { code: rawCode, actual_qty } = req.body;
   const db = readDB();
+  const user = db.users.find(u => u.user_id === req.user.user_id);
   const check = (db.inventory_checks || []).find(c => c.check_id === id);
   if (!check) return res.status(404).json({ message: '盘库单不存在' });
   if (check.status !== 'pending') return res.status(400).json({ message: '盘库单已完成，无法录入' });
@@ -958,17 +947,32 @@ router.post('/inventory-checks/:id/scan', authenticate, [
     });
   }
 
-  // write：录入实盘（服务端钳制非负整数，拒绝负库存语义）
+  // write：录入实盘。主键 = 货位码 location_code（一货位一物料）；货位缺失时回退 item_code。
+  // 记录实际盘点人（扫码者 = 当前登录用户），供完成时署名差异流水（谁盘点谁署名）。
   let actual = Math.floor(Number(actual_qty));
   if (!Number.isFinite(actual) || actual < 0) actual = 0;
   const system_qty = Number(resolved.item.stock_qty || 0);
-  let existing = (check.items || []).find(it => it.item_code === resolved.itemCode);
+  const locCode = resolved.location ? (resolved.location.location_code || '') : '';
+  const locKey = (locCode || resolved.itemCode).toUpperCase();
+  const locName = resolved.location ? (resolved.location.location_name || '') : '';
+  const shelfName = resolved.location
+    ? ((db.shelves || []).find(s => s.shelf_id === resolved.location.shelf_id) || {}).shelf_name || ''
+    : '';
+  const operatorId = user ? user.user_id : null;
+  const operatorName = user ? (user.real_name || user.username) : '';
+  if (!check.items) check.items = [];
+  let existing = (check.items || []).find(it => (it.location_code || it.item_code || '').toUpperCase() === locKey);
   if (existing) {
     existing.actual_qty = actual;
     existing.counted = true;
     existing.diff = actual - (existing.system_qty != null ? existing.system_qty : system_qty);
+    existing.operator_id = operatorId;
+    existing.operator_name = operatorName;
   } else {
     existing = {
+      location_code: locCode,
+      location_name: locName,
+      shelf_name: shelfName,
       item_type: resolved.itemType,
       item_id: resolved.itemType === 'spare' ? resolved.item.spare_id : resolved.item.consumable_id,
       item_code: resolved.itemCode,
@@ -976,9 +980,10 @@ router.post('/inventory-checks/:id/scan', authenticate, [
       system_qty,
       actual_qty: actual,
       counted: true,
-      diff: actual - system_qty
+      diff: actual - system_qty,
+      operator_id: operatorId,
+      operator_name: operatorName
     };
-    if (!check.items) check.items = [];
     check.items.push(existing);
   }
   writeDB(db);
@@ -1011,9 +1016,6 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
   const check = db.inventory_checks[cIdx];
   if (check.status !== 'pending') return res.status(400).json({ message: '盘库单已完成' });
   const user = db.users.find(u => u.user_id === req.user.user_id);
-  // 署名盘点人：优先用盘库单记录的 operator（与创建人一致），缺失时回退当前用户
-  const operatorId = check.operator_id != null ? check.operator_id : (user ? user.user_id : null);
-  const operatorName = check.operator_name || (user ? (user.real_name || user.username) : '');
 
   const adjustments = [];
   for (const it of (check.items || [])) {
@@ -1033,6 +1035,9 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
     }
     // 差异流水：多了入库(in)、少了出库(out)，署名盘点人
     const mtype = diff > 0 ? 'in' : 'out';
+    // 逐项署名：谁扫这项谁署名（扫码时已记录 it.operator_*），缺失回退当前用户/建单人
+    const opId = it.operator_id != null ? it.operator_id : (user ? user.user_id : null);
+    const opName = it.operator_name || (user ? (user.real_name || user.username) : '') || check.operator_name || '';
     const movement = writeMovement(db, {
       item_type: it.item_type,
       item_id: it.item_id,
@@ -1040,8 +1045,8 @@ router.post('/inventory-checks/:id/complete', authenticate, requireMaterialManag
       item_name: it.item_name,
       movement_type: mtype,
       qty: Math.abs(diff),
-      operator_id: operatorId,
-      operator_name: operatorName,
+      operator_id: opId,
+      operator_name: opName,
       order_id: null,
       remark: `盘点出入库 ${check.check_no}`
     });

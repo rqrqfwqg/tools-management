@@ -33,8 +33,9 @@
       <!-- 明细 -->
       <view class="section-title">盘点明细（{{ (check.items || []).length }}）</view>
       <scroll-view scroll-y class="list">
-        <view class="item" v-for="it in check.items || []" :key="it.item_code">
+        <view class="item" v-for="it in check.items || []" :key="it.location_code || it.item_code">
           <view class="item__head">
+            <text class="item__loc">{{ it.location_code || '—' }}</text>
             <text class="item__name">{{ it.item_name }}</text>
             <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : it.item_type === 'tool' ? 'type-tag--tool' : 'type-tag--cons'">
               {{ it.item_type === 'spare' ? '备件' : it.item_type === 'tool' ? '工具' : '消耗品' }}
@@ -48,6 +49,7 @@
               {{ isCounted(it) ? (diffOf(it) > 0 ? '差异 +' : '差异 ') + diffOf(it) : '未盘' }}
             </text>
           </view>
+          <view class="item__op" v-if="it.operator_name">盘点人：{{ it.operator_name }}</view>
         </view>
       </scroll-view>
     </template>
@@ -136,8 +138,10 @@ async function load() {
   box-shadow: $tm-shadow-card;
 
   &__head { display: flex; align-items: center; gap: 12rpx; }
+  &__loc { font-size: 24rpx; font-weight: 600; color: $tm-primary; }
   &__name { flex: 1; font-size: 27rpx; font-weight: 500; color: $tm-text; }
   &__code { margin-top: 4rpx; font-size: 22rpx; color: $tm-text-muted; }
+  &__op { margin-top: 8rpx; font-size: 22rpx; color: $tm-text-muted; }
   &__row { display: flex; align-items: center; justify-content: space-between; margin-top: 12rpx; }
   &__cell { font-size: 24rpx; color: $tm-text-secondary; }
   &__diff {

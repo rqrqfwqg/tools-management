@@ -110,7 +110,8 @@ function applyMaterialApprove(db, order, operator) {
 
 /**
  * 物料单归还：按 returns 逐条回补库存并累计 returned_qty/return_records。
- * returns: [{ item_id|spare_id, return_qty }]；缺省或未命中条目 = 全还（剩余可还）。
+ * returns 缺省（空/未传）= 全额归还全部；提供 returns 时仅归还所列条目，
+ * 未列条目保持不变（支持逐项单独归还，避免多行单被连带全额归还）。
  * 全部归还后 status='returned' 并写 actual_return；否则保持 'borrowed'。
  * @param {Object} db
  * @param {Object} order 会被就地归一化并更新
@@ -120,6 +121,9 @@ function applyMaterialApprove(db, order, operator) {
  */
 function applyMaterialReturn(db, order, operator, returns) {
   order.items = normalizeOrderItems(order.items);
+  // 是否显式指定了归还明细：显式时仅归还所列条目，未列条目保持不变（支持逐项单独归还）；
+  // 未提供 returns（或缺省空数组）则视为「全额归还全部」。
+  const explicit = Array.isArray(returns) && returns.length > 0;
   const returnMap = new Map();
   for (const r of (returns || [])) {
     const key = r.spare_id != null ? `spare-${r.spare_id}` : (r.item_id != null ? `item-${r.item_id}` : null);
@@ -133,9 +137,16 @@ function applyMaterialReturn(db, order, operator, returns) {
     // 兼容两种 key：item_id 优先，spare_id 兜底（前端实际用 spare_id，调用方可任选）
     const keyByItemId = item.item_id != null ? `item-${item.item_id}` : null;
     const keyBySpareId = `spare-${item.spare_id}`;
-    const returnQty = (keyByItemId != null && returnMap.has(keyByItemId))
-      ? returnMap.get(keyByItemId)
-      : (returnMap.has(keyBySpareId) ? returnMap.get(keyBySpareId) : remaining);
+    let returnQty;
+    if (explicit) {
+      // 仅归还明确列出的备件；未列出的保持不变（不再默认全额归还，避免多行单被连带）
+      if (keyByItemId != null && returnMap.has(keyByItemId)) returnQty = returnMap.get(keyByItemId);
+      else if (returnMap.has(keyBySpareId)) returnQty = returnMap.get(keyBySpareId);
+      else returnQty = 0;
+    } else {
+      // 未传 returns：全额归还全部条目
+      returnQty = remaining;
+    }
     if (!Number.isInteger(returnQty) || returnQty < 0 || returnQty > remaining) {
       return { ok: false, error: `备件「${item.spare_name || item.spare_code}」归还数量非法（可还 ${remaining}）` };
     }

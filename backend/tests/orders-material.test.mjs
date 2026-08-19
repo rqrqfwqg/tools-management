@@ -171,6 +171,31 @@ test('return：归还数量非法（>剩余）→ ok:false', () => {
   assert.match(result.error, /归还数量非法/);
 });
 
+test('return：多行单逐项单独归还 —— 未列条目不被连带全额归还（回归）', () => {
+  const db = makeDb([
+    { spare_id: 1, spare_code: 'BJ-1', spare_name: '螺栓', stock_qty: 10 },
+    { spare_id: 2, spare_code: 'BJ-2', spare_name: '垫片', stock_qty: 10 }
+  ]);
+  const order = {
+    order_id: 10, order_no: 'ORD1', status: 'borrowed',
+    items: [
+      { item_id: 1, item_type: 'spare', spare_id: 1, spare_code: 'BJ-1', spare_name: '螺栓', item_status: 'borrowed', borrow_qty: 3, returned_qty: 0, return_records: [] },
+      { item_id: 2, item_type: 'spare', spare_id: 2, spare_code: 'BJ-2', spare_name: '垫片', item_status: 'borrowed', borrow_qty: 2, returned_qty: 0, return_records: [] }
+    ]
+  };
+  // 仅归还「螺栓」1 件（前端 spareReturn 只传这一项）
+  const result = applyMaterialReturn(db, order, operator, [{ spare_id: 1, return_qty: 1 }]);
+  assert.equal(result.ok, true);
+  assert.equal(result.allReturned, false);
+  // 螺栓：部分归还 → 库存 +1、returned=1
+  assert.equal(db.spare_parts[0].stock_qty, 11, '螺栓 10+1=11');
+  assert.equal(order.items[0].returned_qty, 1);
+  // 垫片：未被牵连 → 库存不变、returned=0（修复前会误判为全额归还使库存回 10、returned=2）
+  assert.equal(db.spare_parts[1].stock_qty, 10, '垫片库存不受影响');
+  assert.equal(order.items[1].returned_qty, 0, '垫片未被连带归还');
+  assert.equal(order.status, 'borrowed', '仍借出中');
+});
+
 // ============ applyMaterialClose ============
 test('close：摘要 last_use_qty=borrow-returned，仅未还部分写流水，status=closed', () => {
   const db = makeDb([{ spare_id: 1, spare_code: 'BJ-1', spare_name: '备件一', stock_qty: 3 }]);
