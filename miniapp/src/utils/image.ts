@@ -5,7 +5,7 @@
  */
 import { BASE_URL } from '@/utils/request'
 
-/** 后端 API 的 origin（如 http://82.156.62.59:3300） */
+/** 后端 API 的 origin（由 VITE_API_BASE_URL 决定，生产为 https://www.xmgl-123.cn） */
 const ORIGIN = BASE_URL.replace(/\/api\/?$/, '')
 
 /**

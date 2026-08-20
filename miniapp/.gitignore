@@ -2,6 +2,7 @@
 node_modules/
 node_modules_bak/
 dist/
+dist.bak*/
 unpackage/
 .npm-cache/
 .npm-cache-fresh/

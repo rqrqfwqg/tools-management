@@ -17,7 +17,15 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3300,
-        CORS_ORIGIN: '*'
+        CORS_ORIGIN: '*',
+        // 微信小程序 AppID（公开，与 project.config.json 一致；wx-login / 订阅消息需要）
+        WX_APPID: 'wxd3f79993e8a43ac2',
+        // ⚠️ WX_SECRET 为敏感凭证，禁止提交到仓库。生产服务器请通过以下任一方式提供
+        // （缺省时小程序 wx-login 与订阅消息推送均会失败）：
+        //   1) 服务器 backend/.env 中填写（该文件已被 .gitignore 忽略，不会进仓库）
+        //   2) 部署前在 shell 导出：export WX_SECRET=xxxx，本配置会透传 process.env.WX_SECRET
+        //   3) 或：pm2 set tools-backend-miniapp WX_SECRET=xxxx && pm2 restart tools-backend-miniapp
+        WX_SECRET: process.env.WX_SECRET || ''
       },
       // 日志
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
