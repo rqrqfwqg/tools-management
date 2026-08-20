@@ -158,7 +158,9 @@ app.use('/api', require('./routes/admin'));
 app.use('/api', require('./routes/materials'));
 app.use('/api', require('./routes/inbound'));
 app.use('/api', require('./routes/safetySupplies'));
-app.use('/api', require('./routes/notifications'));
+// notifications 模块路由前缀 /notifications（与前端 /api/notifications/* 及注释一致；
+// 此前误挂 /api 下导致前端调用 /api/notifications/config、/api/notifications/test-reminder 404）
+app.use('/api/notifications', require('./routes/notifications'));
 
 // ============ Multer 错误处理（必须在全局错误处理之前） ============
 app.use((err, req, res, next) => {
