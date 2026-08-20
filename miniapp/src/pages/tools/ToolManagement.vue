@@ -2,7 +2,10 @@
   <view class="page">
     <view class="bar">
       <text class="bar__title">工具列表</text>
-      <text class="bar__refresh" @tap="load">刷新</text>
+      <view class="bar__actions">
+        <text class="bar__refresh" @tap="scanToolCode">扫码领用</text>
+        <text class="bar__refresh" @tap="load">刷新</text>
+      </view>
     </view>
 
     <!-- 搜索 -->
@@ -78,17 +81,19 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getTools, getShelves } from '@/api'
+import { getTools, getShelves, getToolByCode } from '@/api'
 import { toolStatusMeta, toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { useCartStore } from '@/store/cart'
 import { useAuthStore } from '@/store/auth'
+import { useScanner } from '@/composables/useScanner'
 import type { Tool } from '@/types'
 
 const tools = ref<Tool[]>([])
 const loaded = ref(false)
 const cartStore = useCartStore()
 const auth = useAuthStore()
+const { scan } = useScanner({ title: '扫码领用' })
 
 // 搜索 + 货架筛选
 const keyword = ref('')
@@ -154,6 +159,42 @@ function goCart() {
   uni.navigateTo({ url: '/pages/cart/ShoppingCart' })
 }
 
+/** 扫码领用：扫工具码 → 匹配工具 → 加入领用篮 */
+async function scanToolCode() {
+  if (auth.isGuest) {
+    uni.showToast({ title: '游客模式仅可查看', icon: 'none' })
+    return
+  }
+  const res = await scan()
+  if (!res) return
+  const code = res.code.trim().toUpperCase()
+  // 1) 本地列表匹配（常用工具已按借出次数排序，通常已在列表）
+  const t = tools.value.find((x) => (x.tool_code || '').toUpperCase() === code)
+  if (t) {
+    if (t.status !== 'available') {
+      uni.showToast({ title: `「${t.tool_name || t.tool_code}」当前不可领用`, icon: 'none' })
+      return
+    }
+    addToCart(t)
+    return
+  }
+  // 2) 接口兜底（列表未加载全时按编码精确查询）
+  try {
+    const tool: any = await getToolByCode(res.code)
+    if (tool && tool.tool_id != null) {
+      if (tool.status !== 'available') {
+        uni.showToast({ title: `「${tool.tool_name || tool.tool_code}」当前不可领用`, icon: 'none' })
+        return
+      }
+      addToCart(tool)
+      return
+    }
+  } catch {
+    // 未命中，走下方统一提示
+  }
+  uni.showToast({ title: '未找到该编码的工具', icon: 'none' })
+}
+
 onShow(() => {
   load()
 })
@@ -178,6 +219,12 @@ onShow(() => {
     font-size: 32rpx;
     font-weight: 600;
     color: $tm-text;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 24rpx;
   }
 
   &__refresh {
