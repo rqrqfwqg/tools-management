@@ -864,7 +864,7 @@ function makeResolvedByItem(db, itemType, item) {
 
 /**
  * 解析扫码目标：优先按货位码（location_code，大小写不敏感）解析其绑定物料；
- * 否则按物料编码 BJ-/XH- 精确匹配。
+ * 否则按物料编码精确匹配（前缀无关：SP-/BJ- 备件，XH-/CS- 消耗品 等）。
  * 「一货位一物料」：若同货位绑定多种物料，取第一条并 console.warn。
  * @returns {{itemType:string,item:Object,itemCode:string,itemName:string,location:Object}|null}
  */
@@ -891,23 +891,21 @@ function resolveMaterialTarget(db, code) {
         location
       };
     }
-    // 货位存在但未绑定物料：回退到「物料编码」解析（货位码本身不会命中 BJ-/XH-，最终 400）
+    // 货位存在但未绑定物料：回退到「物料编码」解析（前缀无关，精确匹配 spare_code/consumable_code）
   }
-  // ② 物料编码精确匹配（BJ- 备件 / XH- 消耗品）
-  if (norm.startsWith('BJ-')) {
-    const it = (db.spare_parts || []).find(s => s.spare_code === norm);
-    if (it) return makeResolvedByItem(db, 'spare', it);
-  } else if (norm.startsWith('XH-')) {
-    const it = (db.consumables || []).find(c => c.consumable_code === norm);
-    if (it) return makeResolvedByItem(db, 'consumable', it);
-  }
+  // ② 物料编码精确匹配（前缀无关：SP-/BJ- 备件，XH-/CS- 消耗品 等，不再依赖固定前缀）
+  // 先匹配备件编码，再匹配消耗品编码；生产真实数据即 SP-T2-001 这类非 BJ- 前缀的备件编码。
+  const sp = (db.spare_parts || []).find(s => s.spare_code === norm);
+  if (sp) return makeResolvedByItem(db, 'spare', sp);
+  const cs = (db.consumables || []).find(c => c.consumable_code === norm);
+  if (cs) return makeResolvedByItem(db, 'consumable', cs);
   return null;
 }
 
 // 提交/解析：双语义接口
 // - 仅传 {code}（无 actual_qty）→ resolve-only：返回命中物料 + 系统库存 + 货位信息，不写入
 // - 传 {code, actual_qty} → 写实际数量（counted=true、diff 更新）
-// 解析顺序：货位码(location_code) → 绑定物料；否则物料编码(BJ-/XH-)。移除 BX-/G- 工具特殊处理（工具不在盘库）。
+// 解析顺序：货位码(location_code) → 绑定物料；否则物料编码（前缀无关，精确匹配 spare_code/consumable_code）。移除 BX-/G- 工具特殊处理（工具不在盘库）。
 router.post('/inventory-checks/:id/scan', authenticate, [
   body('code').notEmpty().withMessage('编码不能为空'),
   validate
