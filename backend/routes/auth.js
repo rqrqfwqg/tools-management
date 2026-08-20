@@ -52,6 +52,7 @@ router.post('/auth/login', loginLimiter, [validate], async (req, res) => {
   }
 
   // 可选：wx_code → openid，绑定到该账号（首次微信一键登录绑定；wx 凭证无效/未配置时静默跳过，不阻断登录）
+  // 一一对应约束：微信 openid 与账号互斥——该 openid 已被其他账号绑定时拒绝，防止一个微信绑多个账号
   let bound_openid = false;
   if (wxCode) {
     try {
@@ -61,6 +62,12 @@ router.post('/auth/login', loginLimiter, [validate], async (req, res) => {
         const session = await wxCode2Session(wxCode, appid, secret);
         const openid = session && session.openid ? session.openid : null;
         if (openid && !user.wx_openid) {
+          const occupied = db.users.find(u => u.user_id !== user.user_id && u.wx_openid === openid);
+          if (occupied) {
+            return res.status(409).json({
+              message: `该微信已绑定系统账号「${occupied.username}」，请先在该账号解绑微信后再绑定当前账号`
+            });
+          }
           user.wx_openid = openid;
           writeDB(db);
           bound_openid = true;
