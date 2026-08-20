@@ -58,9 +58,10 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * 手动账号登录（账号免密）：手机号或用户名匹配即签发 token 并持久化到本机。
    * 个人主体小程序无 getPhoneNumber，改用此方式绑定本机登录账号。
+   * wxCode 选填：微信一键登录场景下携带，登录成功且账号未绑定微信时自动绑定 openid。
    */
-  async function accountLogin(identifier: string): Promise<WxLoginResult> {
-    const result = await loginApi(identifier)
+  async function accountLogin(identifier: string, wxCode?: string): Promise<WxLoginResult> {
+    const result = await loginApi(identifier, wxCode)
     if (result?.access_token) {
       setToken(result.access_token)
     }

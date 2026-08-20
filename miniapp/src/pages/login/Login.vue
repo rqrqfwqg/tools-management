@@ -7,6 +7,23 @@
     </view>
 
     <view class="actions">
+      <!-- 微信一键登录：uni.login 换 code → 后端 openid 匹配；未绑定账号时引导绑定 -->
+      <button
+        class="wx-btn"
+        :loading="loading"
+        :disabled="loading"
+        @tap="wxQuickLogin"
+      >
+        <view class="wx-btn__badge">微</view>
+        <text>{{ loading ? '登录中…' : '微信一键登录' }}</text>
+      </button>
+
+      <view class="divider">
+        <view class="divider__line" />
+        <text class="divider__text">或使用账号登录</text>
+        <view class="divider__line" />
+      </view>
+
       <!-- 手动账号绑定：个人主体小程序无 getPhoneNumber，改用手机号/用户名免密登录 -->
       <view class="form">
         <view class="form__title">账号登录</view>
@@ -24,8 +41,11 @@
           :disabled="loading"
           @tap="accountLogin"
         >
-          <text>{{ loading ? '登录中…' : '登录并绑定本机' }}</text>
+          <text>{{ loading ? '登录中…' : pendingWxCode ? '绑定微信并登录' : '登录并绑定本机' }}</text>
         </button>
+        <view v-if="pendingWxCode" class="form__bind-tip">
+          首次使用：输入账号后将绑定到当前微信，下次「微信一键登录」直接进入
+        </view>
       </view>
 
       <!-- 游客模式（只读） -->
@@ -33,7 +53,7 @@
         <text>{{ loading ? '登录中…' : '游客模式浏览（只读）' }}</text>
       </view>
 
-      <view class="tip">输入本人工器具系统账号（手机号或用户名）即可登录；登录态保存在本机，30 天内无需重复绑定</view>
+      <view class="tip">已绑定微信的用户点击「微信一键登录」直接进入；未绑定需先输入账号绑定一次，30 天内无需重复登录</view>
     </view>
   </view>
 </template>
@@ -45,6 +65,8 @@ import { useAuthStore } from '@/store/auth'
 const authStore = useAuthStore()
 const loading = ref(false)
 const account = ref('')
+/** 微信一键登录已拿到 code 但未匹配账号（游客）时暂存，绑定账号时随 /auth/login 提交 */
+const pendingWxCode = ref('')
 
 function goHome() {
   // Dashboard 是 tabBar 页，必须用 switchTab 跳转
@@ -58,7 +80,38 @@ onMounted(() => {
   }
 })
 
-/** 手动账号登录：手机号/用户名免密匹配 → 后端签发 token → 持久化到本机，避免每次重绑 */
+/** 微信一键登录：uni.login → 后端 openid 匹配正式账号；未绑定则引导输入账号完成绑定 */
+async function wxQuickLogin() {
+  if (loading.value) return
+  loading.value = true
+  try {
+    const loginRes: any = await uni.login()
+    const code = loginRes?.code
+    if (!code) {
+      uni.showToast({ title: '获取微信登录凭证失败', icon: 'none' })
+      return
+    }
+    const result = await authStore.wxLogin(code)
+    if (!result?.access_token) {
+      uni.showToast({ title: '微信登录失败，请重试', icon: 'none' })
+      return
+    }
+    if (result.guest) {
+      // 未绑定系统账号 → 引导输入账号绑定（记住 code，下次一键登录直接进正式账号）
+      pendingWxCode.value = code
+      uni.showToast({ title: '未绑定账号，请先输入账号完成绑定', icon: 'none' })
+      return
+    }
+    uni.showToast({ title: '微信登录成功', icon: 'success' })
+    goHome()
+  } catch (err: any) {
+    uni.showToast({ title: err?.data?.message || err?.message || '微信登录失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 手动账号登录：手机号/用户名免密匹配 → 后端签发 token（携带 wx_code 时自动绑定微信） → 持久化到本机 */
 async function accountLogin() {
   if (loading.value) return
   const id = account.value.trim()
@@ -68,9 +121,12 @@ async function accountLogin() {
   }
   loading.value = true
   try {
-    const result = await authStore.accountLogin(id)
+    const result = await authStore.accountLogin(id, pendingWxCode.value || undefined)
     if (result?.access_token) {
-      uni.showToast({ title: '登录成功', icon: 'success' })
+      uni.showToast({
+        title: result.bound_openid ? '已绑定微信，登录成功' : '登录成功',
+        icon: 'success'
+      })
       goHome()
     } else {
       uni.showToast({ title: '登录失败，请重试', icon: 'none' })
@@ -88,8 +144,8 @@ async function guestLogin() {
   if (loading.value) return
   loading.value = true
   try {
-    const loginRes = await uni.login()
-    const code = (loginRes as any).code
+    const loginRes: any = await uni.login()
+    const code = loginRes?.code
     if (!code) {
       uni.showToast({ title: '获取登录凭证失败', icon: 'none' })
       return
@@ -159,6 +215,65 @@ async function guestLogin() {
   align-items: center;
 }
 
+/* 微信一键登录 */
+.wx-btn {
+  width: 100%;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: linear-gradient(135deg, #07c160, #06a850);
+  color: #fff;
+  font-size: 34rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  line-height: 96rpx;
+  padding: 0;
+  box-shadow: 0 12rpx 32rpx rgba(7, 193, 96, 0.25);
+
+  &::after {
+    border: none;
+  }
+
+  &__badge {
+    width: 44rpx;
+    height: 44rpx;
+    border-radius: 10rpx;
+    background: #fff;
+    color: #07c160;
+    font-size: 28rpx;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 16rpx;
+  }
+
+  &[disabled] {
+    opacity: 0.7;
+  }
+}
+
+.divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  margin: 36rpx 0 32rpx;
+
+  &__line {
+    flex: 1;
+    height: 1rpx;
+    background: $tm-border;
+  }
+
+  &__text {
+    margin: 0 24rpx;
+    font-size: 24rpx;
+    color: #b0b0b0;
+  }
+}
+
 .form {
   width: 100%;
   background: $tm-card-bg;
@@ -188,6 +303,13 @@ async function guestLogin() {
 
   &__ph {
     color: $tm-text-muted;
+  }
+
+  &__bind-tip {
+    margin-top: 20rpx;
+    font-size: 22rpx;
+    color: #06a850;
+    line-height: 32rpx;
   }
 }
 

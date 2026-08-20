@@ -88,9 +88,9 @@
       </view>
 
       <view class="section" v-if="(alerts?.expiring.length || 0)">
-        <text class="section__title">即将到期（{{ alerts.expiry_alert_days }} 天内）</text>
+        <text class="section__title">即将到期（{{ alerts?.expiry_alert_days }} 天内）</text>
         <view
-          v-for="s in alerts.expiring"
+          v-for="s in alerts?.expiring || []"
           :key="'e' + s.supply_id"
           class="alert-card"
           @tap="onCardTap(s)"
@@ -108,7 +108,7 @@
       <view class="section" v-if="(alerts?.check_due.length || 0)">
         <text class="section__title">待定期检查</text>
         <view
-          v-for="s in alerts.check_due"
+          v-for="s in alerts?.check_due || []"
           :key="'c' + s.supply_id"
           class="alert-card"
           @tap="onCardTap(s)"

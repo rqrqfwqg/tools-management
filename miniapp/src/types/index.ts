@@ -17,11 +17,15 @@ export interface User {
   wx_avatar?: string
 }
 
-/** 微信登录结果（与 /auth/login 同构 + is_new_user） */
+/** 微信登录结果（与 /auth/login 同构 + is_new_user/guest） */
 export interface WxLoginResult {
   access_token: string
   user: User
   is_new_user?: boolean
+  /** true = 未匹配到系统账号，游客模式（只读） */
+  guest?: boolean
+  /** true = 本次登录已把当前微信绑定到该账号 */
+  bound_openid?: boolean
 }
 
 export interface Tool {

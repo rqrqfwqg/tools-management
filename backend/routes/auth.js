@@ -29,9 +29,12 @@ const validate = (req, res, next) => {
 
 // 登录（账号免密直登：手机号或用户名匹配即签发，兼容 identifier/phone/username）
 // 个人主体小程序无法使用 getPhoneNumber，故改为手动输入账号绑定本机；
+// 可选 wx_code：微信一键登录场景下携带，登录成功且该用户 wx_openid 为空时自动绑定当前微信，
+// 绑定后下次可直接「微信一键登录」进正式账号（不再进游客模式）。
 // token 30 天有效 + 前端本地持久化，避免频繁重复绑定。
-router.post('/auth/login', loginLimiter, [validate], (req, res) => {
+router.post('/auth/login', loginLimiter, [validate], async (req, res) => {
   const identifier = String(req.body.identifier || req.body.phone || req.body.username || '').trim();
+  const wxCode = String(req.body.wx_code || '').trim(); // 可选：uni.login 的 code
 
   if (!identifier) {
     return res.status(400).json({ message: '请填写手机号或用户名' });
@@ -48,6 +51,26 @@ router.post('/auth/login', loginLimiter, [validate], (req, res) => {
     return res.status(403).json({ message: '用户已被禁用' });
   }
 
+  // 可选：wx_code → openid，绑定到该账号（首次微信一键登录绑定；wx 凭证无效/未配置时静默跳过，不阻断登录）
+  let bound_openid = false;
+  if (wxCode) {
+    try {
+      const appid = process.env.WX_APPID;
+      const secret = process.env.WX_SECRET;
+      if (appid && secret) {
+        const session = await wxCode2Session(wxCode, appid, secret);
+        const openid = session && session.openid ? session.openid : null;
+        if (openid && !user.wx_openid) {
+          user.wx_openid = openid;
+          writeDB(db);
+          bound_openid = true;
+        }
+      }
+    } catch (err) {
+      console.error('[AuthLogin] wx_code 换取 openid 失败（忽略绑定）:', err.message);
+    }
+  }
+
   const token = jwt.sign(
     { user_id: user.user_id, username: user.username, role: user.role },
     JWT_SECRET,
@@ -55,7 +78,7 @@ router.post('/auth/login', loginLimiter, [validate], (req, res) => {
   );
 
   const { password: _, ...userWithoutPassword } = user;
-  res.json({ access_token: token, user: userWithoutPassword });
+  res.json({ access_token: token, user: userWithoutPassword, bound_openid });
 });
 
 // 获取当前用户信息

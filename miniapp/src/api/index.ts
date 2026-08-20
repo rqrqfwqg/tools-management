@@ -11,8 +11,10 @@ import { getToken } from '@/utils/storage'
 import type { WxLoginResult, SafetySupply, SafetyAlerts } from '@/types'
 
 // ===== Auth =====
-/** 账号免密登录：手机号或用户名匹配即签发（个人号无 getPhoneNumber，改手动绑定本机） */
-export const login = (identifier: string) => post('/auth/login', { identifier })
+/** 账号免密登录：手机号或用户名匹配即签发（个人号无 getPhoneNumber，改手动绑定本机）
+ *  wxCode 选填：微信一键登录场景携带 uni.login 的 code，登录成功且账号未绑定时自动绑定当前微信 */
+export const login = (identifier: string, wxCode?: string) =>
+  post<WxLoginResult>('/auth/login', wxCode ? { identifier, wx_code: wxCode } : { identifier })
 
 /** 微信一键登录：code 由 uni.login 获取，nickname/avatar 选填（首次建档用） */
 export const wxLogin = (code: string, nickname?: string, avatar?: string) =>
