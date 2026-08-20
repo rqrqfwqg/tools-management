@@ -74,6 +74,12 @@
       }
     },
     {
+      "path": "pages/material/MaterialCart",
+      "style": {
+        "navigationBarTitleText": "物料购物车"
+      }
+    },
+    {
       "path": "pages/material/SafetySupplies",
       "style": {
         "navigationBarTitleText": "安全防护用品"

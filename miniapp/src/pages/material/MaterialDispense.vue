@@ -61,21 +61,21 @@
     <!-- 底部提交栏（游客隐藏） -->
     <view class="submit-bar" v-if="selectedCount > 0 && !auth.isGuest">
       <text class="submit-bar__text">已选 {{ selectedCount }} 项</text>
-      <view class="submit-bar__btn" @tap="submit">{{ submitting ? '提交中…' : '提交领用' }}</view>
+      <view class="submit-bar__btn" @tap="goCart">去购物车提交</view>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getSpareParts, getConsumables, takeConsumableByCode, claimSpareParts } from '@/api/material'
+import { onShow } from '@dcloudio/uni-app'
+import { getSpareParts, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
-import { showToast, showModal } from '@/utils/feedback'
+import { showToast } from '@/utils/feedback'
 import { useAuthStore } from '@/store/auth'
 import { useScanner } from '@/composables/useScanner'
-import { requestSubscribe } from '@/composables/useWxSubscribe'
+import { useMaterialCartStore } from '@/store/materialCart'
 
 type Tab = 'spare' | 'consumable'
 
@@ -84,13 +84,9 @@ const keyword = ref('')
 const spares = ref<any[]>([])
 const consumables = ref<any[]>([])
 const loaded = ref(false)
-const submitting = ref(false)
 const auth = useAuthStore()
-/** 从扫码页带过来的编码（等列表加载完成后自动选中） */
-const pendingCode = ref('')
+const cart = useMaterialCartStore()
 const { scan } = useScanner({ title: '扫码领用' })
-/** 数量选择：key=`spare:{id}` / `cons:{id}`，切换页签保留已选数量 */
-const qtyMap = ref<Record<string, number>>({})
 
 const displayList = computed<any[]>(() => (tab.value === 'spare' ? spares.value : consumables.value))
 
@@ -104,9 +100,7 @@ const filtered = computed<any[]>(() => {
   })
 })
 
-const selectedCount = computed<number>(() =>
-  Object.keys(qtyMap.value).reduce((n, k) => n + (qtyMap.value[k] > 0 ? 1 : 0), 0)
-)
+const selectedCount = computed<number>(() => cart.count)
 
 function itemKey(item: any): string {
   return item.spare_id != null ? `spare:${item.spare_id}` : `cons:${item.consumable_id}`
@@ -127,28 +121,35 @@ function isLowStock(item: any): boolean {
   return item.warning_qty != null && stockOf(item) <= item.warning_qty
 }
 function qtyOf(item: any): number {
-  return qtyMap.value[itemKey(item)] || 0
+  return cart.getQty(itemKey(item))
 }
-function setQty(key: string, qty: number): void {
-  qtyMap.value = { ...qtyMap.value, [key]: qty }
+
+/** 构造购物车条目（物料字段 → 购物车结构） */
+function cartItemOf(item: any) {
+  const isSpare = item.spare_id != null
+  return {
+    key: itemKey(item),
+    type: isSpare ? 'spare' as const : 'cons' as const,
+    id: isSpare ? item.spare_id : item.consumable_id,
+    code: codeOf(item),
+    name: nameOf(item),
+    unit: unitOf(item),
+    stock: stockOf(item)
+  }
 }
 
 function inc(item: any): void {
-  const key = itemKey(item)
-  const max = stockOf(item)
   const cur = qtyOf(item)
+  const max = stockOf(item)
   if (cur >= max) {
     showToast(`最多可领 ${max}${unitOf(item)}`, 'none')
     return
   }
-  setQty(key, cur + 1)
+  cart.addItem(cartItemOf(item), 1)
 }
 
 function dec(item: any): void {
-  const key = itemKey(item)
-  const cur = qtyOf(item)
-  if (cur <= 0) return
-  setQty(key, cur - 1)
+  cart.setQty(itemKey(item), qtyOf(item) - 1)
 }
 
 async function load(): Promise<void> {
@@ -162,18 +163,10 @@ async function load(): Promise<void> {
     consumables.value = toArray(co)
   } finally {
     loaded.value = true
-    // 扫码页跳转携带的编码：列表就绪后自动选中
-    if (pendingCode.value) {
-      const c = pendingCode.value
-      pendingCode.value = ''
-      if (!matchAndSelect(c)) {
-        showToast('未找到该编码的物料', 'none')
-      }
-    }
   }
 }
 
-/** 按编码匹配并选中（备件优先，其次消耗品）；匹配成功返回 true */
+/** 按编码匹配并加入物料购物车（备件优先，其次消耗品）；匹配成功返回 true */
 function matchAndSelect(raw: string): boolean {
   const c = (raw || '').trim().toUpperCase()
   if (!c) return false
@@ -184,8 +177,8 @@ function matchAndSelect(raw: string): boolean {
       showToast('该备件无库存', 'none')
       return true
     }
-    setQty(itemKey(spare), 1)
-    showToast(`已选中「${nameOf(spare)}」`, 'success')
+    cart.addItem(cartItemOf(spare), 1)
+    showToast(`已加入购物车「${nameOf(spare)}」`, 'success')
     return true
   }
   const cons = consumables.value.find((x) => (x.consumable_code || '').toUpperCase() === c)
@@ -195,14 +188,14 @@ function matchAndSelect(raw: string): boolean {
       showToast('该消耗品无库存', 'none')
       return true
     }
-    setQty(itemKey(cons), 1)
-    showToast(`已选中「${nameOf(cons)}」`, 'success')
+    cart.addItem(cartItemOf(cons), 1)
+    showToast(`已加入购物车「${nameOf(cons)}」`, 'success')
     return true
   }
   return false
 }
 
-/** 扫码选料：扫物料码 → 自动选中数量 1 */
+/** 扫码选料：扫物料码 → 自动加入物料购物车 */
 async function scanMaterialCode(): Promise<void> {
   if (auth.isGuest) {
     showToast('游客模式仅可查看', 'none')
@@ -215,60 +208,15 @@ async function scanMaterialCode(): Promise<void> {
   }
 }
 
+/** 去物料购物车提交 */
+function goCart(): void {
+  uni.navigateTo({ url: '/pages/material/MaterialCart' })
+}
+
 function switchTab(t: Tab): void {
   if (tab.value === t) return
   tab.value = t
 }
-
-async function submit(): Promise<void> {
-  const spareItems = spares.value
-    .filter((s) => qtyOf(s) > 0)
-    .map((s) => ({ spare_id: s.spare_id, qty: qtyOf(s) }))
-  const consItems = consumables.value.filter((c) => qtyOf(c) > 0)
-  if (!spareItems.length && !consItems.length) {
-    showToast('请先选择要领用的物料', 'none')
-    return
-  }
-  const parts = [
-    spareItems.length ? `备件 ${spareItems.length} 项` : '',
-    consItems.length ? `消耗品 ${consItems.length} 项` : ''
-  ].filter(Boolean).join('、')
-  const ok = await showModal({
-    title: '确认领用',
-    content: `确认提交${parts}？备件领走即扣库存，消耗品直接领取。`
-  })
-  if (!ok) return
-
-  submitting.value = true
-  try {
-    let msg = ''
-    if (spareItems.length) {
-      const res = await claimSpareParts(spareItems)
-      msg = `备件已领取${res?.order?.order_no ? `（${res.order.order_no}）` : ''}，库存已扣减`
-    }
-    if (consItems.length) {
-      await Promise.all(
-        consItems.map((c) => takeConsumableByCode(codeOf(c), qtyOf(c)))
-      )
-      msg = msg ? `${msg}；消耗品已领取` : '消耗品已领取'
-    }
-    qtyMap.value = {}
-    await showToast(msg, 'success')
-    // 领用成功后请求订阅授权（续期），保证后续「领用成功 / 未归还提醒」能送达
-    requestSubscribe('both', true)
-  } catch (e: any) {
-    await showToast(e?.data?.message || e?.message || '提交失败', 'none')
-  } finally {
-    submitting.value = false
-  }
-}
-
-onLoad((options) => {
-  // 从扫码页（ScanTool）跳转：携带 code 参数，列表加载完成后自动选中
-  if (options?.code) {
-    pendingCode.value = decodeURIComponent(String(options.code))
-  }
-})
 
 onShow(() => {
   load()

@@ -20,19 +20,23 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useScanner } from '@/composables/useScanner'
 import { getToolByCode } from '@/api'
+import { getSpareParts, getConsumables } from '@/api/material'
+import { toArray } from '@/utils/status'
 import { useCartStore } from '@/store/cart'
+import { useMaterialCartStore } from '@/store/materialCart'
 import { showToast } from '@/utils/feedback'
 
 const { scan, manualFallback } = useScanner({ title: '扫码选用' })
 const cartStore = useCartStore()
+const materialCart = useMaterialCartStore()
 const scanning = ref(false)
 
-/** 识别编码：工具码 → 加入领用篮跳购物车；物料码 → 跳物料领用页自动选中 */
+/** 识别编码：工具码 → 加入工具领用篮跳工具页；物料码 → 加入物料购物车跳物料领用页 */
 async function handleCode(raw: string): Promise<void> {
   const code = (raw || '').trim()
   if (!code) return
 
-  // 1) 先尝试工具码
+  // 1) 工具码
   try {
     const tool: any = await getToolByCode(code)
     if (tool && tool.tool_id != null) {
@@ -40,27 +44,70 @@ async function handleCode(raw: string): Promise<void> {
         showToast(`「${tool.tool_name || tool.tool_code}」当前不可领用`, 'none')
         return
       }
-      if (cartStore.hasItem(tool.tool_id)) {
-        showToast('已在领用篮，可去提交', 'none')
-        uni.navigateTo({ url: '/pages/cart/ShoppingCart' })
-        return
+      if (!cartStore.hasItem(tool.tool_id)) {
+        cartStore.addItem({
+          tool_id: tool.tool_id,
+          tool_name: tool.tool_name || tool.tool_code,
+          tool_code: tool.tool_code,
+          warehouse: tool.warehouse || tool.location_name || ''
+        })
       }
-      cartStore.addItem({
-        tool_id: tool.tool_id,
-        tool_name: tool.tool_name || tool.tool_code,
-        tool_code: tool.tool_code,
-        warehouse: tool.warehouse || tool.location_name || ''
-      })
-      showToast('已扫码加入领用篮', 'success')
-      uni.navigateTo({ url: '/pages/cart/ShoppingCart' })
+      showToast('已扫码加入工具领用篮', 'success')
+      uni.switchTab({ url: '/pages/tools/ToolManagement' })
       return
     }
   } catch {
     // 非工具码，继续按物料处理
   }
 
-  // 2) 物料码 → 物料领用页自动选中（页面按编码匹配备件/消耗品）
-  uni.redirectTo({ url: `/pages/material/MaterialDispense?code=${encodeURIComponent(code)}` })
+  // 2) 物料码：匹配备件/消耗品 → 加入物料购物车 → 跳物料领用页
+  const [sp, co] = await Promise.all([
+    getSpareParts().catch(() => []),
+    getConsumables().catch(() => [])
+  ])
+  const spares: any[] = toArray(sp)
+  const cons: any[] = toArray(co)
+  const c = code.toUpperCase()
+
+  const spare = spares.find((s) => (s.spare_code || '').toUpperCase() === c)
+  if (spare) {
+    materialCart.addItem(
+      {
+        key: `spare:${spare.spare_id}`,
+        type: 'spare',
+        id: spare.spare_id,
+        code: spare.spare_code || '',
+        name: spare.spare_name || '',
+        unit: spare.unit || '',
+        stock: Number(spare.stock_qty ?? 0)
+      },
+      1
+    )
+    showToast(`已加入物料购物车「${spare.spare_name}」`, 'success')
+    uni.navigateTo({ url: '/pages/material/MaterialDispense' })
+    return
+  }
+
+  const con = cons.find((x) => (x.consumable_code || '').toUpperCase() === c)
+  if (con) {
+    materialCart.addItem(
+      {
+        key: `cons:${con.consumable_id}`,
+        type: 'cons',
+        id: con.consumable_id,
+        code: con.consumable_code || '',
+        name: con.consumable_name || '',
+        unit: con.unit || '',
+        stock: Number(con.stock_qty ?? 0)
+      },
+      1
+    )
+    showToast(`已加入物料购物车「${con.consumable_name}」`, 'success')
+    uni.navigateTo({ url: '/pages/material/MaterialDispense' })
+    return
+  }
+
+  showToast('未识别到对应的工具或物料', 'none')
 }
 
 async function doScan(): Promise<void> {
