@@ -25,9 +25,9 @@
           <div class="result-item-code">{{ item.item_code }}</div>
           <div class="result-item-nums">
             <span>系统账 {{ item.system_qty }}</span>
-            <span>实盘 {{ item.actual_qty }}</span>
-            <span :class="item.diff > 0 ? 'up' : item.diff < 0 ? 'down' : ''">
-              差异 {{ item.diff > 0 ? '+' : '' }}{{ item.diff }}
+            <span>实盘 {{ isCounted(item) ? item.actual_qty : '未盘' }}</span>
+            <span :class="isCounted(item) ? (item.diff > 0 ? 'up' : item.diff < 0 ? 'down' : '') : 'unchecked'">
+              {{ isCounted(item) ? '差异 ' + (item.diff > 0 ? '+' : '') + item.diff : '未盘' }}
             </span>
           </div>
         </div>
@@ -58,7 +58,12 @@ const emit = defineEmits<{
 const loading = ref(true)
 const items = ref<InventoryCheckItem[]>([])
 
-const diffCount = computed(() => items.value.filter((i) => i.diff !== 0).length)
+/** 是否已录入：counted 标记为真，或后端返回了实际数量（未盘项不显示负差异、不计入差异汇总） */
+function isCounted(item: InventoryCheckItem): boolean {
+  return item.counted === true || item.actual_qty != null
+}
+
+const diffCount = computed(() => items.value.filter((i) => isCounted(i) && i.diff !== 0).length)
 
 async function doComplete(): Promise<void> {
   loading.value = true
@@ -99,5 +104,6 @@ onMounted(() => {
 .result-item-nums { font-size: 12px; color: #969799; margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
 .result-item-nums .up { color: #07c160; }
 .result-item-nums .down { color: #ee0a24; }
+.result-item-nums .unchecked { color: #c8c9cc; }
 .action-bar { padding: 16px; }
 </style>

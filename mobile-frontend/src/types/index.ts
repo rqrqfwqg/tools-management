@@ -176,6 +176,13 @@ export interface InventoryCheckItem {
   system_qty: number
   actual_qty: number
   diff: number
+  /** 货位码（货位化盘点：一货位一物料，扫码按货位定位） */
+  location_code?: string
+  location_name?: string
+  /** 后端盘点状态：true=已录入；false/undefined=未盘（未盘项不生成差异、不计入汇总） */
+  counted?: boolean
+  operator_id?: number | null
+  operator_name?: string
   /** 前端瞬时"已录入"标记（不持久化到后端，由 useInventoryEntered 统一维护） */
   entered?: boolean
 }

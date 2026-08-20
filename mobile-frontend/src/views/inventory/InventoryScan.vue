@@ -26,8 +26,8 @@
       >
         <div class="scan-item-head">
           <span class="scan-item-name">{{ item.item_name }}</span>
-          <van-tag :type="item.item_type === 'spare' ? 'primary' : item.item_type === 'consumable' ? 'warning' : 'success'">
-            {{ item.item_type === 'spare' ? '备件' : item.item_type === 'consumable' ? '消耗品' : '工具' }}
+          <van-tag :type="item.item_type === 'spare' ? 'primary' : 'warning'">
+            {{ item.item_type === 'spare' ? '备件' : '消耗品' }}
           </van-tag>
           <van-tag v-if="item.entered" type="success">已录入</van-tag>
         </div>
@@ -35,11 +35,11 @@
         <div class="scan-item-stock">现有库存：<b>{{ item.system_qty }}</b></div>
         <div class="scan-item-edit">
           <span class="stepper-label">实盘数量</span>
-          <!-- 步进器录入：默认=现有库存，加减/手输即提交（决策：值变化@change 提交，替代 blur）；工具逐件 0/1 -->
+          <!-- 步进器录入：默认=系统现有库存，加减/手输即提交（决策：值变化@change 提交，替代 blur） -->
           <van-stepper
             v-model="item.actualInput"
             :min="0"
-            :max="item.item_type === 'tool' ? 1 : 999999"
+            :max="999999"
             integer
             :long-press="false"
             @change="onStepperChange(item, $event)"
@@ -66,8 +66,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { showSuccessToast, showFailToast } from 'vant'
-import { scanInventoryCheck } from '@/api/material'
-import { isItemEntered, markEntered, getEnteredCodes } from '@/composables/useInventoryEntered'
+import { scanInventoryCheck, resolveInventoryCheck } from '@/api/material'
+import { isItemEntered, markEntered } from '@/composables/useInventoryEntered'
 import InventoryScannerPopup from '@/components/InventoryScannerPopup.vue'
 import type { InventoryCheck, InventoryCheckItem } from '@/types'
 
@@ -113,17 +113,14 @@ const filteredItems = computed(() => {
 })
 
 onMounted(() => {
-  // 恢复 entered：备件/消耗品沿用 actual_qty!==system_qty 或本地集合（幂等）；
-  // 工具逐件口径：仅"扫过/提交过"的编码记为已录入（避免预置 actual=0 即显示已录入），未扫默认 0（缺）。
+  // 恢复 entered：沿用 actual_qty!==system_qty 或本地集合（幂等）；
+  // 未录入项实盘输入框默认=系统现有库存，盘点人直接核对或微调（决策：默认读取现有库存）。
   items.value = (props.check.items || []).map((i: InventoryCheckItem) => {
-    const isTool = i.item_type === 'tool'
-    const entered = isTool
-      ? getEnteredCodes(checkId.value).has(i.item_code)
-      : isItemEntered(checkId.value, i)
+    const entered = isItemEntered(checkId.value, i)
     return {
       ...i,
       entered,
-      actualInput: entered ? i.actual_qty : (isTool ? 0 : i.system_qty)
+      actualInput: entered ? i.actual_qty : i.system_qty
     }
   })
 })
@@ -133,45 +130,34 @@ function clampQty(v: number): number {
   return Math.max(0, Math.min(999999, Math.floor(v)))
 }
 
-/** 编码前缀识别：BX- 工具箱（提示扫箱内工具）；G- 工具（逐件盘点）；BJ-/XH- 备件/消耗品；未知前缀拦截 */
-function detectPrefix(code: string): 'spare' | 'consumable' | 'tool' | 'toolkit' | '' {
-  const c = code.trim().toUpperCase()
-  if (c.startsWith('BX-')) return 'toolkit'
-  if (c.startsWith('BJ-')) return 'spare'
-  if (c.startsWith('XH-')) return 'consumable'
-  if (c.startsWith('G-')) return 'tool'
-  return ''
-}
-
-/** 扫码命中处理：工具扫到=在库（actual=1）；备件/消耗品预填 system_qty → 提交 → markEntered → 定位高亮滚动 */
+/**
+ * 扫码命中处理：前缀无关（后端 resolve 统一解析货位码/物料编码）。
+ * ① 先按物料编码在应盘清单中直接定位；② 定位不到则调 resolve 接口解析货位码 → 绑定物料；
+ * 命中后预填 system_qty → 提交（扫码=确认以系统量为准，可再改步进器覆盖）→ markEntered → 高亮滚动。
+ */
 async function onScannedCode(raw: string): Promise<void> {
   const code = raw.trim().toUpperCase()
   if (!code) return
-  const type = detectPrefix(code)
-  if (type === 'toolkit') {
-    showFailToast('工具箱不参与数量盘点，请扫箱内工具')
-    return
-  }
-  if (!type) {
-    showFailToast('无法识别的编码前缀（应为 BJ-/XH-/G-）')
-    return
-  }
-  const target = items.value.find((i) => i.item_code === code)
+  let target = items.value.find((i) => i.item_code === code)
   if (!target) {
-    showFailToast('不在本次盘点范围')
-    return
+    // 货位码：走 resolve-only 解析出绑定物料，再映射回应盘清单
+    try {
+      const resolved: any = await resolveInventoryCheck(checkId.value, code)
+      if (resolved?.item_code) {
+        target = items.value.find((i) => i.item_code === resolved.item_code) || null
+      }
+      if (!target) {
+        showFailToast('该货位/物料不在本次盘点范围')
+        return
+      }
+    } catch (err: any) {
+      showFailToast(err?.response?.data?.message || err?.message || '编码无法识别')
+      return
+    }
   }
-  if (type === 'tool') {
-    // 工具逐件盘点：扫到=在库（actual=1）；如需标记缺失可将步进器改为 0
-    target.actualInput = 1
-    await submitItem(target, 1)
-    scrollToItem(code)
-    return
-  }
-  // 备件/消耗品：扫码视为"确认以系统量为准"（可再改步进器覆盖）；预填与步进器默认值一致
   target.actualInput = target.system_qty
   await submitItem(target, target.system_qty)
-  scrollToItem(code)
+  scrollToItem(target.item_code)
 }
 
 /**
@@ -193,7 +179,7 @@ async function submitItem(item: ScanItem, actual: number, opts: { silent?: boole
   }
 }
 
-/** 步进器值变化即提交：加减/手输均触发；工具逐件钳制到 0/1；静默提交避免每步 toast 轰炸，失败仍 toast */
+/** 步进器值变化即提交：加减/手输均触发；静默提交避免每步 toast 轰炸，失败仍 toast */
 async function onStepperChange(item: ScanItem, value: number | string): Promise<void> {
   const n = Number(value)
   if (!Number.isFinite(n)) {
@@ -201,8 +187,7 @@ async function onStepperChange(item: ScanItem, value: number | string): Promise<
     item.actualInput = item.actual_qty
     return
   }
-  let q = clampQty(n)
-  if (item.item_type === 'tool') q = q === 0 ? 0 : 1
+  const q = clampQty(n)
   item.actualInput = q
   await submitItem(item, q, { silent: true })
 }
@@ -224,25 +209,13 @@ function onScannerClosed(): void {
 }
 
 /**
- * 完成盘库：先把未录入项按 system_qty 批量提交（实际=系统量，diff=0，账实相符），
- * 再进入 complete 流程，避免后端将未扫描项判为全亏清零（历史坑）。
- * 注意：工具逐件口径例外——未扫工具保持 actual=0（=盘亏候选），完成时不自动按 system_qty=1 补齐。
- * 失败项不阻塞完成，toast 汇总失败数。
+ * 完成盘库：不自动补齐未录入项（后端 complete 仅对「已录入且有差异」项生成 in/out 流水，
+ * 未录入项保持原库存不动），直接进入 complete 流程。
  */
 async function finish(): Promise<void> {
   if (finishing.value) return
   finishing.value = true
   try {
-    const pending = items.value.filter((i) => !i.entered && i.item_type !== 'tool')
-    if (pending.length > 0) {
-      const results = await Promise.all(
-        pending.map((i) => submitItem(i, i.system_qty, { silent: true }))
-      )
-      const failed = results.filter((ok) => !ok).length
-      if (failed > 0) {
-        showFailToast(`${failed} 项补齐失败，请检查网络后重试`)
-      }
-    }
     emit('complete', props.check)
   } finally {
     finishing.value = false

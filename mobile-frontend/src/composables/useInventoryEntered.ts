@@ -2,7 +2,7 @@
  * useInventoryEntered — 盘点"已录入"标记唯一入口（移动端）
  *
  * 决策 #3/#6：已录入判定 = actual_qty !== system_qty 或 编码在本地集合（"有录入痕迹"语义）。
- * 后端 items 无 entered 字段，服务端 scan 不传 actual_qty 时默认取系统量（diff=0），
+ * 后端 items 无 entered 字段；scan 接口双语义（不带 actual_qty=resolve 定位，带 actual_qty=写实盘），
  * 仅凭 diff 无法区分"已扫未改"与"未扫"，故前端用 localStorage 记录已录入编码集合。
  *
  * localStorage key：`inventory_entered_<checkId>`，值为编码数组（JSON），幂等写入。

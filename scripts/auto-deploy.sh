@@ -1,8 +1,14 @@
 #!/bin/bash
 # 自动检测 GitHub 推送并执行部署
 # 由 cron 定时调用，仅在检测到新 commit 时执行构建/部署
-
-set -e
+#
+# 部署策略（2026-08-20 调整）：
+#   - 后端重启是最高优先级：git pull 成功后立即重启 tools-backend-miniapp，
+#     确保后端代码第一时间生效。
+#   - 前端构建失败只记录状态、不阻断。旧版全局 set -e 会在前端构建失败时
+#     exit 1 跳过 pm2 restart，导致「代码已拉到磁盘、线上进程还是旧代码」——
+#     本次线上 SP-T2-001 扫码 400 事故的根因。
+#   - 关键步骤（git remote update / git pull / pm2 restart）失败仍会退出。
 
 cd /opt/tools-management
 
@@ -39,8 +45,12 @@ write_status() {
 EOF
 }
 
-# 1. 检查远程是否有新提交
-git remote update 2>&1
+# ---------- 步骤 1：检查远程是否有新提交（关键步骤，失败即退出） ----------
+if ! git remote update 2>&1; then
+  log "❌ git remote update 失败（网络问题），跳过本轮部署"
+  write_status "error" "git remote update 失败，跳过本轮部署"
+  exit 1
+fi
 
 LOCAL=$(git rev-parse @)
 REMOTE=$(git rev-parse @{u})
@@ -66,7 +76,7 @@ fi
 log "📥 检测到新提交，开始部署..."
 write_status "deploying" "检测到新提交，正在部署..."
 
-# 2. 拉取代码
+# ---------- 步骤 2：拉取代码（关键步骤，失败即退出） ----------
 log "📦 git pull..."
 if ! git pull origin main 2>&1; then
   log "❌ git pull 失败"
@@ -74,42 +84,56 @@ if ! git pull origin main 2>&1; then
   exit 1
 fi
 
-# 3. 构建 PC 前端
+# ---------- 步骤 3：重启后端（最高优先级，独立于前端构建） ----------
+# 放在前端构建之前：即使后面 PC/移动端构建失败，后端代码也已更新，
+# 避免再次出现「代码已拉到磁盘但线上进程还是旧代码」的事故。
+log "🔄 重启后端服务（独立步骤，不受前端构建结果影响）..."
+if ! "$PM2_BIN" restart tools-backend-miniapp 2>&1; then
+  log "❌ PM2 重启失败"
+  write_status "error" "PM2 重启后端失败"
+  exit 1
+fi
+"$PM2_BIN" save 2>&1 || true
+log "✅ 后端重启完成"
+
+# ---------- 步骤 4：构建 PC 前端（失败不阻断，仅记录） ----------
+PC_RESULT="成功"
 log "🏗️ 构建 PC 前端..."
 cd /opt/tools-management/vue-frontend
 if ! npm install --include=dev 2>&1; then
-  log "❌ PC 前端 npm install 失败"
-  write_status "error" "PC 前端 npm install 失败"
-  exit 1
+  log "❌ PC 前端 npm install 失败（后端已更新，前端下次部署再补）"
+  PC_RESULT="失败(npm install)"
+else
+  if ! npm run build 2>&1; then
+    log "❌ PC 前端构建失败（后端已更新，前端下次部署再补）"
+    PC_RESULT="失败(build)"
+  else
+    log "✅ PC 前端构建完成"
+  fi
 fi
-if ! npm run build 2>&1; then
-  log "❌ PC 前端构建失败"
-  write_status "error" "PC 前端构建失败"
-  exit 1
-fi
-log "✅ PC 前端构建完成"
 
-# 4. 构建移动端前端
+# ---------- 步骤 5：构建移动端前端（失败不阻断，仅记录） ----------
+MOBILE_RESULT="成功"
 log "🏗️ 构建移动端前端..."
 cd /opt/tools-management/mobile-frontend
 if ! npm install --include=dev 2>&1; then
-  log "❌ 移动端 npm install 失败"
-  write_status "error" "移动端 npm install 失败"
-  exit 1
+  log "❌ 移动端 npm install 失败（后端已更新，前端下次部署再补）"
+  MOBILE_RESULT="失败(npm install)"
+else
+  if ! npm run build:prod 2>&1; then
+    log "❌ 移动端构建失败（后端已更新，前端下次部署再补）"
+    MOBILE_RESULT="失败(build)"
+  else
+    log "✅ 移动端前端构建完成"
+  fi
 fi
-if ! npm run build:prod 2>&1; then
-  log "❌ 移动端构建失败"
-  write_status "error" "移动端构建失败"
-  exit 1
-fi
-log "✅ 移动端前端构建完成"
 
-# 5. 导入工具数据（如果脚本存在）
+# ---------- 步骤 6：导入工具数据（失败不阻断） ----------
 IMPORT_RESULT=""
 if [ -f "/opt/tools-management/deploy/production/import-tools.js" ]; then
   log "📊 导入工具数据..."
   cd /opt/tools-management
-  IMPORT_OUTPUT=$(NODE_PATH=backend/node_modules node deploy/production/import-tools.js 2>&1)
+  IMPORT_OUTPUT=$(NODE_PATH=backend/node_modules node deploy/production/import-tools.js 2>&1) || true
   log "$IMPORT_OUTPUT"
   IMPORT_RESULT=$(echo "$IMPORT_OUTPUT" | tail -5)
   log "✅ 工具数据导入完成"
@@ -118,17 +142,7 @@ else
   log "⏭️ 跳过工具导入"
 fi
 
-# 6. 重启后端（进程名为 tools-backend-miniapp：3300 小程序网关，与 nginx 443→3300 对齐）
-log "🔄 重启后端服务..."
-if ! "$PM2_BIN" restart tools-backend-miniapp 2>&1; then
-  log "❌ PM2 重启失败"
-  write_status "error" "PM2 重启后端失败"
-  exit 1
-fi
-"$PM2_BIN" save 2>&1
-log "✅ 后端重启完成"
-
-# 7. 健康检查
+# ---------- 步骤 7：健康检查 ----------
 sleep 2
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3300/api/auth/login 2>/dev/null || echo "000")
 
@@ -140,8 +154,13 @@ else
   HEALTH_STATUS="健康检查失败 (HTTP $HTTP_CODE)"
 fi
 
-# 获取 git log
+# ---------- 步骤 8：汇总状态 ----------
 GIT_LOG=$(git log --oneline -3)
 
-log "🎉 部署完成！"
-write_status "done" "部署成功 | 最近提交: $GIT_LOG | 健康检查: $HEALTH_STATUS | 工具导入: $IMPORT_RESULT"
+if [ "$PC_RESULT" = "成功" ] && [ "$MOBILE_RESULT" = "成功" ]; then
+  log "🎉 部署完成（后端+前端全部更新）"
+  write_status "done" "部署成功 | 最近提交: $GIT_LOG | 健康检查: $HEALTH_STATUS | 工具导入: $IMPORT_RESULT"
+else
+  log "⚠️ 后端已更新，但前端构建未全部成功（PC: $PC_RESULT, 移动: $MOBILE_RESULT）"
+  write_status "error" "后端已更新；前端构建: PC=$PC_RESULT, 移动=$MOBILE_RESULT | 最近提交: $GIT_LOG | 健康检查: $HEALTH_STATUS"
+fi

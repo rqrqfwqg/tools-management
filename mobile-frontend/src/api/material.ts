@@ -33,6 +33,9 @@ export const createInventoryCheck = (data: { warehouse_id: number; operator?: st
   api.post('/inventory-checks', data).then(r => r.data)
 export const scanInventoryCheck = (id: number, code: string, actual_qty?: number) =>
   api.post(`/inventory-checks/${id}/scan`, { code, actual_qty }).then(r => r.data)
+// resolve-only：扫货位码/物料码，仅解析返回物料+系统库存（不写入实盘），用于扫码定位应盘项
+export const resolveInventoryCheck = (id: number, code: string) =>
+  api.post(`/inventory-checks/${id}/scan`, { code }).then(r => r.data)
 export const completeInventoryCheck = (id: number) =>
   api.post(`/inventory-checks/${id}/complete`).then(r => r.data)
 
