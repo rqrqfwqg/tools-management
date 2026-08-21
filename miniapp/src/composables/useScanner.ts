@@ -28,12 +28,21 @@ export interface ScannerOptions {
   title?: string
 }
 
-/** 包装 uni.scanCode 为 Promise（不依赖类型重载，兼容各版本 @dcloudio/types） */
-function scanCode(options: { scanType: string[] }): Promise<{ result: string }> {
+/** 微信扫码返回结构（multiple 模式下含 scanResults 数组） */
+interface ScanCodeResult {
+  result?: string
+  scanResults?: Array<{ result?: string }>
+}
+
+/** 包装 uni.scanCode 为 Promise（不依赖类型重载，兼容各版本 @dcloudio/types）
+ *  multiple: true 一次可识别多个码（真机生效，模拟器可能只返回单个 result） */
+function scanCode(options: { scanType: string[]; multiple: boolean }): Promise<ScanCodeResult> {
   return new Promise((resolve, reject) => {
     uni.scanCode({
       scanType: options.scanType as any,
-      success: (res) => resolve({ result: res.result || '' }),
+      multiple: options.multiple,
+      success: (res: any) =>
+        resolve({ result: res.result || '', scanResults: res.scanResults || undefined }),
       fail: (err) => reject(err)
     })
   })
@@ -68,21 +77,32 @@ export function useScanner(options: ScannerOptions = {}) {
   }
 
   /**
-   * 执行一次扫码
+   * 执行一次扫码（支持一次识别多个码 → 多选一）
    * @returns Promise<ScanResult | null>：扫码/手动输入成功返回结果；用户取消返回 null
    */
   async function scan(): Promise<ScanResult | null> {
     scanning.value = true
     error.value = ''
     try {
-      const res = await scanCode({ scanType })
+      const res = await scanCode({ scanType, multiple: true })
       scanning.value = false
-      const code = (res.result || '').trim()
-      if (!code) {
+      // 兼容两种返回：multiple 真机返回 scanResults 数组；单码/模拟器返回 result
+      const results = Array.isArray(res.scanResults) && res.scanResults.length
+        ? res.scanResults
+        : res.result
+          ? [{ result: res.result }]
+          : []
+      const codes = results
+        .map((r) => (r.result || '').trim())
+        .filter(Boolean)
+      if (!codes.length) {
         return needManualFallback ? manualFallback() : null
       }
-      lastCode.value = code
-      return { code, source: 'camera' }
+      // 识别到多个码 → 弹出选择让用户挑一个（多选一）
+      const picked = codes.length === 1 ? codes[0] : await pickOne(codes)
+      if (!picked) return null
+      lastCode.value = picked
+      return { code: picked, source: 'camera' }
     } catch (err: any) {
       scanning.value = false
       error.value = err?.errMsg || String(err)
@@ -92,6 +112,19 @@ export function useScanner(options: ScannerOptions = {}) {
       }
       return null
     }
+  }
+
+  /** 多个码时弹出选择器（多选一）；showActionSheet 最多展示 6 项 */
+  function pickOne(codes: string[]): Promise<string | null> {
+    return new Promise((resolve) => {
+      const list = codes.slice(0, 6)
+      uni.showActionSheet({
+        alertText: codes.length > 6 ? `识别到 ${codes.length} 个码，请选择（仅显示前 6 个）` : `识别到 ${codes.length} 个码，请选择`,
+        itemList: list,
+        success: (r: any) => resolve(list[r.tapIndex] ?? null),
+        fail: () => resolve(null)
+      })
+    })
   }
 
   /** 兼容旧接口形态（startScanning 等价于 scan） */
