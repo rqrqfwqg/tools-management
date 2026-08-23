@@ -63,6 +63,7 @@ function initDB() {
       orders: [],
       // ===== 物料管理 v3.0.0 新增 5 张表（空表初始化） =====
       spare_parts: [],
+      spare_items: [],
       consumables: [],
       material_categories: [
         { category_id: 1, category_name: '通用备件', category_code: 'BJ-ALL', category_type: 'spare', description: '备件默认分类' },
@@ -84,6 +85,7 @@ function migrateDB() {
   let changed = false;
   const newTables = {
     spare_parts: [],
+    spare_items: [],
     consumables: [],
     material_categories: [
       { category_id: 1, category_name: '通用备件', category_code: 'BJ-ALL', category_type: 'spare', description: '备件默认分类' },

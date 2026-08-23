@@ -165,7 +165,46 @@ export interface Consumable {
   image_url?: string
   description?: string
   total_out?: number
+  /** 出库方式：需工单(workorder) 经工单扣库存 / 免工单(direct) 直领扣库存 */
+  outbound_type?: 'workorder' | 'direct'
   created_at?: string
+}
+
+// ========== 备件（序列化单品，一对一码） ==========
+// 与旧的 quantity 型 SparePart 不同：每件实物一个唯一 QR（spare_code = SP-<id>），
+// 库存 = 实物件数；一个货位可存放多件；盘点/扫码都按单件进行。
+export type SpareItemStatus = 'in_stock' | 'borrowed' | 'out' | 'scrapped'
+
+export interface SpareItem {
+  item_id: number
+  /** 一对一二维码内容，如 SP-000123 */
+  spare_code: string
+  spare_name: string
+  category_id?: number
+  category_name?: string
+  warehouse_id?: number
+  warehouse_name?: string
+  shelf_id?: number
+  shelf_name?: string
+  storage_location_id?: number
+  location_name?: string
+  storage_location?: string
+  status: SpareItemStatus
+  unit?: string
+  image_url?: string
+  description?: string
+  operator_name?: string
+  created_at?: string
+}
+
+/** 前端按货位聚合备件单品（一个货位可放多件） */
+export interface SpareItemGroup {
+  storage_location_id: number
+  location_name?: string
+  storage_location?: string
+  shelf_name?: string
+  warehouse_name?: string
+  items: SpareItem[]
 }
 
 export interface MaterialCategory {
@@ -193,7 +232,8 @@ export interface StockMovement {
 }
 
 export interface InventoryCheckItem {
-  item_type: 'spare' | 'consumable' | 'tool'
+  /** spare_item=序列化备件单品（按件盘点）；spare=旧数量型（向后兼容）；consumable/tool */
+  item_type: 'spare' | 'spare_item' | 'consumable' | 'tool'
   item_id: number
   item_code: string
   item_name: string

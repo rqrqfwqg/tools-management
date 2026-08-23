@@ -36,7 +36,7 @@
         </view>
       </view>
 
-      <view class="notice">备件提交后生成领用工单并扣减库存；消耗品提交后直接扣减库存</view>
+      <view class="notice">备件单品逐一借用（一对一码）；消耗品按出库类型：需工单提交工单、免工单直接扣库存</view>
 
       <view class="submit" :class="{ 'submit--disabled': submitting }" @tap="checkout">
         {{ submitting ? '提交中…' : '提交领用' }}
@@ -55,7 +55,7 @@
 import { computed, ref } from 'vue'
 import { useMaterialCartStore } from '@/store/materialCart'
 import { useAuthStore } from '@/store/auth'
-import { claimSpareParts, takeConsumableByCode } from '@/api/material'
+import { borrowSpareItem, outboundConsumable } from '@/api/material'
 import { showToast, showModal } from '@/utils/feedback'
 import { requestSubscribe } from '@/composables/useWxSubscribe'
 import type { MaterialCartItem } from '@/store/materialCart'
@@ -91,21 +91,30 @@ async function checkout() {
     showToast('游客模式仅可查看，请用手机号登录', 'none')
     return
   }
-  const spareItems = cart.items
-    .filter((i) => i.type === 'spare')
-    .map((i) => ({ spare_id: i.id, qty: i.qty }))
+  // 备件单品：逐件借用（一对一码，每件 1 实物）
+  const spareItems = cart.items.filter((i) => i.type === 'spare_item')
+  // 消耗品：按出库类型分流（需工单建单 / 免工单直领）
   const consItems = cart.items.filter((i) => i.type === 'cons')
 
   submitting.value = true
   try {
     let msg = ''
     if (spareItems.length) {
-      const res = await claimSpareParts(spareItems)
-      msg = `备件已领取${res?.order?.order_no ? `（${res.order.order_no}）` : ''}，库存已扣减`
+      await Promise.all(spareItems.map((s) => borrowSpareItem(s.code)))
+      msg = `备件单品已借出 ${spareItems.length} 件`
     }
     if (consItems.length) {
-      await Promise.all(consItems.map((c) => takeConsumableByCode(c.code, c.qty)))
-      msg = msg ? `${msg}；消耗品已领取` : '消耗品已领取'
+      await Promise.all(
+        consItems.map((c) =>
+          outboundConsumable(c.code, c.qty, c.outboundType || 'direct')
+        )
+      )
+      const wo = consItems.filter((c) => c.outboundType === 'workorder').length
+      const di = consItems.length - wo
+      const parts: string[] = []
+      if (wo) parts.push(`${wo} 项需工单已提交`)
+      if (di) parts.push(`${di} 项免工单已领取`)
+      msg = msg ? `${msg}；${parts.join('，')}` : parts.join('，')
     }
     cart.clearAll()
     await showToast(msg, 'success')

@@ -268,6 +268,18 @@ export const uploadConsumableImage = (id: number, formData: FormData) =>
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data)
 
+// 备件实例（一物一码）
+export const getSpareItems = (params?: any) =>
+  request.get('/spare-items', { params }).then(r => r.data)
+export const createSpareItemsBatch = (data: any) =>
+  request.post('/spare-items/batch', data).then(r => r.data)
+export const updateSpareItem = (id: number, data: any) =>
+  request.put(`/spare-items/${id}`, data).then(r => r.data)
+export const deleteSpareItem = (id: number) =>
+  request.delete(`/spare-items/${id}`).then(r => r.data)
+export const getSpareItemByCode = (code: string) =>
+  request.get(`/spare-items/code/${encodeURIComponent(code)}`).then(r => r.data)
+
 // 出入库流水
 export const getStockMovements = (params?: any) =>
   request.get('/stock-movements', { params }).then(r => r.data)

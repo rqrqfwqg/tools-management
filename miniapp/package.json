@@ -16,7 +16,8 @@
     "@dcloudio/uni-mp-weixin": "3.0.0-4030620241128001",
     "@dcloudio/uni-ui": "^1.5.0",
     "pinia": "^2.1.7",
-    "vue": "^3.4.21"
+    "vue": "^3.4.21",
+    "weapp-qrcode-canvas-2d": "^1.1.6"
   },
   "devDependencies": {
     "@dcloudio/types": "^3.4.8",

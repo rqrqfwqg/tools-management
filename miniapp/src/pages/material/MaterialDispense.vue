@@ -8,18 +8,37 @@
       </view>
     </view>
 
-    <!-- 页签 -->
+    <!-- 页签：备件单品 / 消耗品 -->
     <view class="tabs">
       <view
         class="tabs__item"
-        :class="{ 'tabs__item--active': tab === 'spare' }"
-        @tap="switchTab('spare')"
+        :class="{ 'tabs__item--active': tab === 'spare_item' }"
+        @tap="switchTab('spare_item')"
       >备件</view>
       <view
         class="tabs__item"
         :class="{ 'tabs__item--active': tab === 'consumable' }"
         @tap="switchTab('consumable')"
       >消耗品</view>
+    </view>
+
+    <!-- 消耗品出库类型筛选 -->
+    <view class="subtabs" v-if="tab === 'consumable'">
+      <view
+        class="subtabs__item"
+        :class="{ 'subtabs__item--active': sub === 'all' }"
+        @tap="switchSub('all')"
+      >全部</view>
+      <view
+        class="subtabs__item"
+        :class="{ 'subtabs__item--active': sub === 'workorder' }"
+        @tap="switchSub('workorder')"
+      >需工单</view>
+      <view
+        class="subtabs__item"
+        :class="{ 'subtabs__item--active': sub === 'direct' }"
+        @tap="switchSub('direct')"
+      >免工单</view>
     </view>
 
     <!-- 搜索 -->
@@ -35,17 +54,27 @@
 
     <scroll-view scroll-y class="list">
       <view class="card" v-for="item in displayList" :key="itemKey(item)">
-        <image v-if="item.image_url" class="card__thumb" :src="resolveImage(item.image_url)" mode="aspectFill" />
-        <view v-else class="card__thumb card__thumb--text">{{ nameOf(item).charAt(0) }}</view>
+        <view class="card__thumb card__thumb--text">{{ nameOf(item).charAt(0) }}</view>
         <view class="card__main">
           <text class="card__name">{{ nameOf(item) }}</text>
           <text class="card__code">{{ codeOf(item) }}</text>
           <text class="card__stock" :class="{ 'card__stock--low': isLowStock(item) }">
-            库存 {{ stockOf(item) }}{{ unitOf(item) }}
+            <template v-if="tab === 'spare_item'">单品 · {{ statusOf(item) }}</template>
+            <template v-else>库存 {{ stockOf(item) }}{{ unitOf(item) }}</template>
           </text>
         </view>
         <view class="card__side">
-          <view v-if="stockOf(item) > 0 && !auth.isGuest" class="stepper">
+          <!-- 备件单品：一对一，加入即 1 件 -->
+          <view v-if="tab === 'spare_item'">
+            <view
+              v-if="!cart.hasItem(itemKey(item))"
+              class="add-btn"
+              @tap="addSpareItem(item)"
+            >加入</view>
+            <text v-else class="added">已加入</text>
+          </view>
+          <!-- 消耗品：数量步进 -->
+          <view v-else-if="stockOf(item) > 0 && !auth.isGuest" class="stepper">
             <view class="stepper__btn" @tap="dec(item)">−</view>
             <text class="stepper__val">{{ qtyOf(item) }}</text>
             <view class="stepper__btn" @tap="inc(item)">＋</view>
@@ -69,33 +98,41 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getSpareParts, getConsumables } from '@/api/material'
+import { getSpareItems, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
-import { resolveImage } from '@/utils/image'
 import { showToast } from '@/utils/feedback'
+import { SPARE_ITEM_STATUS_TEXT } from '@/constants/material'
 import { useAuthStore } from '@/store/auth'
 import { useScanner } from '@/composables/useScanner'
 import { useMaterialCartStore } from '@/store/materialCart'
+import type { SpareItem, Consumable } from '@/types'
 
-type Tab = 'spare' | 'consumable'
+type Tab = 'spare_item' | 'consumable'
+type Sub = 'all' | 'workorder' | 'direct'
 
-const tab = ref<Tab>('spare')
+const tab = ref<Tab>('spare_item')
+const sub = ref<Sub>('all')
 const keyword = ref('')
-const spares = ref<any[]>([])
-const consumables = ref<any[]>([])
+const spares = ref<SpareItem[]>([])
+const consumables = ref<Consumable[]>([])
 const loaded = ref(false)
 const auth = useAuthStore()
 const cart = useMaterialCartStore()
 const { scan } = useScanner({ title: '扫码领用' })
 
-const displayList = computed<any[]>(() => (tab.value === 'spare' ? spares.value : consumables.value))
+const displayList = computed<any[]>(() => {
+  if (tab.value === 'spare_item') return spares.value
+  let list = consumables.value
+  if (sub.value !== 'all') list = list.filter((c) => (c.outbound_type || 'direct') === sub.value)
+  return list
+})
 
 const filtered = computed<any[]>(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return displayList.value
   return displayList.value.filter((item) => {
-    const name = (item.spare_name || item.consumable_name || item.name || '').toLowerCase()
-    const code = (item.spare_code || item.consumable_code || item.code || '').toLowerCase()
+    const name = (item.spare_name || item.consumable_name || '').toLowerCase()
+    const code = (item.spare_code || item.consumable_code || '').toLowerCase()
     return name.includes(kw) || code.includes(kw)
   })
 })
@@ -103,7 +140,8 @@ const filtered = computed<any[]>(() => {
 const selectedCount = computed<number>(() => cart.count)
 
 function itemKey(item: any): string {
-  return item.spare_id != null ? `spare:${item.spare_id}` : `cons:${item.consumable_id}`
+  if (item.item_id != null) return `spare_item:${item.item_id}`
+  return `cons:${item.consumable_id}`
 }
 function nameOf(item: any): string {
   return item.spare_name || item.consumable_name || ''
@@ -112,10 +150,13 @@ function codeOf(item: any): string {
   return item.spare_code || item.consumable_code || ''
 }
 function stockOf(item: any): number {
-  return Number(item.stock_qty ?? 0)
+  return tab.value === 'spare_item' ? 1 : Number(item.stock_qty ?? 0)
 }
 function unitOf(item: any): string {
   return item.unit || ''
+}
+function statusOf(item: any): string {
+  return SPARE_ITEM_STATUS_TEXT[item.status] || item.status
 }
 function isLowStock(item: any): boolean {
   return item.warning_qty != null && stockOf(item) <= item.warning_qty
@@ -124,18 +165,39 @@ function qtyOf(item: any): number {
   return cart.getQty(itemKey(item))
 }
 
-/** 构造购物车条目（物料字段 → 购物车结构） */
+/** 购物车条目构造 */
 function cartItemOf(item: any) {
-  const isSpare = item.spare_id != null
+  if (item.item_id != null) {
+    return {
+      key: itemKey(item),
+      type: 'spare_item' as const,
+      id: item.item_id,
+      code: item.spare_code,
+      name: item.spare_name || item.spare_code,
+      unit: item.unit || '件',
+      stock: 1
+    }
+  }
+  const ot = (item.outbound_type || 'direct') as 'workorder' | 'direct'
   return {
     key: itemKey(item),
-    type: isSpare ? 'spare' as const : 'cons' as const,
-    id: isSpare ? item.spare_id : item.consumable_id,
-    code: codeOf(item),
-    name: nameOf(item),
-    unit: unitOf(item),
-    stock: stockOf(item)
+    type: 'cons' as const,
+    id: item.consumable_id,
+    code: item.consumable_code,
+    name: item.consumable_name || item.consumable_code,
+    unit: item.unit || '',
+    stock: Number(item.stock_qty ?? 0),
+    outboundType: ot
   }
+}
+
+function addSpareItem(item: any): void {
+  if (item.status && item.status !== 'in_stock') {
+    showToast('该单品不在库，无法借用', 'none')
+    return
+  }
+  cart.addItem(cartItemOf(item), 1)
+  showToast(`已加入「${nameOf(item)}」`, 'success')
 }
 
 function inc(item: any): void {
@@ -147,7 +209,6 @@ function inc(item: any): void {
   }
   cart.addItem(cartItemOf(item), 1)
 }
-
 function dec(item: any): void {
   cart.setQty(itemKey(item), qtyOf(item) - 1)
 }
@@ -156,46 +217,17 @@ async function load(): Promise<void> {
   loaded.value = false
   try {
     const [sp, co] = await Promise.all([
-      getSpareParts().catch(() => []),
+      getSpareItems().catch(() => []),
       getConsumables().catch(() => [])
     ])
-    spares.value = toArray(sp)
-    consumables.value = toArray(co)
+    spares.value = toArray(sp) as SpareItem[]
+    consumables.value = toArray(co) as Consumable[]
   } finally {
     loaded.value = true
   }
 }
 
-/** 按编码匹配并加入物料购物车（备件优先，其次消耗品）；匹配成功返回 true */
-function matchAndSelect(raw: string): boolean {
-  const c = (raw || '').trim().toUpperCase()
-  if (!c) return false
-  const spare = spares.value.find((s) => (s.spare_code || '').toUpperCase() === c)
-  if (spare) {
-    if (tab.value !== 'spare') tab.value = 'spare'
-    if (stockOf(spare) <= 0) {
-      showToast('该备件无库存', 'none')
-      return true
-    }
-    cart.addItem(cartItemOf(spare), 1)
-    showToast(`已加入购物车「${nameOf(spare)}」`, 'success')
-    return true
-  }
-  const cons = consumables.value.find((x) => (x.consumable_code || '').toUpperCase() === c)
-  if (cons) {
-    if (tab.value !== 'consumable') tab.value = 'consumable'
-    if (stockOf(cons) <= 0) {
-      showToast('该消耗品无库存', 'none')
-      return true
-    }
-    cart.addItem(cartItemOf(cons), 1)
-    showToast(`已加入购物车「${nameOf(cons)}」`, 'success')
-    return true
-  }
-  return false
-}
-
-/** 扫码选料：扫物料码 → 自动加入物料购物车 */
+/** 扫码选料：备件单品码 / 消耗品码 自动加入购物车 */
 async function scanMaterialCode(): Promise<void> {
   if (auth.isGuest) {
     showToast('游客模式仅可查看', 'none')
@@ -203,19 +235,36 @@ async function scanMaterialCode(): Promise<void> {
   }
   const res = await scan()
   if (!res) return
-  if (!matchAndSelect(res.code)) {
-    showToast('未找到该编码的物料', 'none')
+  const c = res.code.trim().toUpperCase()
+  const spare = spares.value.find((s) => (s.spare_code || '').toUpperCase() === c)
+  if (spare) {
+    tab.value = 'spare_item'
+    addSpareItem(spare)
+    return
   }
+  const cons = consumables.value.find((x) => (x.consumable_code || '').toUpperCase() === c)
+  if (cons) {
+    tab.value = 'consumable'
+    if (stockOf(cons) <= 0) {
+      showToast('该消耗品无库存', 'none')
+      return
+    }
+    cart.addItem(cartItemOf(cons), 1)
+    showToast(`已加入购物车「${nameOf(cons)}」`, 'success')
+    return
+  }
+  showToast('未找到该编码的物料', 'none')
 }
 
-/** 去物料购物车提交 */
 function goCart(): void {
   uni.navigateTo({ url: '/pages/material/MaterialCart' })
 }
-
 function switchTab(t: Tab): void {
   if (tab.value === t) return
   tab.value = t
+}
+function switchSub(s: Sub): void {
+  sub.value = s
 }
 
 onShow(() => {
@@ -238,22 +287,9 @@ onShow(() => {
   padding: 24rpx 32rpx;
   background: $tm-card-bg;
 
-  &__title {
-    font-size: 32rpx;
-    font-weight: 600;
-    color: $tm-text;
-  }
-
-  &__actions {
-    display: flex;
-    align-items: center;
-    gap: 24rpx;
-  }
-
-  &__refresh {
-    font-size: 26rpx;
-    color: $tm-primary;
-  }
+  &__title { font-size: 32rpx; font-weight: 600; color: $tm-text; }
+  &__actions { display: flex; align-items: center; gap: 24rpx; }
+  &__refresh { font-size: 26rpx; color: $tm-primary; }
 }
 
 .tabs {
@@ -278,9 +314,30 @@ onShow(() => {
   }
 }
 
+.subtabs {
+  display: flex;
+  margin: 16rpx 24rpx 0;
+  gap: 16rpx;
+
+  &__item {
+    flex: 1;
+    text-align: center;
+    padding: 12rpx 0;
+    font-size: 24rpx;
+    color: $tm-text-secondary;
+    border-radius: $tm-radius-sm;
+    background: $tm-card-bg;
+
+    &--active {
+      color: #fff;
+      background: $tm-success;
+      font-weight: 600;
+    }
+  }
+}
+
 .search {
   padding: 20rpx 24rpx 8rpx;
-
   &__input {
     background: $tm-card-bg;
     border-radius: 999rpx;
@@ -288,10 +345,7 @@ onShow(() => {
     font-size: 26rpx;
     color: $tm-text;
   }
-
-  &__ph {
-    color: $tm-text-muted;
-  }
+  &__ph { color: $tm-text-muted; }
 }
 
 .list {
@@ -311,22 +365,18 @@ onShow(() => {
   box-shadow: $tm-shadow-card;
 
   &__thumb {
-    width: 88rpx;
-    height: 88rpx;
+    width: 80rpx;
+    height: 80rpx;
     border-radius: $tm-radius-sm;
     margin-right: 20rpx;
     flex-shrink: 0;
-    background: $tm-border-light;
-
-    &--text {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: $tm-primary-bg;
-      color: $tm-primary;
-      font-size: 36rpx;
-      font-weight: 600;
-    }
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: $tm-primary-bg;
+    color: $tm-primary;
+    font-size: 32rpx;
+    font-weight: 600;
   }
 
   &__main {
@@ -335,45 +385,34 @@ onShow(() => {
     flex: 1;
     min-width: 0;
   }
-
-  &__name {
-    font-size: 30rpx;
-    color: $tm-text;
-    font-weight: 500;
-  }
-
-  &__code {
-    margin-top: 6rpx;
-    font-size: 24rpx;
-    color: $tm-text-muted;
-  }
-
+  &__name { font-size: 30rpx; color: $tm-text; font-weight: 500; }
+  &__code { margin-top: 6rpx; font-size: 24rpx; color: $tm-text-muted; }
   &__stock {
     margin-top: 10rpx;
     font-size: 22rpx;
     color: $tm-text-secondary;
-
-    &--low {
-      color: $tm-danger;
-    }
+    &--low { color: $tm-danger; }
   }
+  &__side { display: flex; align-items: center; }
+  &__soldout { font-size: 24rpx; color: $tm-text-muted; }
+}
 
-  &__side {
-    display: flex;
-    align-items: center;
-  }
-
-  &__soldout {
-    font-size: 24rpx;
-    color: $tm-text-muted;
-  }
+.add-btn {
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: $tm-primary;
+  color: #fff;
+  font-size: 26rpx;
+}
+.added {
+  font-size: 26rpx;
+  color: $tm-success;
 }
 
 .stepper {
   display: flex;
   align-items: center;
   gap: 16rpx;
-
   &__btn {
     width: 56rpx;
     height: 56rpx;
@@ -384,7 +423,6 @@ onShow(() => {
     color: $tm-primary;
     font-size: 36rpx;
   }
-
   &__val {
     min-width: 48rpx;
     text-align: center;
@@ -410,17 +448,12 @@ onShow(() => {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 32rpx;
-  /* 底部安全区避让：避免全面屏/鸿蒙手势条遮挡按钮（HarmonyOS 适配 §3） */
   padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
   background: $tm-card-bg;
   border-top: 1rpx solid $tm-border;
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
 
-  &__text {
-    font-size: 28rpx;
-    color: $tm-text;
-  }
-
+  &__text { font-size: 28rpx; color: $tm-text; }
   &__btn {
     padding: 14rpx 48rpx;
     border-radius: 999rpx;

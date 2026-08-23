@@ -2,7 +2,7 @@
   <view class="login-page">
     <view class="brand">
       <view class="logo">🔧</view>
-      <view class="title">工器通</view>
+      <view class="title">项目管理部工具物料管理系统</view>
       <view class="subtitle">扫码领用 · 库存盘点 · 一键盘点</view>
     </view>
 

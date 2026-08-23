@@ -20,6 +20,7 @@ const router = createRouter({
         { path: 'toolkits', name: 'ToolkitManagement', component: () => import('@/views/ToolkitManagement.vue'), meta: { requireAdmin: true } },
         { path: 'tools', name: 'ToolManagement', component: () => import('@/views/ToolManagement.vue') },
         { path: 'spare-parts', name: 'SparePartManagement', component: () => import('@/views/SparePartManagement.vue') },
+        { path: 'spare-items', name: 'SpareItemManagement', component: () => import('@/views/SpareItemManagement.vue'), meta: { requireAdmin: true } },
         { path: 'consumables', name: 'ConsumableManagement', component: () => import('@/views/ConsumableManagement.vue') },
         { path: 'safety-supplies', name: 'SafetySupplyManagement', component: () => import('@/views/SafetySupplyManagement.vue') },
         { path: 'material-categories', name: 'MaterialCategoryManagement', component: () => import('@/views/MaterialCategoryManagement.vue') },

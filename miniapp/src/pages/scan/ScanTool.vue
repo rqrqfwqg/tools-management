@@ -20,7 +20,7 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useScanner } from '@/composables/useScanner'
 import { getToolByCode } from '@/api'
-import { getSpareParts, getConsumables } from '@/api/material'
+import { getSpareItems, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { useCartStore } from '@/store/cart'
 import { useMaterialCartStore } from '@/store/materialCart'
@@ -60,26 +60,31 @@ async function handleCode(raw: string): Promise<void> {
     // 非工具码，继续按物料处理
   }
 
-  // 2) 物料码：匹配备件/消耗品 → 加入物料购物车 → 跳物料领用页
+  // 2) 物料码：匹配备件单品/消耗品 → 加入物料购物车 → 跳物料领用页
   const [sp, co] = await Promise.all([
-    getSpareParts().catch(() => []),
+    getSpareItems().catch(() => []),
     getConsumables().catch(() => [])
   ])
   const spares: any[] = toArray(sp)
   const cons: any[] = toArray(co)
   const c = code.toUpperCase()
 
+  // 备件单品（一对一码，如 SP-000123）：直接借用该件
   const spare = spares.find((s) => (s.spare_code || '').toUpperCase() === c)
   if (spare) {
+    if (spare.status && spare.status !== 'in_stock') {
+      showToast(`「${spare.spare_name || spare.spare_code}」不在库，无法借用`, 'none')
+      return
+    }
     materialCart.addItem(
       {
-        key: `spare:${spare.spare_id}`,
-        type: 'spare',
-        id: spare.spare_id,
+        key: `spare_item:${spare.item_id}`,
+        type: 'spare_item',
+        id: spare.item_id,
         code: spare.spare_code || '',
         name: spare.spare_name || '',
-        unit: spare.unit || '',
-        stock: Number(spare.stock_qty ?? 0)
+        unit: spare.unit || '件',
+        stock: 1
       },
       1
     )
@@ -98,7 +103,8 @@ async function handleCode(raw: string): Promise<void> {
         code: con.consumable_code || '',
         name: con.consumable_name || '',
         unit: con.unit || '',
-        stock: Number(con.stock_qty ?? 0)
+        stock: Number(con.stock_qty ?? 0),
+        outboundType: (con.outbound_type || 'direct') as 'workorder' | 'direct'
       },
       1
     )

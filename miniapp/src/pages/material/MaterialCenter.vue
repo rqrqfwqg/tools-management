@@ -10,37 +10,49 @@
 
     <!-- 概览 -->
     <view class="summary" v-if="loaded">
-      <text class="summary__item">备件 {{ spares.length }}</text>
+      <text class="summary__item">备件 {{ spareCount }} 件</text>
       <text class="summary__sep">·</text>
-      <text class="summary__item">消耗品 {{ consumables.length }}</text>
+      <text class="summary__item">消耗品 {{ consumables.length }} 种</text>
       <text class="summary__sep">·</text>
       <text class="summary__item summary__item--warn">低库存 {{ lowCount }}</text>
     </view>
     <view class="summary" v-else>加载中…</view>
 
     <view class="entries">
-      <!-- 备件入口 -->
+      <!-- 备件入口（序列化单品，一对一码） -->
       <view class="entry" @tap="goSpares">
         <view class="entry__icon entry__icon--blue">备</view>
         <view class="entry__info">
           <text class="entry__title">备件</text>
-          <text class="entry__sub">按型号管理 · 领用生成工单</text>
+          <text class="entry__sub">单品管理 · 一对一二维码 · 多件同货位</text>
         </view>
         <view class="entry__right">
-          <text class="entry__count">{{ spares.length }}</text>
+          <text class="entry__count">{{ spareCount }}</text>
           <text class="entry__arrow">›</text>
         </view>
       </view>
 
-      <!-- 消耗品入口 -->
+      <!-- 消耗品入口（需工单 / 免工单 两种出库） -->
       <view class="entry" @tap="goConsumables">
         <view class="entry__icon entry__icon--green">耗</view>
         <view class="entry__info">
           <text class="entry__title">消耗品</text>
-          <text class="entry__sub">直接消耗 · 即时领取</text>
+          <text class="entry__sub">需工单出库 / 免工单出库 两种</text>
         </view>
         <view class="entry__right">
           <text class="entry__count">{{ consumables.length }}</text>
+          <text class="entry__arrow">›</text>
+        </view>
+      </view>
+
+      <!-- 标签打印入口（蓝牙逐个打印二维码标签） -->
+      <view class="entry" @tap="goPrint">
+        <view class="entry__icon entry__icon--cyan">印</view>
+        <view class="entry__info">
+          <text class="entry__title">标签打印</text>
+          <text class="entry__sub">蓝牙连接精臣条码机 · 逐个打印二维码</text>
+        </view>
+        <view class="entry__right">
           <text class="entry__arrow">›</text>
         </view>
       </view>
@@ -50,7 +62,7 @@
         <view class="entry__icon entry__icon--orange">领</view>
         <view class="entry__info">
           <text class="entry__title">物料领用</text>
-          <text class="entry__sub">备件提交工单 · 消耗品即时领取</text>
+          <text class="entry__sub">备件单件借用 · 消耗品按出库类型</text>
         </view>
         <view class="entry__right">
           <text class="entry__arrow">›</text>
@@ -69,12 +81,12 @@
         </view>
       </view>
 
-      <!-- 库存盘点入口（仅物料管理员可见：建单/完成盘库需该权限） -->
+      <!-- 库存盘点入口（仅物料管理员可见） -->
       <view class="entry" v-if="auth.isMaterialManager" @tap="goInventory">
         <view class="entry__icon entry__icon--purple">盘</view>
         <view class="entry__info">
           <text class="entry__title">库存盘点</text>
-          <text class="entry__sub">扫码盘点备件与消耗品库存</text>
+          <text class="entry__sub">扫码盘点备件单品与消耗品</text>
         </view>
         <view class="entry__right">
           <text class="entry__arrow">›</text>
@@ -87,43 +99,40 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getSpareParts, getConsumables } from '@/api/material'
+import { getSpareItems, getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { useAuthStore } from '@/store/auth'
-import type { SparePart, Consumable } from '@/types'
+import type { SpareItem, Consumable } from '@/types'
 
-const spares = ref<SparePart[]>([])
+const spareItems = ref<SpareItem[]>([])
 const consumables = ref<Consumable[]>([])
 const loaded = ref(false)
 const auth = useAuthStore()
+
+const spareCount = computed(() => spareItems.value.length)
 
 function isLow(c: Consumable): boolean {
   if (c.warning_qty == null) return false
   return (c.stock_qty ?? 0) <= c.warning_qty
 }
 
-const lowCount = computed(
-  () =>
-    spares.value.filter((s) => (s as any).is_low_stock).length +
-    consumables.value.filter(isLow).length
-)
+const lowCount = computed(() => consumables.value.filter(isLow).length)
 
 function goSpares() {
   uni.navigateTo({ url: '/pages/material/SparePartList' })
 }
-
 function goConsumables() {
   uni.navigateTo({ url: '/pages/material/ConsumableList' })
 }
-
+function goPrint() {
+  uni.navigateTo({ url: '/pages/print/PrinterLabel' })
+}
 function goDispense() {
   uni.navigateTo({ url: '/pages/material/MaterialDispense' })
 }
-
 function goSafety() {
   uni.navigateTo({ url: '/pages/material/SafetySupplies' })
 }
-
 function goInventory() {
   uni.navigateTo({ url: '/pages/inventory/Inventory' })
 }
@@ -132,10 +141,10 @@ async function load() {
   loaded.value = false
   try {
     const [sp, co] = await Promise.all([
-      getSpareParts().catch(() => []),
+      getSpareItems().catch(() => []),
       getConsumables().catch(() => [])
     ])
-    spares.value = toArray(sp) as SparePart[]
+    spareItems.value = toArray(sp) as SpareItem[]
     consumables.value = toArray(co) as Consumable[]
   } finally {
     loaded.value = true
@@ -239,6 +248,7 @@ onShow(() => {
     &--orange { background: $tm-warning; }
     &--red { background: $tm-danger; }
     &--purple { background: #7c4dff; }
+    &--cyan { background: #0096c7; }
   }
 
   &__info {

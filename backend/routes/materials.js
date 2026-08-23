@@ -547,7 +547,7 @@ router.post('/consumables', authenticate, requireMaterialManager, [
   body('consumable_name').notEmpty().withMessage('消耗品名称不能为空'),
   validate
 ], (req, res) => {
-  const { consumable_code, consumable_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, stock_qty, warning_qty, price, description } = req.body;
+  const { consumable_code, consumable_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, stock_qty, warning_qty, price, description, require_order } = req.body;
   const db = readDB();
   if ((db.consumables || []).find(c => c.consumable_code === consumable_code)) {
     return res.status(400).json({ message: '消耗品编码已存在' });
@@ -561,7 +561,7 @@ router.post('/consumables', authenticate, requireMaterialManager, [
   if (storage_location_id && shelf_id && warehouse_id && location && (location.shelf_id !== shelf_id || location.warehouse_id !== warehouse_id)) {
     return res.status(400).json({ message: '货位不属于所选货架或仓库' });
   }
-  const newConsumable = {
+    const newConsumable = {
     consumable_id: nextId(db.consumables || [], 'consumable_id'),
     consumable_code, consumable_name, category_id: category_id || null,
     category_name: (db.material_categories || []).find(c => c.category_id === category_id)?.category_name || '',
@@ -570,10 +570,11 @@ router.post('/consumables', authenticate, requireMaterialManager, [
     shelf_id: shelf_id || null,
     storage_location_id: storage_location_id || null,
     storage_location: location ? `${shelf?.shelf_name || ''}${location.location_name}` : '',
-    stock_qty: stock_qty != null ? Number(stock_qty) : 0,
+    stock_qty: stock_qty != 0 && stock_qty != null ? Number(stock_qty) : 0,
     unit: unit || '个',
     warning_qty: warning_qty != null && warning_qty !== '' ? Number(warning_qty) : null,
     price: price != null && price !== '' ? Number(price) : null,
+    require_order: !!require_order, // true=需工单出库 / false=免工单直领
     image_url: '', description: description || '',
     total_out: 0, created_at: nowCST()
   };
@@ -585,7 +586,7 @@ router.post('/consumables', authenticate, requireMaterialManager, [
 
 router.put('/consumables/:id', authenticate, requireMaterialManager, (req, res) => {
   const id = parseInt(req.params.id);
-  const { consumable_code, consumable_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, stock_qty, warning_qty, price, description, image_url } = req.body;
+  const { consumable_code, consumable_name, category_id, warehouse_id, shelf_id, storage_location_id, unit, stock_qty, warning_qty, price, description, image_url, require_order } = req.body;
   const db = readDB();
   const idx = (db.consumables || []).findIndex(c => c.consumable_id === id);
   if (idx === -1) return res.status(404).json({ message: '消耗品不存在' });
@@ -607,6 +608,7 @@ router.put('/consumables/:id', authenticate, requireMaterialManager, (req, res) 
     stock_qty: stock_qty != null ? Number(stock_qty) : db.consumables[idx].stock_qty,
     warning_qty: warning_qty != null && warning_qty !== '' ? Number(warning_qty) : db.consumables[idx].warning_qty,
     price: price != null && price !== '' ? Number(price) : db.consumables[idx].price,
+    require_order: require_order !== undefined ? !!require_order : db.consumables[idx].require_order,
     description: description !== undefined ? description : db.consumables[idx].description,
     image_url: image_url !== undefined ? image_url : db.consumables[idx].image_url
   };
@@ -651,6 +653,9 @@ router.post('/consumables/code/:code/take', authenticate, [
   const user = db.users.find(u => u.user_id === req.user.user_id);
   const c = (db.consumables || []).find(cc => cc.consumable_code === code);
   if (!c) return res.status(404).json({ message: `未找到编码为 "${code}" 的消耗品` });
+  if (c.require_order) {
+    return res.status(400).json({ message: `「${c.consumable_name}」需工单出库，请通过物料领用单办理，不能扫码直领` });
+  }
   if (qty > c.stock_qty) {
     return res.status(400).json({ message: `领用数量 ${qty} 超出当前库存 ${c.stock_qty}` });
   }
@@ -708,6 +713,131 @@ router.post('/consumables/:id/upload-image', authenticate, requireMaterialManage
     console.error('[Upload] 消耗品图片压缩失败:', err.message);
     res.status(500).json({ message: '图片处理失败: ' + err.message });
   }
+});
+
+// ============ 备件实例（一物一码） ============
+// 与 spare_parts（型号目录）并存：每件实物一条记录，唯一 QR（item_code），同一货位可存放多件。
+function genSpareItemCode() {
+  // 形如 SI-XXXXXXXX（8 位十六进制），前缀 SI- 便于扫码区分
+  return 'SI-' + crypto.randomBytes(5).toString('hex').toUpperCase();
+}
+
+// 批量生成备件实例（用于打印二维码）：同一规格一次性生成 N 个实物
+router.post('/spare-items/batch', authenticate, requireMaterialManager, [
+  body('spare_name').notEmpty().withMessage('名称不能为空'),
+  body('count').isInt({ min: 1, max: 500 }).withMessage('数量需为 1~500 的整数'),
+  validate
+], (req, res) => {
+  const { spare_name, category_id, model, unit, warehouse_id, shelf_id, storage_location_id, status, count } = req.body;
+  const db = readDB();
+  const warehouse = db.warehouses.find(w => w.warehouse_id === Number(warehouse_id));
+  const shelf = db.shelves.find(s => s.shelf_id === Number(shelf_id));
+  const location = db.storage_locations.find(l => l.location_id === Number(storage_location_id));
+  if (!warehouse) return res.status(400).json({ message: '仓库不存在' });
+  if (shelf_id && warehouse_id && shelf && shelf.warehouse_id !== Number(warehouse_id)) {
+    return res.status(400).json({ message: '货架不属于所选仓库' });
+  }
+  if (storage_location_id && shelf_id && location && location.shelf_id !== Number(shelf_id)) {
+    return res.status(400).json({ message: '货位不属于所选货架' });
+  }
+  const category = db.material_categories.find(c => c.category_id === Number(category_id));
+  const items = [];
+  const n = Number(count);
+  for (let i = 0; i < n; i++) {
+    const item = {
+      item_id: nextId(db.spare_items || [], 'item_id'),
+      item_code: genSpareItemCode(),
+      spare_name,
+      model: model || '',
+      category_id: category_id || null,
+      category_name: category ? category.category_name : '',
+      warehouse_id: Number(warehouse_id),
+      warehouse_name: warehouse.warehouse_name,
+      shelf_id: shelf ? shelf.shelf_id : null,
+      shelf_name: shelf ? shelf.shelf_name : '',
+      storage_location_id: location ? location.location_id : null,
+      location_code: location ? location.location_code : '',
+      location_name: location ? location.location_name : '',
+      unit: unit || '件',
+      status: status || 'available',
+      created_at: nowCST()
+    };
+    db.spare_items.push(item);
+    items.push(item);
+  }
+  writeDB(db);
+  res.json({ message: `已生成 ${items.length} 个备件实例`, items });
+});
+
+// 查询列表（支持筛选）
+router.get('/spare-items', authenticate, (req, res) => {
+  const db = readDB();
+  let list = (db.spare_items || []).slice();
+  const { keyword, status, warehouse_id, category_id } = req.query;
+  if (status) list = list.filter(i => i.status === status);
+  if (warehouse_id) list = list.filter(i => i.warehouse_id === Number(warehouse_id));
+  if (category_id) list = list.filter(i => i.category_id === Number(category_id));
+  if (keyword) {
+    const kw = (keyword || '').toLowerCase();
+    list = list.filter(i =>
+      (i.spare_name || '').toLowerCase().includes(kw) ||
+      (i.item_code || '').toLowerCase().includes(kw) ||
+      (i.model || '').toLowerCase().includes(kw));
+  }
+  res.json(list);
+});
+
+// 按编码解析单个实例（扫码识别）
+router.get('/spare-items/code/:code', authenticate, (req, res) => {
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
+  const db = readDB();
+  const item = (db.spare_items || []).find(i => i.item_code.toUpperCase() === code);
+  if (!item) return res.status(404).json({ message: `未找到编码为 "${code}" 的备件实例` });
+  res.json(item);
+});
+
+// 更新实例（改状态/位置）
+router.put('/spare-items/:id', authenticate, requireMaterialManager, (req, res) => {
+  const id = parseInt(req.params.id);
+  const db = readDB();
+  const idx = (db.spare_items || []).findIndex(i => i.item_id === id);
+  if (idx === -1) return res.status(404).json({ message: '备件实例不存在' });
+  const { spare_name, model, unit, warehouse_id, shelf_id, storage_location_id, status, category_id } = req.body;
+  const item = db.spare_items[idx];
+  if (warehouse_id != null) {
+    const w = db.warehouses.find(w => w.warehouse_id === Number(warehouse_id));
+    if (!w) return res.status(400).json({ message: '仓库不存在' });
+    item.warehouse_id = Number(warehouse_id); item.warehouse_name = w.warehouse_name;
+  }
+  if (shelf_id != null) {
+    const s = db.shelves.find(s => s.shelf_id === Number(shelf_id));
+    if (s) { item.shelf_id = s.shelf_id; item.shelf_name = s.shelf_name; }
+  }
+  if (storage_location_id != null) {
+    const l = db.storage_locations.find(l => l.location_id === Number(storage_location_id));
+    if (l) { item.storage_location_id = l.location_id; item.location_code = l.location_code; item.location_name = l.location_name; }
+  }
+  if (spare_name != null) item.spare_name = spare_name;
+  if (model != null) item.model = model;
+  if (unit != null) item.unit = unit;
+  if (status != null) item.status = status;
+  if (category_id != null) {
+    const c = db.material_categories.find(c => c.category_id === Number(category_id));
+    item.category_id = category_id; item.category_name = c ? c.category_name : '';
+  }
+  writeDB(db);
+  res.json(item);
+});
+
+// 删除实例
+router.delete('/spare-items/:id', authenticate, requireMaterialManager, (req, res) => {
+  const id = parseInt(req.params.id);
+  const db = readDB();
+  const idx = (db.spare_items || []).findIndex(i => i.item_id === id);
+  if (idx === -1) return res.status(404).json({ message: '备件实例不存在' });
+  db.spare_items.splice(idx, 1);
+  writeDB(db);
+  res.json({ message: '删除成功' });
 });
 
 // ============ 出入库流水 ============
@@ -871,7 +1001,16 @@ function makeResolvedByItem(db, itemType, item) {
 function resolveMaterialTarget(db, code) {
   const norm = String(code == null ? '' : code).trim().toUpperCase();
   if (!norm) return null;
-  // ① 货位码优先：定位货位 → 找该货位上绑定的物料（备件/消耗品）
+  // ① 备件实例二维码（SI- 前缀）：直接定位到该实物，其货位即归属
+  if (norm.startsWith('SI-')) {
+    const si = (db.spare_items || []).find(i => i.item_code.toUpperCase() === norm);
+    if (si) {
+      const loc = (db.storage_locations || []).find(l => l.location_id === si.storage_location_id) || null;
+      return { itemType: 'spare_item', item: si, itemCode: si.item_code, itemName: si.spare_name, location: loc };
+    }
+    return null;
+  }
+  // ② 货位码优先：定位货位 → 找该货位上绑定的物料（备件/消耗品）
   const location = (db.storage_locations || []).find(l => (l.location_code || '').toUpperCase() === norm);
   if (location) {
     const mats = [
@@ -940,7 +1079,7 @@ router.post('/inventory-checks/:id/scan', authenticate, [
       item_type: resolved.itemType,
       item_code: resolved.itemCode,
       item_name: resolved.itemName,
-      system_qty: Number(resolved.item.stock_qty || 0),
+      system_qty: resolved.itemType === 'spare_item' ? 1 : Number(resolved.item.stock_qty || 0),
       location: buildLocationPayload(db, resolved.location)
     });
   }
@@ -949,7 +1088,7 @@ router.post('/inventory-checks/:id/scan', authenticate, [
   // 记录实际盘点人（扫码者 = 当前登录用户），供完成时署名差异流水（谁盘点谁署名）。
   let actual = Math.floor(Number(actual_qty));
   if (!Number.isFinite(actual) || actual < 0) actual = 0;
-  const system_qty = Number(resolved.item.stock_qty || 0);
+  const system_qty = resolved.itemType === 'spare_item' ? 1 : Number(resolved.item.stock_qty || 0);
   const locCode = resolved.location ? (resolved.location.location_code || '') : '';
   const locKey = (locCode || resolved.itemCode).toUpperCase();
   const locName = resolved.location ? (resolved.location.location_name || '') : '';

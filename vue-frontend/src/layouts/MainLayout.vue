@@ -1,7 +1,7 @@
 <template>
   <el-container style="height:100vh">
     <el-aside width="200px" style="background:#304156">
-      <div class="logo">物料管理系统</div>
+      <div class="logo">项目管理部工具物料管理系统</div>
       <el-menu
         :default-active="route.path"
         router
@@ -54,6 +54,7 @@
             <span>物料管理</span>
           </template>
           <el-menu-item index="/spare-parts">备件管理</el-menu-item>
+          <el-menu-item index="/spare-items">备件实例（一物一码）</el-menu-item>
           <el-menu-item index="/consumables">消耗品管理</el-menu-item>
           <el-menu-item index="/material-categories">物料分类</el-menu-item>
           <el-menu-item index="/stock-movements">出入库流水</el-menu-item>

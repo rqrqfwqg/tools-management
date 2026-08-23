@@ -31,6 +31,11 @@
       <el-table-column prop="shelf_name" label="货架" min-width="80" show-overflow-tooltip />
       <el-table-column prop="location_name" label="库位" min-width="80" show-overflow-tooltip />
       <el-table-column prop="stock_qty" label="当前库存" width="100" />
+      <el-table-column label="出库方式" width="110">
+        <template #default="{row}">
+          <el-tag :type="row.require_order ? 'warning' : 'success'" size="small">{{ row.require_order ? '需工单' : '免工单' }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="预警值" width="90">
         <template #default="{row}">{{ row.warning_qty != null ? row.warning_qty : '-' }}</template>
       </el-table-column>
@@ -75,6 +80,9 @@
         <el-form-item label="当前库存"><el-input-number v-model="form.stock_qty" :min="0" /></el-form-item>
         <el-form-item label="预警值"><el-input-number v-model="form.warning_qty" :min="0" /></el-form-item>
         <el-form-item label="单位"><el-input v-model="form.unit" placeholder="如 个" /></el-form-item>
+        <el-form-item label="出库方式">
+          <el-switch v-model="form.require_order" active-text="需工单出库" inactive-text="免工单直领" />
+        </el-form-item>
         <el-form-item label="规格"><el-input v-model="form.spec" placeholder="选填" /></el-form-item>
         <el-form-item label="型号"><el-input v-model="form.model" placeholder="选填" /></el-form-item>
         <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
@@ -204,7 +212,7 @@ const loadLocations = async () => { locations.value = await getStorageLocations(
 
 const openDialog = (row?: any) => {
   if (row) form.value = { ...row }
-  else form.value = { unit: '个', stock_qty: 0, warning_qty: null, warehouse_id: undefined, shelf_id: undefined, storage_location_id: undefined }
+  else form.value = { unit: '个', stock_qty: 0, warning_qty: null, require_order: false, warehouse_id: undefined, shelf_id: undefined, storage_location_id: undefined }
   dialogVisible.value = true
 }
 

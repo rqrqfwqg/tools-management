@@ -1,17 +1,18 @@
 /**
  * materialCart store — 物料购物车（备件/消耗品独立领用篮，与工具购物车 cart 完全分开）
  *
- * - 购物车项：备件（spare）与消耗品（cons）可混存，按 key 区分
- * - key 格式：`spare:{spare_id}` / `cons:{consumable_id}`
- * - 数量上限受 stock 约束，qty <= 0 自动移除
+ * - 购物车项：备件单品（spare_item）、旧数量型备件（spare）、消耗品（cons）可混存，按 key 区分
+ * - key 格式：`spare_item:{item_id}` / `spare:{spare_id}` / `cons:{consumable_id}`
+ * - 备件单品为序列化一对一管理，每件即 1 实物，qty 恒为 1
+ * - 数量型项数量上限受 stock 约束，qty <= 0 自动移除
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export interface MaterialCartItem {
   key: string
-  type: 'spare' | 'cons'
-  /** spare_id 或 consumable_id */
+  type: 'spare_item' | 'spare' | 'cons'
+  /** spare_item 为 item_id；spare 为 spare_id；cons 为 consumable_id */
   id: number
   code: string
   name: string
@@ -19,6 +20,8 @@ export interface MaterialCartItem {
   stock: number
   qty: number
   warehouse?: string
+  /** 消耗品出库方式（需工单 / 免工单）；spare_item 无此字段 */
+  outboundType?: 'workorder' | 'direct'
 }
 
 export const useMaterialCartStore = defineStore('materialCart', () => {
@@ -37,18 +40,19 @@ export const useMaterialCartStore = defineStore('materialCart', () => {
     return items.value.some((i) => i.key === key && i.qty > 0)
   }
 
-  /** 加入/累加数量（不超过库存） */
+  /** 加入/累加数量（不超过库存；备件单品恒为 1） */
   function addItem(item: Omit<MaterialCartItem, 'qty'>, qty = 1): number {
     const existing = items.value.find((i) => i.key === item.key)
     if (existing) {
+      if (existing.type === 'spare_item') return existing.qty // 单品不可累加
       const next = Math.min(existing.qty + qty, existing.stock)
       existing.qty = next
       return next
     }
-    const n = Math.min(Math.max(qty, 1), item.stock)
-    if (n <= 0) return 0
-    items.value.push({ ...item, qty: n })
-    return n
+    const cap = item.type === 'spare_item' ? 1 : Math.min(Math.max(qty, 1), item.stock)
+    if (cap <= 0) return 0
+    items.value.push({ ...item, qty: cap })
+    return cap
   }
 
   /** 设置数量（<=0 移除） */

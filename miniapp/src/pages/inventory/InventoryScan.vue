@@ -21,14 +21,21 @@
     <view v-if="current" class="current">
       <view class="current__head">
         <text class="current__loc">{{ current.location_code || '—' }}</text>
-        <text class="type-tag" :class="current.item_type === 'spare' ? 'type-tag--spare' : 'type-tag--cons'">
-          {{ current.item_type === 'spare' ? '备件' : '消耗品' }}
-        </text>
+        <text class="type-tag" :class="typeClass(current.item_type)">{{ typeText(current.item_type) }}</text>
         <text v-if="current.counted" class="current__re">已录入</text>
       </view>
       <view class="current__name">{{ current.item_name }}<text class="current__code">（{{ current.item_code }}）</text></view>
-      <view class="current__ref">系统库存 <text class="current__ref-num">{{ current.system_qty }}</text> · 以现场清点为准</view>
-      <view class="current__input-row">
+      <view v-if="current.item_type === 'spare_item'" class="current__ref">备件单品（一对一码）· 现场核对是否在库</view>
+      <view v-else class="current__ref">系统库存 <text class="current__ref-num">{{ current.system_qty }}</text> · 以现场清点为准</view>
+      <view class="current__input-row" v-if="current.item_type === 'spare_item'">
+        <text class="current__input-label">实盘</text>
+        <view class="presence">
+          <view class="presence__btn" :class="{ 'presence__btn--on': currentInput === 1 }" @tap="setPresence(1)">在库</view>
+          <view class="presence__btn" :class="{ 'presence__btn--on presence__btn--off': currentInput === 0 }" @tap="setPresence(0)">缺失</view>
+        </view>
+        <view class="current__submit" :class="{ 'current__submit--disabled': locked }" @tap="submitCurrent">确定</view>
+      </view>
+      <view class="current__input-row" v-else>
         <text class="current__input-label">实盘数量</text>
         <input
           class="current__input"
@@ -60,9 +67,7 @@
         <view class="item__head">
           <text class="item__loc">{{ it.location_code || '—' }}</text>
           <text class="item__name">{{ it.item_name }}</text>
-          <text class="type-tag" :class="it.item_type === 'spare' ? 'type-tag--spare' : 'type-tag--cons'">
-            {{ it.item_type === 'spare' ? '备件' : '消耗品' }}
-          </text>
+          <text class="type-tag" :class="typeClass(it.item_type)">{{ typeText(it.item_type) }}</text>
         </view>
         <view class="item__row">
           <text class="item__cell">系统 {{ it.system_qty }}</text>
@@ -74,7 +79,7 @@
     </scroll-view>
 
     <view class="empty" v-show="!items.length && !current">
-      <text class="empty__text">扫货位二维码开始盘点（货位一码一种物料）</text>
+      <text class="empty__text">扫货位二维码开始盘点（货位可放多件备件/消耗品；备件单品按一对一码核对在库）</text>
     </view>
 
     <!-- 扫码按钮 -->
@@ -145,6 +150,23 @@ async function load() {
   } finally {
     loaded.value = true
   }
+}
+
+/** 物料类型 → 标签文案/样式（备件单品/备件/消耗品） */
+function typeText(t: string): string {
+  if (t === 'spare_item') return '备件单品'
+  if (t === 'spare') return '备件'
+  return '消耗品'
+}
+function typeClass(t: string): string {
+  if (t === 'spare_item' || t === 'spare') return 'type-tag--spare'
+  return 'type-tag--cons'
+}
+/** 备件单品存在性录入：1=在库 0=缺失 */
+function setPresence(v: number): void {
+  if (locked.value) return
+  currentInput.value = v
+  submitCurrent()
 }
 
 function diffOf(it: any): number {
@@ -369,6 +391,35 @@ async function finish() {
     font-size: 28rpx;
     font-weight: 500;
     &--disabled { background: $tm-border; }
+  }
+}
+
+.presence {
+  display: flex;
+  gap: 16rpx;
+  flex: 1;
+
+  &__btn {
+    flex: 1;
+    height: 64rpx;
+    line-height: 64rpx;
+    text-align: center;
+    border-radius: 12rpx;
+    border: 1rpx solid $tm-border;
+    background: $tm-bg;
+    color: $tm-text-secondary;
+    font-size: 28rpx;
+
+    &--on {
+      background: $tm-success;
+      color: #fff;
+      border-color: $tm-success;
+    }
+    &--off {
+      background: $tm-danger;
+      color: #fff;
+      border-color: $tm-danger;
+    }
   }
 }
 

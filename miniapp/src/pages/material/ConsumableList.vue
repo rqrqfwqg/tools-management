@@ -5,9 +5,30 @@
       <text class="bar__refresh" @tap="load">刷新</text>
     </view>
 
+    <!-- 出库类型切换：需工单 / 免工单 -->
+    <view class="tabs">
+      <view
+        class="tabs__item"
+        :class="{ 'tabs__item--active': active === 'all' }"
+        @tap="switchTab('all')"
+      >全部</view>
+      <view
+        class="tabs__item"
+        :class="{ 'tabs__item--active': active === 'workorder' }"
+        @tap="switchTab('workorder')"
+      >需工单出库</view>
+      <view
+        class="tabs__item"
+        :class="{ 'tabs__item--active': active === 'direct' }"
+        @tap="switchTab('direct')"
+      >免工单出库</view>
+    </view>
+
     <scroll-view scroll-y class="list" v-show="consumables.length">
       <view class="card" v-for="c in consumables" :key="'c' + c.consumable_id">
-        <image v-if="c.image_url" class="card__thumb" :src="resolveImage(c.image_url)" mode="aspectFill" />
+        <view v-if="c.image_url" class="card__thumb">
+          <image :src="resolveImage(c.image_url)" mode="aspectFill" class="card__thumb-img" />
+        </view>
         <view v-else class="card__thumb card__thumb--text">{{ (c.consumable_name || c.consumable_code).charAt(0) }}</view>
         <view class="card__main">
           <text class="card__name">{{ c.consumable_name || c.consumable_code }}</text>
@@ -17,9 +38,10 @@
           </text>
         </view>
         <view class="card__side">
-          <text class="qty" :class="{ 'qty--low': isLow(c) }">
-            {{ c.stock_qty ?? 0 }}{{ c.unit || '' }}
+          <text class="outbound" :class="'outbound--' + (c.outbound_type || 'direct')">
+            {{ OUTBOUND_TYPE_TEXT[c.outbound_type || 'direct'] }}
           </text>
+          <text class="qty" :class="{ 'qty--low': isLow(c) }">{{ c.stock_qty ?? 0 }}{{ c.unit || '' }}</text>
           <text v-if="isLow(c)" class="tag">低库存</text>
         </view>
       </view>
@@ -37,8 +59,10 @@ import { onShow } from '@dcloudio/uni-app'
 import { getConsumables } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
+import { OUTBOUND_TYPE_TEXT } from '@/constants/material'
 import type { Consumable } from '@/types'
 
+const active = ref<'all' | 'workorder' | 'direct'>('all')
 const consumables = ref<Consumable[]>([])
 const loaded = ref(false)
 
@@ -50,11 +74,19 @@ function isLow(c: Consumable): boolean {
 async function load() {
   loaded.value = false
   try {
-    const data = await getConsumables().catch(() => [])
+    const params =
+      active.value === 'all' ? {} : { outbound_type: active.value }
+    const data = await getConsumables(params).catch(() => [])
     consumables.value = toArray(data) as Consumable[]
   } finally {
     loaded.value = true
   }
+}
+
+function switchTab(tab: 'all' | 'workorder' | 'direct') {
+  if (active.value === tab) return
+  active.value = tab
+  load()
 }
 
 onShow(() => {
@@ -89,6 +121,29 @@ onShow(() => {
   }
 }
 
+.tabs {
+  display: flex;
+  background: $tm-card-bg;
+  padding: 12rpx 24rpx;
+  gap: 16rpx;
+
+  &__item {
+    flex: 1;
+    text-align: center;
+    padding: 14rpx 0;
+    font-size: 26rpx;
+    color: $tm-text-secondary;
+    border-radius: $tm-radius-sm;
+    background: $tm-bg;
+
+    &--active {
+      color: #fff;
+      background: $tm-primary;
+      font-weight: 600;
+    }
+  }
+}
+
 .list {
   flex: 1;
   padding: 16rpx 24rpx 40rpx;
@@ -112,13 +167,19 @@ onShow(() => {
     margin-right: 20rpx;
     flex-shrink: 0;
     background: $tm-border-light;
+    overflow: hidden;
+
+    &-img {
+      width: 100%;
+      height: 100%;
+    }
 
     &--text {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: $tm-primary-bg;
-      color: $tm-primary;
+      background: $tm-success-bg;
+      color: $tm-success;
       font-size: 36rpx;
       font-weight: 600;
     }
@@ -158,6 +219,16 @@ onShow(() => {
   flex-direction: column;
   align-items: flex-end;
   flex-shrink: 0;
+  gap: 8rpx;
+}
+
+.outbound {
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+
+  &--workorder { color: #7c4dff; background: rgba(124, 77, 255, 0.12); }
+  &--direct { color: $tm-success; background: $tm-success-bg; }
 }
 
 .qty {
@@ -171,7 +242,6 @@ onShow(() => {
 }
 
 .tag {
-  margin-top: 8rpx;
   padding: 2rpx 12rpx;
   border-radius: 999rpx;
   font-size: 20rpx;

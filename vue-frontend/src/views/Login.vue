@@ -2,7 +2,7 @@
   <div class="login-container">
     <el-card class="login-card">
       <template #header>
-        <h2>物料管理系统</h2>
+        <h2>项目管理部工具物料管理系统</h2>
       </template>
       <el-form :model="form" ref="formRef">
         <el-form-item>

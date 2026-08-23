@@ -12,8 +12,23 @@ export const MOVEMENT_TYPE_TEXT: Record<string, string> = {
 /** 物料 item_type 中文映射 */
 export const ITEM_TYPE_TEXT: Record<string, string> = {
   spare: '备件',
+  spare_item: '备件单品',
   consumable: '消耗品',
   tool: '工具'
+}
+
+/** 消耗品出库方式中文映射（需工单 / 免工单） */
+export const OUTBOUND_TYPE_TEXT: Record<string, string> = {
+  workorder: '需工单出库',
+  direct: '免工单出库'
+}
+
+/** 备件单品状态中文映射 */
+export const SPARE_ITEM_STATUS_TEXT: Record<string, string> = {
+  in_stock: '在库',
+  borrowed: '借出',
+  out: '已出库',
+  scrapped: '已报废'
 }
 
 /** 出入库前端筛选选项（后端 GET /stock-movements 不支持 movement_type 过滤，纯前端过滤） */
