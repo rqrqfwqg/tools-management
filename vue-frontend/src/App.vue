@@ -1,5 +1,5 @@
 <template>
-  <el-config-provider :locale="zhCn">
+  <el-config-provider :locale="zhCn" :message="{ duration: 2000 }">
     <router-view />
   </el-config-provider>
 </template>
