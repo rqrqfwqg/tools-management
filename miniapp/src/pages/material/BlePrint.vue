@@ -35,7 +35,7 @@
         <text class="label">标签内容</text>
         <text class="hint">每行一个编码（备件二维码 SI-XXXX），或与名称用英文逗号隔开（名称,编码）</text>
       </view>
-      <textarea class="textarea" v-model="raw" placeholder="SI-ABC12345&#10;断路器,SI-ABC12346" />
+      <textarea class="textarea" v-model="raw" placeholder="SI-ABC12345 每行一个；格式：名称,编码（如 断路器,SI-ABC12346）" />
       <view class="actions">
         <button class="btn btn--primary" :disabled="!deviceId" @tap="printAll">连续打印</button>
         <button class="btn" @tap="clearList">清空</button>

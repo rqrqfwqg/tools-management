@@ -67,8 +67,10 @@ function goHome() {
 }
 
 onMounted(() => {
-  // 已登录用户（如重新打开小程序）直接进入首页，不重复展示登录页
-  if (authStore.isLoggedIn) {
+  // 已登录且非游客（已绑定正式账号）才直接进入首页；
+  // 游客 token 同样会被持久化，必须回到登录页以便重新「微信一键登录」并触发绑定弹窗，
+  // 否则游客会永久困在只读模式、再也看不到绑定入口
+  if (authStore.isLoggedIn && !authStore.isGuest) {
     goHome()
   }
 })
