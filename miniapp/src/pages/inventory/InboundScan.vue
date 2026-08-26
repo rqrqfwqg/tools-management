@@ -8,30 +8,44 @@
     <!-- 快捷入库：扫码后预填物料+货位 -->
     <view v-if="scanned" class="card">
       <view class="card__head">
-        <text class="card__name">{{ scanned.item_name }}</text>
-        <text class="type-tag" :class="scanned.item_type === 'spare' ? 'type-tag--spare' : 'type-tag--cons'">
-          {{ scanned.item_type === 'spare' ? '备件' : '消耗品' }}
-        </text>
+        <text class="card__name">{{ scanned.item_name || scanned.location?.location_name || '货位' }}</text>
+        <text class="type-tag" :class="typeClass(scanned.item_type)">{{ typeText(scanned.item_type) }}</text>
       </view>
-      <view class="card__code">{{ scanned.item_code }}</view>
+      <view class="card__code">{{ scanned.item_code || scanned.location?.location_code }}</view>
       <view class="card__row">
         <text class="card__label">目标货位</text>
         <text class="card__value">{{ scanned.location?.location_code }}（{{ scanned.location?.shelf_name || '' }}{{ scanned.location?.location_name || '' }}）</text>
       </view>
-      <view class="card__row">
-        <text class="card__label">现有库存</text>
-        <text class="card__value">{{ scanned.system_qty }}</text>
-      </view>
-      <view class="card__row">
-        <text class="card__label">入库数量</text>
-        <input class="card__input" type="number" :value="String(qty)" @input="onQtyInput" />
-      </view>
-      <view v-if="auth.isMaterialManager" class="card__btn" :class="{ 'card__btn--disabled': submitting }" @tap="quickInbound">
-        {{ submitting ? '提交中…' : '确认入库（生成入库单）' }}
-      </view>
-      <view v-else class="card__hint">普通员工不能直接建入库单，请由物料管理员网页端建单后，在下方按工单扫码收货。</view>
+
+      <!-- 备件单品：逐件扫码登记（一对一码，货位可放多件） -->
+      <template v-if="scanned.item_type === 'spare_item'">
+        <view class="card__row">
+          <text class="card__label">上架方式</text>
+          <text class="card__value">逐件扫码登记（一件一码，货位可放多件）</text>
+        </view>
+        <view class="card__hint">本货位已登记 {{ registeredCount }} 件</view>
+        <view class="card__btn" :class="{ 'card__btn--disabled': submitting }" @tap="registerSpareItem">
+          {{ submitting ? '登记中…' : '扫备件二维码登记入库' }}
+        </view>
+      </template>
+
+      <!-- 消耗品 / 旧备件：数量入库 -->
+      <template v-else>
+        <view class="card__row">
+          <text class="card__label">现有库存</text>
+          <text class="card__value">{{ scanned.system_qty }}</text>
+        </view>
+        <view class="card__row">
+          <text class="card__label">入库数量</text>
+          <input class="card__input" type="number" :value="String(qty)" @input="onQtyInput" />
+        </view>
+        <view v-if="auth.isMaterialManager" class="card__btn" :class="{ 'card__btn--disabled': submitting }" @tap="quickInbound">
+          {{ submitting ? '提交中…' : '确认入库（生成入库单）' }}
+        </view>
+        <view v-else class="card__hint">普通员工不能直接建入库单，请由物料管理员网页端建单后，在下方按工单扫码收货。</view>
+      </template>
     </view>
-    <view v-else class="empty"><text class="empty__text">扫货位二维码开始入库（货位一码一种物料）</text></view>
+    <view v-else class="empty"><text class="empty__text">扫货位二维码开始入库（货位可放多件备件/消耗品）</text></view>
 
     <!-- 待入库单列表：现场按工单扫码收货 -->
     <view class="section-title">待入库单（点击扫码确认收货）</view>
@@ -56,7 +70,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { resolveInboundLocation, createInboundOrder, receiveInboundOrder, getInboundOrders } from '@/api/material'
+import {
+  resolveInboundLocation,
+  createInboundOrder,
+  receiveInboundOrder,
+  getInboundOrders,
+  getSpareItemByCode,
+  updateSpareItem
+} from '@/api/material'
 import { useScanner } from '@/composables/useScanner'
 import { useAuthStore } from '@/store/auth'
 import { showToast, showModal } from '@/utils/feedback'
@@ -66,11 +87,23 @@ const qty = ref(1)
 const submitting = ref(false)
 const pending = ref<any[]>([])
 const loaded = ref(false)
+const registeredCount = ref(0)
 const auth = useAuthStore()
 const { scan } = useScanner()
 
 function onQtyInput(e: any) {
   qty.value = Number(String(e?.detail?.value ?? '').trim()) || 0
+}
+
+/** 物料类型 → 标签文案/样式（备件单品/备件/消耗品） */
+function typeText(t: string): string {
+  if (t === 'spare_item') return '备件单品'
+  if (t === 'spare') return '备件'
+  return '消耗品'
+}
+function typeClass(t: string): string {
+  if (t === 'spare_item' || t === 'spare') return 'type-tag--spare'
+  return 'type-tag--cons'
 }
 
 async function loadPending() {
@@ -94,10 +127,43 @@ async function doScan() {
       await showToast('未找到该货位/物料', 'none')
       return
     }
+    // 后端 resolve-location 对备件单品(spare_item) 返回 system_qty=0（单品无 stock_qty 字段），
+    // 单件实物库存应恒为 1。
+    if (resolved.item_type === 'spare_item') resolved.system_qty = 1
     scanned.value = resolved
     qty.value = 1
+    registeredCount.value = 0
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '编码无法识别', 'none')
+  }
+}
+
+/** 备件单品逐件登记：扫一件实物二维码 → 校验存在 → 上架到当前货位 */
+async function registerSpareItem() {
+  const loc = scanned.value?.location
+  const locationId = Number(loc?.storage_location_id ?? loc?.location_id ?? 0)
+  if (!locationId) {
+    await showToast('货位信息缺失，请重新扫码货位', 'none')
+    return
+  }
+  const res = await scan()
+  if (!res?.code) return
+  const code = res.code.trim().toUpperCase()
+  submitting.value = true
+  try {
+    const item: any = await getSpareItemByCode(code).catch(() => null)
+    if (!item || item.item_id == null) {
+      await showToast('该备件二维码不存在或未登记', 'none')
+      return
+    }
+    // 对齐后端：PUT /spare-items/:id  { storage_location_id } 更新归属货位
+    await updateSpareItem(item.item_id, { storage_location_id: locationId })
+    registeredCount.value += 1
+    await showToast(`已登记：${item.spare_name || code}`, 'success')
+  } catch (e: any) {
+    await showToast(e?.data?.message || e?.message || '登记失败', 'none')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -128,6 +194,7 @@ async function quickInbound() {
     await receiveInboundOrder(order.order_id, { location_code: s.location?.location_code })
     await showToast(`已入库 ${n}，库存已更新`, 'none')
     scanned.value = null
+    registeredCount.value = 0
     await loadPending()
   } catch (e: any) {
     await showToast(e?.data?.message || e?.message || '入库失败', 'none')

@@ -20,7 +20,7 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useScanner } from '@/composables/useScanner'
 import { getToolByCode } from '@/api'
-import { getSpareItems, getConsumables } from '@/api/material'
+import { getSpareItems, getConsumables, mapConsumable } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { useCartStore } from '@/store/cart'
 import { useMaterialCartStore } from '@/store/materialCart'
@@ -69,11 +69,11 @@ async function handleCode(raw: string): Promise<void> {
   const cons: any[] = toArray(co)
   const c = code.toUpperCase()
 
-  // 备件单品（一对一码，如 SP-000123）：直接借用该件
-  const spare = spares.find((s) => (s.spare_code || '').toUpperCase() === c)
+  // 备件单品（一对一码，如 SI-1A2B3C4D）：直接借用该件
+  const spare = spares.find((s) => (s.item_code || '').toUpperCase() === c)
   if (spare) {
     if (spare.status && spare.status !== 'in_stock') {
-      showToast(`「${spare.spare_name || spare.spare_code}」不在库，无法借用`, 'none')
+      showToast(`「${spare.spare_name || spare.item_code}」不在库，无法借用`, 'none')
       return
     }
     materialCart.addItem(
@@ -81,7 +81,7 @@ async function handleCode(raw: string): Promise<void> {
         key: `spare_item:${spare.item_id}`,
         type: 'spare_item',
         id: spare.item_id,
-        code: spare.spare_code || '',
+        code: spare.item_code || '',
         name: spare.spare_name || '',
         unit: spare.unit || '件',
         stock: 1
@@ -95,6 +95,7 @@ async function handleCode(raw: string): Promise<void> {
 
   const con = cons.find((x) => (x.consumable_code || '').toUpperCase() === c)
   if (con) {
+    const mapped = mapConsumable(con)
     materialCart.addItem(
       {
         key: `cons:${con.consumable_id}`,
@@ -104,7 +105,7 @@ async function handleCode(raw: string): Promise<void> {
         name: con.consumable_name || '',
         unit: con.unit || '',
         stock: Number(con.stock_qty ?? 0),
-        outboundType: (con.outbound_type || 'direct') as 'workorder' | 'direct'
+        outboundType: (mapped.outbound_type || 'direct') as 'workorder' | 'direct'
       },
       1
     )

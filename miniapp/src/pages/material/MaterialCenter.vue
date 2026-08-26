@@ -99,7 +99,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getSpareItems, getConsumables } from '@/api/material'
+import { getSpareItems, getConsumables, mapConsumable } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { useAuthStore } from '@/store/auth'
 import type { SpareItem, Consumable } from '@/types'
@@ -145,7 +145,7 @@ async function load() {
       getConsumables().catch(() => [])
     ])
     spareItems.value = toArray(sp) as SpareItem[]
-    consumables.value = toArray(co) as Consumable[]
+    consumables.value = (toArray(co) as Consumable[]).map(mapConsumable)
   } finally {
     loaded.value = true
   }

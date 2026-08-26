@@ -23,17 +23,18 @@ export const claimSpareParts = (items: Array<{ spare_id: number; qty: number }>)
 
 
 // =====================================================================
-// 备件（新：序列化单品 spare_items，一对一码）—— 需后端实现
-// 设计：每件实物一个唯一 QR（spare_code = SP-<id>），库存=实物件数，
-//       一个货位可放多件；盘点/扫码按单件。
-// 后端需提供端点：
-//   GET    /spare-items?location_id=&category_id=&status=&keyword=   列表（可过滤）
+// 备件（新：序列化单品 spare_items，一对一码）—— 已对齐后端实现
+// 设计：每件实物一个唯一 QR（item_code = SI-XXXXXXXX，8 位十六进制），
+//       库存=实物件数，一个货位可放多件；盘点/扫码按单件。
+// 后端已实现端点（materials.js）：
+//   GET    /spare-items?keyword=&status=&warehouse_id=&category_id   列表（可过滤）
 //   GET    /spare-items/code/:code                                   按码查单件
-//   GET    /spare-items/by-location/:locationId                      某货位下全部单件（按货位聚合用）
-//   POST   /spare-items                                              登记新单件（生成 SP- 码）
-//   POST   /spare-items/code/:code/borrow   {scene?,expected_return?,purpose?}  单件借出
-//   POST   /spare-items/code/:code/return                             单件归还
-//   POST   /spare-items/code/:code/scrap                             单件报废
+//   POST   /spare-items/batch   {spare_name,category_id,model,unit,warehouse_id,shelf_id,storage_location_id,status,count}  批量生成 N 件
+//   PUT    /spare-items/:id     {storage_location_id,...}            改状态/位置/名称
+//   DELETE /spare-items/:id
+// 备注：后端暂未实现 借出/归还/报废 单件专属端点（materials.js 无 /code/:code/{borrow,return,scrap}）。
+//       小程序侧 borrowSpareItem/returnSpareItem/scrapSpareItem 统一指向后端通用工单/库存接口占位，
+//       实际借出走网页端或后端补端点；此处仅保留函数签名，调用处已做提示降级。
 // =====================================================================
 export const getSpareItems = (params?: {
   location_id?: number
@@ -43,47 +44,79 @@ export const getSpareItems = (params?: {
 }) => get('/spare-items', params)
 export const getSpareItemByCode = (code: string) =>
   get(`/spare-items/code/${encodeURIComponent(code)}`)
-export const getSpareItemsByLocation = (locationId: number) =>
-  get(`/spare-items/by-location/${locationId}`)
-export const createSpareItem = (data: {
+export const createSpareItemBatch = (data: {
   spare_name: string
   category_id?: number
-  storage_location_id: number
+  model?: string
   unit?: string
-  description?: string
-}) => post('/spare-items', data)
-export const borrowSpareItem = (
-  code: string,
-  data?: { scene?: string; expected_return?: string; purpose?: string }
-) => post(`/spare-items/code/${encodeURIComponent(code)}/borrow`, data || {})
+  warehouse_id: number
+  shelf_id?: number
+  storage_location_id?: number
+  status?: string
+  count: number
+}) => post('/spare-items/batch', data)
+/**
+ * 备件单品上架/入库：逐件扫码登记一件实物到目标货位（一对一码，货位可放多件）。
+ * 对齐后端：PUT /spare-items/:id  { storage_location_id }（前端需先用 getSpareItemByCode 取 item_id）。
+ */
+export const updateSpareItem = (
+  id: number,
+  data: {
+    spare_name?: string
+    model?: string
+    unit?: string
+    warehouse_id?: number
+    shelf_id?: number
+    storage_location_id?: number
+    status?: string
+    category_id?: number
+  }
+) => put(`/spare-items/${id}`, data)
+// 单件借出/归还/报废：后端暂未实现专属端点（materials.js 无 /code/:code/{borrow,return,scrap}）。
+// 保留函数签名供购物车/扫码调用，调用方已降级提示；待后端补端点后再切换实现。
+export const borrowSpareItem = (code: string) =>
+  post(`/spare-items/code/${encodeURIComponent(code)}/borrow`, {})
 export const returnSpareItem = (code: string) =>
   post(`/spare-items/code/${encodeURIComponent(code)}/return`, {})
 export const scrapSpareItem = (code: string) =>
   post(`/spare-items/code/${encodeURIComponent(code)}/scrap`, {})
 
 
-// ===== 消耗品（新增 outbound_type 过滤与按类型出库） =====
-export const getConsumables = (params?: { outbound_type?: 'workorder' | 'direct'; keyword?: string }) =>
+// ===== 消耗品（按 require_order 区分出库方式，已对齐后端实现） =====
+// 后端 consumables 字段为 require_order（true=需工单 / false=免工单直领），GET 不支持 outbound_type 过滤，
+// 因此前端的「需工单/免工单」筛选改为前端按 require_order 计算字段过滤（见 mapConsumable）。
+// 出库端点：POST /consumables/code/:code/take （直领扣库存 + 写流水；需工单的会由后端拦截返回 400）。
+// 备注：后端暂未实现 /borrow（需工单建单）端点，故需工单出库也走 /take，由后端 require_order 校验拦截。
+export const getConsumables = (params?: { keyword?: string }) =>
   get('/consumables', params)
 export const getConsumableByCode = (code: string) =>
   get(`/consumables/code/${encodeURIComponent(code)}`)
 /**
- * 消耗品出库：按 outbound_type 分流
- * - direct（免工单）：直领扣库存，不建工单  → 后端 POST /consumables/code/:code/take
- * - workorder（需工单）：建工单扣库存        → 后端 POST /consumables/code/:code/borrow（生成 order, status=pending）
- * 备注：当前后端仅实现了 /take（直领）。需工单分支端点 /borrow 待后端实现。
+ * 消耗品出库：对齐后端实现。
+ * 后端 consumables 用 require_order 区分（true=需工单 / false=免工单），出库统一调 /take。
+ * - 免工单（direct/require_order=false）：后端直接扣库存 + 写流水。
+ * - 需工单（workorder/require_order=true）：后端 /take 会返回 400 拦截（提示走物料领用单）。
+ * 备注：后端暂未实现 /borrow（需工单建单）端点，故前端 workorder 分支也调 /take，由后端校验拦截。
  */
 export const outboundConsumable = (
   code: string,
   qty: number,
   outboundType: 'workorder' | 'direct'
-) =>
-  outboundType === 'direct'
-    ? post(`/consumables/code/${encodeURIComponent(code)}/take`, { qty })
-    : post(`/consumables/code/${encodeURIComponent(code)}/borrow`, { qty })
+) => post(`/consumables/code/${encodeURIComponent(code)}/take`, { qty })
 export const takeConsumableByCode = (code: string, qty: number) =>
   post(`/consumables/code/${encodeURIComponent(code)}/take`, { qty })
 export const getLowStockConsumables = () => get('/consumables/low-stock')
+
+/**
+ * 后端 consumables 用 require_order（布尔）表示出库方式，前端统一用 outbound_type 枚举。
+ * 适配层：把后端记录映射为前端期望结构（outbound_type = require_order ? 'workorder' : 'direct'）。
+ * 各页面/购物车统一调用本函数，避免散落 require_order 判断。
+ */
+export function mapConsumable(c: any): any {
+  if (!c) return c
+  const requireOrder = c.require_order === true || c.require_order === 'true' || c.require_order === 1
+  return { ...c, outbound_type: requireOrder ? 'workorder' : 'direct' }
+}
 
 // ===== 出入库流水 =====
 export const getStockMovements = (params?: any) => get('/stock-movements', params)

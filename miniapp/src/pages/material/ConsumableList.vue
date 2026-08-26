@@ -56,7 +56,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getConsumables } from '@/api/material'
+import { getConsumables, mapConsumable } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { resolveImage } from '@/utils/image'
 import { OUTBOUND_TYPE_TEXT } from '@/constants/material'
@@ -74,10 +74,13 @@ function isLow(c: Consumable): boolean {
 async function load() {
   loaded.value = false
   try {
-    const params =
-      active.value === 'all' ? {} : { outbound_type: active.value }
-    const data = await getConsumables(params).catch(() => [])
-    consumables.value = toArray(data) as Consumable[]
+    // 后端 GET /consumables 不支持 outbound_type 过滤，故前端统一拉取后按 require_order→outbound_type 过滤。
+    const data = await getConsumables({}).catch(() => [])
+    const all = (toArray(data) as Consumable[]).map(mapConsumable)
+    consumables.value =
+      active.value === 'all'
+        ? all
+        : all.filter((c) => (c.outbound_type || 'direct') === active.value)
   } finally {
     loaded.value = true
   }

@@ -55,7 +55,7 @@
 import { computed, ref } from 'vue'
 import { useMaterialCartStore } from '@/store/materialCart'
 import { useAuthStore } from '@/store/auth'
-import { borrowSpareItem, outboundConsumable } from '@/api/material'
+import { outboundConsumable } from '@/api/material'
 import { showToast, showModal } from '@/utils/feedback'
 import { requestSubscribe } from '@/composables/useWxSubscribe'
 import type { MaterialCartItem } from '@/store/materialCart'
@@ -100,15 +100,28 @@ async function checkout() {
   try {
     let msg = ''
     if (spareItems.length) {
-      await Promise.all(spareItems.map((s) => borrowSpareItem(s.code)))
-      msg = `备件单品已借出 ${spareItems.length} 件`
+      // 后端暂未实现备件单品借出专属端点（materials.js 无 /spare-items/code/:code/borrow）。
+      // 小程序端暂不支持单件直接借出，引导网页端办理；此处不调用会 404 的接口，避免整单失败。
+      msg = `${spareItems.length} 件备件单品请到网页端办理借出`
     }
     if (consItems.length) {
-      await Promise.all(
-        consItems.map((c) =>
-          outboundConsumable(c.code, c.qty, c.outboundType || 'direct')
+      try {
+        await Promise.all(
+          consItems.map((c) =>
+            outboundConsumable(c.code, c.qty, c.outboundType || 'direct')
+          )
         )
-      )
+      } catch (e: any) {
+        // 需工单(require_order=true)调 /take 会被后端拦截返回 400，给出明确提示
+        const blocked = consItems.filter((c) => c.outboundType === 'workorder').length
+        if (blocked) {
+          await showToast(`需工单的 ${blocked} 项请走物料领用单办理`, 'none')
+        } else {
+          await showToast(e?.data?.message || e?.message || '消耗品出库失败', 'none')
+        }
+        submitting.value = false
+        return
+      }
       const wo = consItems.filter((c) => c.outboundType === 'workorder').length
       const di = consItems.length - wo
       const parts: string[] = []

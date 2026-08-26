@@ -98,7 +98,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getSpareItems, getConsumables } from '@/api/material'
+import { getSpareItems, getConsumables, mapConsumable } from '@/api/material'
 import { toArray } from '@/utils/status'
 import { showToast } from '@/utils/feedback'
 import { SPARE_ITEM_STATUS_TEXT } from '@/constants/material'
@@ -125,6 +125,7 @@ const displayList = computed<any[]>(() => {
   let list = consumables.value
   if (sub.value !== 'all') list = list.filter((c) => (c.outbound_type || 'direct') === sub.value)
   return list
+  // 注：前端已通过 mapConsumable 把后端 require_order 映射为 outbound_type，故此处直接用 outbound_type 过滤
 })
 
 const filtered = computed<any[]>(() => {
@@ -132,7 +133,7 @@ const filtered = computed<any[]>(() => {
   if (!kw) return displayList.value
   return displayList.value.filter((item) => {
     const name = (item.spare_name || item.consumable_name || '').toLowerCase()
-    const code = (item.spare_code || item.consumable_code || '').toLowerCase()
+    const code = (item.item_code || item.consumable_code || '').toLowerCase()
     return name.includes(kw) || code.includes(kw)
   })
 })
@@ -147,7 +148,7 @@ function nameOf(item: any): string {
   return item.spare_name || item.consumable_name || ''
 }
 function codeOf(item: any): string {
-  return item.spare_code || item.consumable_code || ''
+  return item.item_code || item.consumable_code || ''
 }
 function stockOf(item: any): number {
   return tab.value === 'spare_item' ? 1 : Number(item.stock_qty ?? 0)
@@ -172,13 +173,14 @@ function cartItemOf(item: any) {
       key: itemKey(item),
       type: 'spare_item' as const,
       id: item.item_id,
-      code: item.spare_code,
-      name: item.spare_name || item.spare_code,
+      code: item.item_code,
+      name: item.spare_name || item.item_code,
       unit: item.unit || '件',
       stock: 1
     }
   }
-  const ot = (item.outbound_type || 'direct') as 'workorder' | 'direct'
+  const mapped = mapConsumable(item)
+  const ot = (mapped.outbound_type || 'direct') as 'workorder' | 'direct'
   return {
     key: itemKey(item),
     type: 'cons' as const,
@@ -221,7 +223,7 @@ async function load(): Promise<void> {
       getConsumables().catch(() => [])
     ])
     spares.value = toArray(sp) as SpareItem[]
-    consumables.value = toArray(co) as Consumable[]
+    consumables.value = (toArray(co) as Consumable[]).map(mapConsumable)
   } finally {
     loaded.value = true
   }
@@ -236,7 +238,7 @@ async function scanMaterialCode(): Promise<void> {
   const res = await scan()
   if (!res) return
   const c = res.code.trim().toUpperCase()
-  const spare = spares.value.find((s) => (s.spare_code || '').toUpperCase() === c)
+  const spare = spares.value.find((s) => (s.item_code || '').toUpperCase() === c)
   if (spare) {
     tab.value = 'spare_item'
     addSpareItem(spare)
