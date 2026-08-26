@@ -1,14 +1,15 @@
 /**
  * auth store（小程序适配版）
- * 自 mobile-frontend/src/store/auth.ts 拷贝并适配：
- * - localStorage 直接调用 → utils/storage.ts（getToken/setToken/getStoredUser/setStoredUser/clearAuth）
- * - 新增 wxLogin 动作（调用 api.wxLogin）
+ * 个人主体小程序无法获取微信手机号，改用「手机号 + 本机记住」登录：
+ * - accountLogin(identifier) 调 /auth/login 手机号免密签发 token
+ * - 登录成功后由 Login.vue 调用 setLoginPhone 记住本机账号，下次自动登录
+ * - 微信 openid 绑定逻辑已废弃（个人主体无法获取本机微信号）
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User, WxLoginResult } from '@/types'
 import { getToken, setToken as persistToken, getStoredUser, setStoredUser, clearAuth } from '@/utils/storage'
-import { wxLogin as wxLoginApi, login as loginApi } from '@/api'
+import { login as loginApi } from '@/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(getToken())
@@ -41,24 +42,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * 微信一键登录：code 由 uni.login 获取
-   * 成功后写入 token + user 并返回完整结果
-   */
-  async function wxLogin(code: string, nickname?: string, avatar?: string): Promise<WxLoginResult> {
-    const result = await wxLoginApi(code, nickname, avatar)
-    if (result?.access_token) {
-      setToken(result.access_token)
-    }
-    if (result?.user) {
-      setUser(result.user)
-    }
-    return result
-  }
-
-  /**
-   * 手动账号登录（账号免密）：手机号或用户名匹配即签发 token 并持久化到本机。
-   * 个人主体小程序无 getPhoneNumber，改用此方式绑定本机登录账号。
-   * wxCode 选填：微信一键登录场景下携带，登录成功且账号未绑定微信时自动绑定 openid。
+   * 手机号免密登录：identifier 为手机号（或用户名），匹配系统账号即签发 token 并持久化到本机。
+   * 个人主体小程序无法获取微信手机号，故不再依赖微信 openid 绑定，统一走手机号登录。
+   * wxCode 已废弃（个人主体拿不到本机微信号），保留可选参数仅为兼容后端（传空即不绑定）。
    */
   async function accountLogin(identifier: string, wxCode?: string): Promise<WxLoginResult> {
     const result = await loginApi(identifier, wxCode)
@@ -71,5 +57,5 @@ export const useAuthStore = defineStore('auth', () => {
     return result
   }
 
-  return { token, user, isLoggedIn, isAdmin, isApprover, isMaterialManager, isGuest, setToken, setUser, logout, wxLogin, accountLogin }
+  return { token, user, isLoggedIn, isAdmin, isApprover, isMaterialManager, isGuest, setToken, setUser, logout, accountLogin }
 })

@@ -54,14 +54,17 @@ function handleUnauthorized(): void {
  */
 export function request<T = any>(options: RequestOptions): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const token = getToken()
-    const header: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.header || {})
-    }
-    if (token) {
-      header.Authorization = `Bearer ${token}`
-    }
+  const token = getToken()
+  const header: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.header || {})
+  }
+  // 登录/绑定类接口为匿名流程（靠 wx code / 手机号匹配），不应携带已登录 token；
+  // 否则游客态 token 会触发后端游客只读守卫 403，导致「游客永远无法登录」的死锁。
+  const ANON_PATHS = ['/auth/wx-login', '/auth/login', '/auth/wx-bind-phone', '/auth/wx-phone-login']
+  if (token && !ANON_PATHS.some((p) => options.url.startsWith(p))) {
+    header.Authorization = `Bearer ${token}`
+  }
 
     uni.request({
       url: `${BASE_URL}${options.url}`,

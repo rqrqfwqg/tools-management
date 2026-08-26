@@ -135,6 +135,10 @@ app.get('/api/dashboard', require('./middleware/auth').authenticate, (req, res) 
 // 依据请求头 Bearer token 中的 role；无 token/无效 token 放行，交给下游 authenticate 统一处理
 app.use('/api', (req, res, next) => {
   if (req.method === 'GET') return next();
+  // 认证类路由（登录/绑定）本就是匿名流程：游客调用这些接口是为了「摆脱游客身份」，
+  // 若在此拦截会陷入死锁（游客永远无法登录）。白名单放行，由各路由自身逻辑处理。
+  const ANON_AUTH = ['/auth/wx-login', '/auth/login', '/auth/wx-bind-phone', '/auth/wx-phone-login'];
+  if (ANON_AUTH.some((p) => (req.originalUrl || '').includes(p))) return next();
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!token) return next();

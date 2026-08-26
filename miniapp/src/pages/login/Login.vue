@@ -7,46 +7,31 @@
     </view>
 
     <view class="actions">
-      <!-- 微信一键登录：uni.login 换 code → 后端 openid 匹配
-           已绑定账号 → 直接进正式账号；未绑定 → 不再静默进游客，而是弹出绑定窗 -->
-      <button
-        class="wx-btn"
-        :loading="loading"
-        :disabled="loading"
-        @tap="wxQuickLogin"
-      >
-        <view class="wx-btn__badge">微</view>
-        <text>{{ loading ? '登录中…' : '微信一键登录' }}</text>
-      </button>
-
-      <view class="tip">已绑定微信的账号可一键直进；未绑定账号点击后会提示绑定手机号，绑定后即可使用全部功能。</view>
-    </view>
-
-    <!-- 未绑定账号时弹出：输入手机号绑定并登录（个人主体小程序无 getPhoneNumber，手动输入） -->
-    <view v-if="showBind" class="bind-mask" @tap="enterGuest">
-      <view class="bind-card" @tap.stop>
-        <view class="bind-card__title">绑定手机号</view>
-        <view class="bind-card__desc">检测到该微信尚未绑定系统账号，请输入您在系统中登记的手机号完成绑定，绑定后即可使用全部功能。</view>
-        <input
-          class="bind-card__input"
-          v-model="phone"
-          type="number"
-          maxlength="11"
-          placeholder="输入手机号完成绑定"
-          placeholder-class="bind-card__ph"
-          :disabled="phoneLoading"
-          @confirm="phoneBind"
-        />
-        <button
-          class="bind-card__btn"
-          :loading="phoneLoading"
-          :disabled="phoneLoading"
-          @tap="phoneBind"
-        >
-          <text>{{ phoneLoading ? '绑定中…' : '绑定并登录' }}</text>
-        </button>
-        <view class="bind-card__skip" @tap="enterGuest">稍后再说（游客模式）</view>
-      </view>
+      <!-- 个人主体小程序无法获取微信手机号，统一用「手机号免密登录」 -->
+      <block v-if="!autoLogging">
+        <view class="phone-box">
+          <input
+            class="phone-box__input"
+            v-model="phone"
+            type="number"
+            maxlength="11"
+            placeholder="输入手机号登录（系统已登记）"
+            placeholder-class="phone-box__ph"
+            :disabled="loading"
+            @confirm="phoneLogin"
+          />
+          <button
+            class="phone-box__btn"
+            :loading="loading"
+            :disabled="loading"
+            @tap="phoneLogin"
+          >
+            <text>{{ loading ? '登录中…' : '登 录' }}</text>
+          </button>
+        </view>
+        <view class="tip">请输入您在系统中登记的手机号登录；首次登录后自动记住本机账号，下次打开免输入。若账号已失效或清空，将重新提示输入。</view>
+      </block>
+      <view v-else class="auto-tip">正在自动登录…</view>
     </view>
   </view>
 </template>
@@ -54,97 +39,71 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/store/auth'
+import { getLoginPhone, setLoginPhone, clearLoginPhone } from '@/utils/storage'
 
 const authStore = useAuthStore()
-const loading = ref(false)
-const showBind = ref(false)
 const phone = ref('')
-const phoneLoading = ref(false)
+const loading = ref(false)
+/** 启动自动登录中（读取本机记住的手机号向服务端校验），期间隐藏表单 */
+const autoLogging = ref(false)
 
 function goHome() {
   // Dashboard 是 tabBar 页，必须用 switchTab 跳转
   uni.switchTab({ url: '/pages/dashboard/Dashboard' })
 }
 
-onMounted(() => {
-  // 已登录且非游客（已绑定正式账号）才直接进入首页；
-  // 游客 token 同样会被持久化，必须回到登录页以便重新「微信一键登录」并触发绑定弹窗，
-  // 否则游客会永久困在只读模式、再也看不到绑定入口
-  if (authStore.isLoggedIn && !authStore.isGuest) {
-    goHome()
+/**
+ * 启动自动登录：若本机记住了手机号，向服务端校验该账号是否仍有效。
+ * 有效 → 直接进入；失效（401 / 账号被删）→ 清除记住的手机号并回到输入表单。
+ */
+onMounted(async () => {
+  const saved = getLoginPhone()
+  if (!saved) return // 首次使用：展示输入表单
+  autoLogging.value = true
+  try {
+    const result = await authStore.accountLogin(saved)
+    if (result?.access_token) {
+      goHome()
+      return
+    }
+    // 兜底：无 token（极少数情况）
+    clearLoginPhone()
+    uni.showToast({ title: '登录已失效，请重新输入手机号', icon: 'none' })
+  } catch (e: any) {
+    // 账号已失效（如被删除、token 过期）→ 清除记住的手机号
+    clearLoginPhone()
+    const msg = e?.data?.message || e?.message || ''
+    uni.showToast({ title: msg || '登录已失效，请重新输入手机号', icon: 'none' })
+  } finally {
+    autoLogging.value = false
   }
 })
 
-/** 微信一键登录：uni.login → 后端 openid 匹配；已绑定进正式账号，未绑定自动转游客（只读） */
-async function wxQuickLogin() {
+/** 手机号登录：校验格式 → /auth/login 免密签发 → 记住本机账号 */
+async function phoneLogin() {
   if (loading.value) return
-  loading.value = true
-  try {
-    const loginRes: any = await uni.login()
-    const code = loginRes?.code
-    if (!code) {
-      uni.showToast({ title: '获取微信登录凭证失败', icon: 'none' })
-      return
-    }
-    const result = await authStore.wxLogin(code)
-    if (!result?.access_token) {
-      uni.showToast({ title: '微信登录失败，请重试', icon: 'none' })
-      return
-    }
-    if (result.guest) {
-      // 未匹配到系统账号 → 弹出绑定窗，让用户输手机号绑定当前微信
-      showBind.value = true
-      return
-    }
-    uni.showToast({ title: '微信登录成功', icon: 'success' })
-    goHome()
-  } catch (err: any) {
-    uni.showToast({ title: err?.data?.message || err?.message || '微信登录失败', icon: 'none' })
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 微信一键登录后未绑定触发：输入手机号绑定并登录。
- *  重新 uni.login 拿 code（静默、不弹授权）→ /auth/login 带 wx_code → 匹配系统账号并绑定当前微信 openid。
- *  绑定成功后微信一键登录即可直进正式账号。 */
-async function phoneBind() {
-  if (phoneLoading.value) return
   const p = phone.value.trim()
   if (!/^1\d{10}$/.test(p)) {
     uni.showToast({ title: '请输入正确的 11 位手机号', icon: 'none' })
     return
   }
-  phoneLoading.value = true
+  loading.value = true
   try {
-    const loginRes: any = await uni.login()
-    const code = loginRes?.code
-    if (!code) {
-      uni.showToast({ title: '获取微信凭证失败', icon: 'none' })
-      return
-    }
-    const result = await authStore.accountLogin(p, code)
+    const result = await authStore.accountLogin(p)
     if (!result?.access_token) {
-      uni.showToast({ title: '绑定失败，请重试', icon: 'none' })
+      uni.showToast({ title: '登录失败，请重试', icon: 'none' })
       return
     }
-    showBind.value = false
+    // 记住本机登录账号，下次启动自动登录
+    setLoginPhone(p)
+    uni.showToast({ title: '登录成功', icon: 'success' })
     phone.value = ''
-    uni.showToast({ title: result.bound_openid ? '绑定成功，已登录' : '登录成功', icon: 'success' })
     goHome()
-  } catch (err: any) {
-    uni.showToast({ title: err?.data?.message || err?.message || '绑定失败', icon: 'none' })
+  } catch (e: any) {
+    uni.showToast({ title: e?.data?.message || e?.message || '手机号未登记或登录失败', icon: 'none' })
   } finally {
-    phoneLoading.value = false
+    loading.value = false
   }
-}
-
-/** 暂不绑定：关闭弹窗进入游客模式（只读） */
-function enterGuest() {
-  if (phoneLoading.value) return
-  showBind.value = false
-  uni.showToast({ title: '已进入游客模式（只读）', icon: 'none' })
-  goHome()
 }
 </script>
 
@@ -198,138 +157,66 @@ function enterGuest() {
   align-items: center;
 }
 
-/* 微信一键登录 */
-.wx-btn {
+/* 手机号登录 */
+.phone-box {
   width: 100%;
-  height: 96rpx;
-  border-radius: 48rpx;
-  background: linear-gradient(135deg, #07c160, #06a850);
-  color: #fff;
-  font-size: 34rpx;
-  font-weight: 600;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  line-height: 96rpx;
-  padding: 0;
-  box-shadow: 0 12rpx 32rpx rgba(7, 193, 96, 0.25);
+  flex-direction: column;
+  gap: 24rpx;
 
-  &::after {
-    border: none;
+  &__input {
+    width: 100%;
+    height: 96rpx;
+    border-radius: 48rpx;
+    background: #f5f6f8;
+    border: 1rpx solid #e5e5e5;
+    padding: 0 36rpx;
+    font-size: 32rpx;
+    color: $tm-text;
+    box-sizing: border-box;
   }
 
-  &__badge {
-    width: 44rpx;
-    height: 44rpx;
-    border-radius: 10rpx;
-    background: #fff;
-    color: #07c160;
-    font-size: 28rpx;
-    font-weight: 700;
+  &__ph {
+    color: #b0b0b0;
+  }
+
+  &__btn {
+    width: 100%;
+    height: 96rpx;
+    border-radius: 48rpx;
+    background: linear-gradient(135deg, #07c160, #06a850);
+    color: #fff;
+    font-size: 34rpx;
+    font-weight: 600;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-right: 16rpx;
-  }
+    border: none;
+    line-height: 96rpx;
+    padding: 0;
+    box-shadow: 0 12rpx 32rpx rgba(7, 193, 96, 0.25);
 
-  &[disabled] {
-    opacity: 0.7;
+    &::after {
+      border: none;
+    }
+
+    &[disabled] {
+      opacity: 0.7;
+    }
   }
 }
 
 .tip {
-  margin-top: 40rpx;
+  margin-top: 36rpx;
   font-size: 22rpx;
   color: #b0b0b0;
   text-align: center;
   line-height: 32rpx;
 }
 
-/* 未绑定账号时弹出的绑定窗 */
-.bind-mask {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-
-  .bind-card {
-    width: 560rpx;
-    background: #fff;
-    border-radius: 24rpx;
-    padding: 48rpx 40rpx 36rpx;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-
-    &__title {
-      font-size: 34rpx;
-      font-weight: 700;
-      color: #1a1a1a;
-    }
-
-    &__desc {
-      margin-top: 20rpx;
-      font-size: 24rpx;
-      color: #8a8a8a;
-      line-height: 36rpx;
-      text-align: center;
-    }
-
-    &__input {
-      width: 100%;
-      height: 88rpx;
-      margin-top: 32rpx;
-      border-radius: 44rpx;
-      background: #f5f6f8;
-      border: 1rpx solid #e5e5e5;
-      padding: 0 32rpx;
-      font-size: 30rpx;
-      color: #1a1a1a;
-      box-sizing: border-box;
-    }
-
-    &__ph {
-      color: #b0b0b0;
-    }
-
-    &__btn {
-      width: 100%;
-      height: 88rpx;
-      margin-top: 24rpx;
-      border-radius: 44rpx;
-      background: linear-gradient(135deg, #3a7afe, #2f6ae8);
-      color: #fff;
-      font-size: 32rpx;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: none;
-      line-height: 88rpx;
-      padding: 0;
-
-      &::after {
-        border: none;
-      }
-
-      &[disabled] {
-        opacity: 0.7;
-      }
-    }
-
-    &__skip {
-      margin-top: 24rpx;
-      font-size: 24rpx;
-      color: #8a8a8a;
-    }
-  }
+.auto-tip {
+  margin-top: 36rpx;
+  font-size: 28rpx;
+  color: #8a8a8a;
 }
 </style>

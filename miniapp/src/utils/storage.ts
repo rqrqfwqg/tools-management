@@ -6,6 +6,9 @@
  */
 const TOKEN_KEY = 'token'
 const USER_KEY = 'user'
+/** 本机登录账号（手机号）：个人主体小程序无法获取微信手机号，改用手机号本地记住，
+ *  启动自动登录；登出/账号失效时清除，下次需重新输入 */
+const LOGIN_PHONE_KEY = 'login_phone'
 
 /** 读取原始值（uni storage 在 App 端直接存对象、H5 端存字符串，此处原样返回） */
 export function get(key: string): any {
@@ -86,9 +89,25 @@ export function setStoredUser(user: any): void {
   set(USER_KEY, user)
 }
 
+/** 读取本机记住的登录手机号（空串=未记住） */
+export function getLoginPhone(): string {
+  return getString(LOGIN_PHONE_KEY)
+}
+
+/** 记住本机登录手机号（登录成功后写入） */
+export function setLoginPhone(phone: string): void {
+  set(LOGIN_PHONE_KEY, phone)
+}
+
+/** 清除本机记住的登录手机号（登出 / 账号失效时调用） */
+export function clearLoginPhone(): void {
+  remove(LOGIN_PHONE_KEY)
+}
+
 /** 清空鉴权相关存储（401 / 退出登录时调用） */
 export function clearAuth(): void {
   remove(TOKEN_KEY)
   remove(USER_KEY)
   remove('saved_credentials')
+  remove(LOGIN_PHONE_KEY)
 }

@@ -10,8 +10,8 @@ onLaunch(() => {
   if (!authStore.isLoggedIn) {
     console.log('[miniapp] App Launch：未登录')
   }
-  // 已登录且非游客：请求微信订阅消息授权（保证每日 8/20 未归还提醒能送达）
-  if (authStore.isLoggedIn && !authStore.isGuest) {
+  // 已登录：请求微信订阅消息授权（保证每日 8/20 未归还提醒能送达）
+  if (authStore.isLoggedIn) {
     requestSubscribeOnLaunch()
   }
 })

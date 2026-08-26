@@ -10,28 +10,6 @@
       </view>
     </view>
 
-    <!-- 游客绑定：微信未匹配到系统账号时，引导绑定（微信与账号一一对应） -->
-    <view v-if="auth.isGuest" class="bind-box">
-      <view class="bind-box__title">绑定系统账号</view>
-      <view class="bind-box__desc">当前为游客模式（只读）。输入系统账号（手机号或用户名）完成绑定后，即可使用领用、归还、盘点等全部功能。</view>
-      <input
-        class="bind-box__input"
-        v-model="bindAccount"
-        placeholder="请输入手机号或用户名"
-        placeholder-class="bind-box__ph"
-        :disabled="binding"
-        @confirm="bindAccountSubmit"
-      />
-      <button
-        class="bind-box__btn"
-        :loading="binding"
-        :disabled="binding"
-        @tap="bindAccountSubmit"
-      >
-        <text>{{ binding ? '绑定中…' : '绑定并登录' }}</text>
-      </button>
-    </view>
-
     <view class="cell-group">
       <view class="cell">
         <text class="cell__label">手机号</text>
@@ -80,7 +58,7 @@ import { computed, ref } from 'vue'
 import { useAuthStore } from '@/store/auth'
 import { sendTestReminder } from '@/api'
 import { WX_TPL_CLAIM, WX_TPL_REMIND } from '@/config/wechat'
-import { showToast, showInputModal } from '@/utils/feedback'
+import { showToast } from '@/utils/feedback'
 
 const auth = useAuthStore()
 
@@ -92,39 +70,6 @@ const avatarText = computed(() => displayName.value.charAt(0))
 const roleName = computed(() => auth.user?.role_name || roleLabel(auth.user?.role))
 const phone = computed(() => auth.user?.phone || '')
 const deptName = computed(() => auth.user?.dept_name || '')
-
-// 游客绑定系统账号
-const binding = ref(false)
-const bindAccount = ref('')
-
-/** 绑定系统账号：uni.login 拿新 code → 后端匹配账号并绑定当前微信（微信与账号一一对应） */
-async function bindAccountSubmit() {
-  if (binding.value) return
-  const id = bindAccount.value.trim()
-  if (!id) {
-    showToast('请输入手机号或用户名', 'none')
-    return
-  }
-  binding.value = true
-  try {
-    const loginRes: any = await uni.login()
-    const code = loginRes?.code
-    if (!code) {
-      showToast('获取微信凭证失败', 'none')
-      return
-    }
-    const result = await auth.accountLogin(id, code)
-    if (result?.access_token) {
-      bindAccount.value = ''
-      showToast(result.bound_openid ? '绑定成功，已进入正式账号' : '登录成功', 'success')
-      // accountLogin 已更新 token/user，页面自动切换为正式账号（isGuest 变 false）
-    }
-  } catch (e: any) {
-    showToast(e?.data?.message || e?.message || '绑定失败', 'none')
-  } finally {
-    binding.value = false
-  }
-}
 
 // 微信订阅消息模板是否已配置（前端展示用）
 const claimReady = computed(() => !!WX_TPL_CLAIM)
@@ -238,71 +183,6 @@ function logout() {
   font-size: 28rpx;
   font-weight: 600;
   color: $tm-text;
-}
-
-/* 游客绑定系统账号 */
-.bind-box {
-  margin-top: 24rpx;
-  background: $tm-card-bg;
-  border-radius: $tm-radius-sm;
-  padding: 32rpx 28rpx;
-  box-shadow: $tm-shadow-card;
-  border: 1rpx solid rgba(7, 193, 96, 0.35);
-
-  &__title {
-    font-size: 30rpx;
-    font-weight: 600;
-    color: $tm-text;
-  }
-
-  &__desc {
-    margin-top: 12rpx;
-    font-size: 24rpx;
-    color: $tm-text-secondary;
-    line-height: 36rpx;
-  }
-
-  &__input {
-    margin-top: 24rpx;
-    width: 100%;
-    height: 84rpx;
-    border-radius: 14rpx;
-    background: $tm-bg;
-    border: 1rpx solid $tm-border;
-    padding: 0 24rpx;
-    box-sizing: border-box;
-    font-size: 28rpx;
-    color: $tm-text;
-  }
-
-  &__ph {
-    color: $tm-text-muted;
-  }
-
-  &__btn {
-    margin-top: 24rpx;
-    width: 100%;
-    height: 84rpx;
-    border-radius: 42rpx;
-    background-color: #07c160;
-    color: #fff;
-    font-size: 30rpx;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    line-height: 84rpx;
-    padding: 0;
-
-    &::after {
-      border: none;
-    }
-
-    &[disabled] {
-      opacity: 0.7;
-    }
-  }
 }
 
 .cell-group {
