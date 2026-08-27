@@ -22,6 +22,12 @@
             <el-option label="微信手机号" value="wx_phone" />
           </el-select>
         </el-form-item>
+        <el-form-item label="来源">
+          <el-select v-model="filterClient" placeholder="全部" clearable style="width: 140px" @change="loadData(1)">
+            <el-option label="网页端" value="web" />
+            <el-option label="小程序" value="miniprogram" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData(1)">查询</el-button>
         </el-form-item>
@@ -37,6 +43,11 @@
         <el-table-column label="方式" width="120">
           <template #default="{ row }">
             <el-tag>{{ methodLabel(row.login_method) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.client === 'miniprogram' ? 'warning' : 'info'">{{ clientLabel(row.client) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="结果" width="90">
@@ -72,6 +83,7 @@ interface LoginLogItem {
   role: string
   login_ip: string
   login_method: string
+  client: string
   user_agent: string
   success: boolean
   fail_reason: string
@@ -85,6 +97,7 @@ const page = ref(1)
 const pageSize = ref(50)
 const filterSuccess = ref('')
 const filterMethod = ref('')
+const filterClient = ref('')
 
 function formatTime(iso?: string) {
   if (!iso) return '-'
@@ -101,6 +114,12 @@ function methodLabel(method?: string) {
   return method || '-'
 }
 
+function clientLabel(client?: string) {
+  if (client === 'miniprogram') return '小程序'
+  if (client === 'web') return '网页端'
+  return client || '-'
+}
+
 async function loadData(p?: number) {
   if (p) page.value = p
   loading.value = true
@@ -108,6 +127,7 @@ async function loadData(p?: number) {
     const params: Record<string, unknown> = { page: page.value, page_size: pageSize.value }
     if (filterSuccess.value) params.success = filterSuccess.value
     if (filterMethod.value) params.method = filterMethod.value
+    if (filterClient.value) params.client = filterClient.value
     const res = await getLoginLogs(params)
     list.value = res.list || []
     total.value = res.total || 0

@@ -57,6 +57,8 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
   const token = getToken()
   const header: Record<string, string> = {
     'Content-Type': 'application/json',
+    // 标记来源端，供后端登录审计区分「网页 / 小程序」
+    'X-Client-Type': 'miniprogram',
     ...(options.header || {})
   }
   // 登录/绑定类接口为匿名流程（靠 wx code / 手机号匹配），不应携带已登录 token；
