@@ -331,4 +331,12 @@ export const getSafetySupplySettings = () =>
 export const updateSafetySupplySettings = (data: any) =>
   request.put('/safety-supplies/settings', data).then(r => r.data)
 
+// 登录审计日志（仅管理员可查看）
+export const getLoginLogs = (params?: {
+  page?: number
+  page_size?: number
+  success?: string
+  method?: string
+}) => request.get('/auth/login-logs', { params }).then((r) => r.data)
+
 export default request

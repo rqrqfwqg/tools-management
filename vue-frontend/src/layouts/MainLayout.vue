@@ -73,6 +73,10 @@
           <el-icon><Key /></el-icon>
           <span>角色管理</span>
         </el-menu-item>
+        <el-menu-item index="/login-logs" v-if="authStore.hasRole(['admin'])">
+          <el-icon><View /></el-icon>
+          <span>登录日志（安全）</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>

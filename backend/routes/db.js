@@ -72,7 +72,9 @@ function initDB() {
       ],
       stock_movements: [],
       inventory_checks: [],
-      inbound_orders: []
+      inbound_orders: [],
+      // 登录审计日志（记录管理员/用户登录 IP、时间、方式，供安全追溯）
+      admin_login_logs: []
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initialDB, null, 2));
   }
@@ -95,7 +97,8 @@ function migrateDB() {
     stock_movements: [],
     inventory_checks: [],
     safety_supplies: [],
-    inbound_orders: []
+    inbound_orders: [],
+    admin_login_logs: []
   };
   for (const key of Object.keys(newTables)) {
     if (!Array.isArray(db[key])) {

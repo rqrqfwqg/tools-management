@@ -31,6 +31,7 @@ const router = createRouter({
         { path: 'material-orders', name: 'MaterialOrderManagement', component: () => import('@/views/MaterialOrderManagement.vue') },
         { path: 'material-cart', name: 'MaterialCartView', component: () => import('@/views/MaterialCartView.vue') },
         { path: 'roles', name: 'RoleManagement', component: () => import('@/views/RoleManagement.vue'), meta: { requireAdmin: true } },
+        { path: 'login-logs', name: 'LoginLog', component: () => import('@/views/LoginLog.vue'), meta: { requireAdmin: true } },
         { path: 'change-password', name: 'ChangePassword', component: () => import('@/views/ChangePassword.vue') },
         { path: 'cart', name: 'ShoppingCart', component: () => import('@/views/ShoppingCart.vue') },
         { path: 'barcodes', name: 'BarcodeList', component: () => import('@/views/BarcodeList.vue') },

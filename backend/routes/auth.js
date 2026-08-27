@@ -6,9 +6,40 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const { readDB, writeDB, nextId } = require('./db');
-const { authenticate, JWT_SECRET } = require('../middleware/auth');
+const { authenticate, requireAdmin, JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
+
+// ---------- 登录审计（记录 IP/时间/账号/方式，供安全追溯） ----------
+// 真实客户端 IP：trust proxy=1 下 req.ip 已是公网 IP；再兼容手动解析 X-Forwarded-For
+function getClientIp(req) {
+  const xff = (req.headers && req.headers['x-forwarded-for'] || '').split(',');
+  const first = xff[0] && xff[0].trim();
+  return first || req.ip || '';
+}
+
+function recordLogin({ user_id, username, role, login_ip, login_method, user_agent, success, fail_reason }) {
+  try {
+    const db = readDB();
+    if (!Array.isArray(db.admin_login_logs)) db.admin_login_logs = [];
+    const log_id = nextId(db.admin_login_logs);
+    db.admin_login_logs.push({
+      log_id,
+      user_id: user_id != null ? user_id : null,
+      username: username || '',
+      role: role || '',
+      login_ip: login_ip || '',
+      login_method: login_method || '',
+      user_agent: String(user_agent || '').slice(0, 300),
+      success: !!success,
+      fail_reason: fail_reason || '',
+      login_at: new Date().toISOString()
+    });
+    writeDB(db);
+  } catch (e) {
+    console.error('[LoginAudit] 写入登录日志失败:', e.message);
+  }
+}
 
 // 登录速率限制
 const loginLimiter = rateLimit({
@@ -44,10 +75,12 @@ router.post('/auth/login', loginLimiter, [validate], async (req, res) => {
   const user = db.users.find(u => u.phone === identifier || u.username === identifier);
 
   if (!user) {
+    recordLogin({ username: identifier, role: '', login_ip: getClientIp(req), login_method: 'password', user_agent: req.headers['user-agent'], success: false, fail_reason: '账号不存在' });
     return res.status(401).json({ message: '账号不存在，请检查手机号或用户名' });
   }
 
   if (!user.is_active) {
+    recordLogin({ user_id: user.user_id, username: user.username, role: user.role, login_ip: getClientIp(req), login_method: 'password', user_agent: req.headers['user-agent'], success: false, fail_reason: '用户已被禁用' });
     return res.status(403).json({ message: '用户已被禁用' });
   }
 
@@ -85,6 +118,7 @@ router.post('/auth/login', loginLimiter, [validate], async (req, res) => {
   );
 
   const { password: _, ...userWithoutPassword } = user;
+  recordLogin({ user_id: user.user_id, username: user.username, role: user.role, login_ip: getClientIp(req), login_method: 'password', user_agent: req.headers['user-agent'], success: true });
   res.json({ access_token: token, user: userWithoutPassword, bound_openid });
 });
 
@@ -268,12 +302,14 @@ router.post('/auth/wx-login', loginLimiter, async (req, res) => {
     session = await wxCode2Session(code, appid, secret);
   } catch (err) {
     console.error('[WXLogin] 调用微信接口失败:', err.message);
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx', user_agent: req.headers['user-agent'], success: false, fail_reason: '微信服务调用失败' });
     return res.status(502).json({ message: '微信服务暂不可用，请稍后再试' });
   }
 
   // 微信业务错误：如 code 无效/过期、appid 与 secret 不匹配等
   if (session.errcode) {
     console.error(`[WXLogin] 微信返回错误 errcode=${session.errcode} errmsg=${session.errmsg}`);
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx', user_agent: req.headers['user-agent'], success: false, fail_reason: `微信返回错误 errcode=${session.errcode}` });
     return res.status(401).json({ message: 'wx login failed' });
   }
 
@@ -281,6 +317,7 @@ router.post('/auth/wx-login', loginLimiter, async (req, res) => {
   // 防御微信异常返回（未返回 openid 一律视为登录失败）
   if (!openid) {
     console.error('[WXLogin] 微信未返回 openid，raw=', JSON.stringify(session));
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx', user_agent: req.headers['user-agent'], success: false, fail_reason: '微信未返回 openid' });
     return res.status(401).json({ message: 'wx login failed' });
   }
 
@@ -290,12 +327,14 @@ router.post('/auth/wx-login', loginLimiter, async (req, res) => {
   if (user && user.is_active !== false) {
     const token = signToken(user);
     const { password: _, ...userWithoutPassword } = user;
+    recordLogin({ user_id: user.user_id, username: user.username, role: user.role, login_ip: getClientIp(req), login_method: 'wx', user_agent: req.headers['user-agent'], success: true });
     return res.json({ access_token: token, user: userWithoutPassword, is_new_user: false, guest: false });
   }
 
   // 未匹配 → 游客模式（只读）
   const guest = guestUser();
   const token = signToken(guest);
+  recordLogin({ user_id: 0, username: 'guest', role: 'guest', login_ip: getClientIp(req), login_method: 'wx', user_agent: req.headers['user-agent'], success: true });
   return res.json({
     access_token: token,
     user: guest,
@@ -326,10 +365,12 @@ router.post('/auth/wx-phone-login', loginLimiter, async (req, res) => {
     session = await wxCode2Session(code, appid, secret);
   } catch (err) {
     console.error('[WXPhoneLogin] 调用微信接口失败:', err.message);
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: '微信服务调用失败' });
     return res.status(502).json({ message: '微信服务暂不可用，请稍后再试' });
   }
   if (session.errcode || !session.openid) {
     console.error(`[WXPhoneLogin] 微信返回错误 errcode=${session.errcode} errmsg=${session.errmsg}`);
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: `微信返回错误 errcode=${session.errcode}` });
     return res.status(401).json({ message: 'wx login failed' });
   }
   const openid = session.openid;
@@ -340,6 +381,7 @@ router.post('/auth/wx-phone-login', loginLimiter, async (req, res) => {
     accessToken = await getWxAccessToken();
   } catch (err) {
     console.error('[WXPhoneLogin] 获取 access_token 失败:', err.message);
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: '获取微信 access_token 失败' });
     return res.status(502).json({ message: err.message });
   }
   let phoneInfo;
@@ -347,10 +389,12 @@ router.post('/auth/wx-phone-login', loginLimiter, async (req, res) => {
     phoneInfo = await wxPhoneCode2Number(phoneCode, accessToken);
   } catch (err) {
     console.error('[WXPhoneLogin] 解析手机号失败:', err.message);
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: '解析手机号失败' });
     return res.status(502).json({ message: err.message });
   }
   const phone = (phoneInfo.purePhoneNumber || phoneInfo.phoneNumber || '').trim();
   if (!/^1\d{10}$/.test(phone)) {
+    recordLogin({ username: '', role: '', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: '手机号格式不正确' });
     return res.status(400).json({ message: '未能获取有效手机号' });
   }
 
@@ -358,10 +402,12 @@ router.post('/auth/wx-phone-login', loginLimiter, async (req, res) => {
   const db = readDB();
   const matched = db.users.filter(u => (u.phone || '').trim() === phone);
   if (matched.length > 1) {
+    recordLogin({ username: phone, role: '', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: '手机号关联多个账户' });
     return res.status(403).json({ message: '该手机号关联多个账户，请联系管理员' });
   }
   const target = matched[0];
   if (target && target.is_active === false) {
+    recordLogin({ user_id: target.user_id, username: target.username, role: target.role, login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: false, fail_reason: '用户已被禁用' });
     return res.status(403).json({ message: '用户已被禁用' });
   }
 
@@ -373,12 +419,14 @@ router.post('/auth/wx-phone-login', loginLimiter, async (req, res) => {
     }
     const token = signToken(target);
     const { password: _, ...userWithoutPassword } = target;
+    recordLogin({ user_id: target.user_id, username: target.username, role: target.role, login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: true });
     return res.json({ access_token: token, user: userWithoutPassword, is_new_user: false, guest: false });
   }
 
   // 4) 未匹配 → 游客模式（只读）
   const guest = guestUser();
   const token = signToken(guest);
+  recordLogin({ user_id: 0, username: 'guest', role: 'guest', login_ip: getClientIp(req), login_method: 'wx_phone', user_agent: req.headers['user-agent'], success: true });
   return res.json({
     access_token: token,
     user: guest,
@@ -429,6 +477,26 @@ router.post('/auth/wx-bind-phone', authenticate, (req, res) => {
   writeDB(db);
   const { password: _, ...userWithoutPassword } = current;
   res.json({ message: '绑定成功', user: userWithoutPassword });
+});
+
+// ============ 登录审计日志查询（仅管理员可查看） ============
+// 返回按时间倒序的登录记录，支持分页与按成败/方式筛选
+router.get('/auth/login-logs', authenticate, requireAdmin, (req, res) => {
+  const db = readDB();
+  let all = (db.admin_login_logs || []).slice();
+  if (req.query.success !== undefined && req.query.success !== '') {
+    const want = req.query.success === '1' || req.query.success === 'true';
+    all = all.filter((l) => l.success === want);
+  }
+  if (req.query.method) {
+    all = all.filter((l) => l.login_method === req.query.method);
+  }
+  all.sort((a, b) => (b.login_at || '').localeCompare(a.login_at || ''));
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(req.query.page_size) || 50));
+  const total = all.length;
+  const list = all.slice((page - 1) * pageSize, page * pageSize);
+  res.json({ total, page, page_size: pageSize, list });
 });
 
 module.exports = router;
